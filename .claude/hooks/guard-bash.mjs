@@ -144,11 +144,13 @@ const GH_OTHER_READONLY = {
 };
 
 // Words that may precede the real command and carry no meaning for us.
-const KEYWORDS = new Set(['{', '}', '!', 'if', 'then', 'else', 'elif', 'do', 'while', 'until', 'time']);
+const KEYWORDS = new Set(['{', '}', '!', 'if', 'then', 'else', 'elif', 'do', 'while', 'until']);
 // Wrappers that run another command; we look through them for gh/git/shells.
+// `time` is here rather than in KEYWORDS: the keyword takes `-p` and `--`, and
+// /usr/bin/time takes options too, so its own options must be skipped.
 const WRAPPERS = new Set([
     'env', 'command', 'builtin', 'exec', 'nohup', 'sudo', 'nice', 'xargs',
-    'timeout', 'setsid', 'stdbuf', 'ionice', 'chronic',
+    'timeout', 'setsid', 'stdbuf', 'ionice', 'chronic', 'time',
 ]);
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash']);
 
@@ -1053,13 +1055,66 @@ const WRAPPER_VALUE_OPTS = {
     xargs: ['-n', '-I', '-L', '-P', '-s', '-d', '-E', '-a', '--max-args', '--max-procs', '--delimiter', '--arg-file'],
     stdbuf: ['-i', '-o', '-e'],
     ionice: ['-c', '-n', '-p', '-P', '-u'],
-    env: ['-u', '--unset', '-C', '--chdir'],
+    time: ['-f', '--format', '-o', '--output'],
 };
+
+// GNU env's long options; getopt accepts any unambiguous prefix (`--sp` is --split-string).
+const ENV_LONG = [
+    'ignore-environment', 'null', 'unset', 'chdir', 'split-string', 'block-signal', 'default-signal', 'ignore-signal',
+    'list-signal-handling', 'debug', 'help', 'version',
+];
+
+/**
+ * Parse env's own leading options and NAME=value words. Returns
+ * { target, script, rest }: `target` is the index of the command env runs (-1 if
+ * none), `script` the -S/--split-string command string (null if none) and `rest`
+ * the index of the first word after it. Short options cluster (`-iS 'cmd'`,
+ * `-iu NAME`), -u/-C/-S take the rest of the word or the next word, and a lone
+ * `-` is the obsolete spelling of -i. The wrapped command's own arguments
+ * (`--title -Sx`) are never read as env options.
+ */
+function envOptions(w) {
+    let options = true;
+    for (let k = 1; k < w.length; k++) {
+        const a = w[k];
+        if (isAssignment(a)) continue;
+        if (!options || !a.startsWith('-')) return { target: k, script: null, rest: k };
+        if (a === '-') continue;
+        if (a === '--') {
+            options = false;
+            continue;
+        }
+        if (a.startsWith('--')) {
+            const eq = a.indexOf('=');
+            const name = a.slice(2, eq === -1 ? undefined : eq);
+            const hits = ENV_LONG.filter((o) => o.startsWith(name));
+            const opt = hits.includes(name) ? name : hits.length === 1 ? hits[0] : null;
+            if (opt === 'split-string') {
+                return eq === -1 ? { target: -1, script: w[k + 1] ?? '', rest: k + 2 } : { target: -1, script: a.slice(eq + 1), rest: k + 1 };
+            }
+            if ((opt === 'unset' || opt === 'chdir') && eq === -1) k++;
+            continue;
+        }
+        for (let j = 1; j < a.length; j++) {
+            if (a[j] === 'S') {
+                return j + 1 < a.length
+                    ? { target: -1, script: a.slice(j + 1), rest: k + 1 }
+                    : { target: -1, script: w[k + 1] ?? '', rest: k + 2 };
+            }
+            if (a[j] === 'u' || a[j] === 'C') {
+                if (j + 1 === a.length) k++; // the value is the next word
+                break;
+            }
+        }
+    }
+    return { target: -1, script: null, rest: w.length };
+}
 
 /** Index of the command a wrapper (env, timeout, xargs, ...) runs, or -1 if there is none to analyse. */
 function wrapperTarget(w) {
     const cmd = basename(w[0]);
     if (cmd === 'command' && w.some((a) => /^-[a-zA-Z]*[vV]/.test(a))) return -1; // lookup only
+    if (cmd === 'env') return envOptions(w).target;
     const valueOpts = WRAPPER_VALUE_OPTS[cmd] ?? [];
     let needDuration = cmd === 'timeout';
     for (let k = 1; k < w.length; k++) {
@@ -1105,26 +1160,10 @@ function checkSegment(words, state) {
             return block(`Blocked: \`${cmd}\` (privilege escalation) is never run by agents in this repository.`);
         }
         if (!WRAPPERS.has(cmd)) break;
-        // `env -S 'gh pr create'` / `--split-string=...` runs a command string.
-        // Only env's own leading options and NAME=value words are scanned; the
-        // wrapped command's arguments (e.g. `--title -Sx`) are not env options.
+        // `env -S 'gh pr create'` / `-iS ...` / `--split-string=...` runs a command string.
         if (cmd === 'env') {
-            for (let k = 1; k < w.length; k++) {
-                const a = w[k];
-                if (isAssignment(a)) continue;
-                if (!a.startsWith('-')) break; // first word of the wrapped command
-                if (['-u', '--unset', '-C', '--chdir'].includes(a)) {
-                    k++;
-                    continue;
-                }
-                let script = null;
-                let rest = k + 1;
-                if (a === '-S' || a === '--split-string') {
-                    script = w[k + 1] ?? '';
-                    rest = k + 2;
-                } else if (a.startsWith('--split-string=')) script = a.slice(15);
-                else if (/^-S./.test(a)) script = a.slice(2);
-                if (script === null) continue;
+            const { script, rest } = envOptions(w);
+            if (script !== null) {
                 // Check the string on its own, then as the head of the command
                 // that still has the remaining words appended.
                 const alone = checkCommand(script, state);
