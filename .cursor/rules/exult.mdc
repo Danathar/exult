@@ -1,0 +1,12 @@
+---
+description: Rules for the Danathar/exult fork (Exult, a C++17 Ultima VII engine)
+alwaysApply: true
+---
+
+Full rules are in `AGENTS.md`; read it first. Critical points:
+
+- Fork rule: work only on `Danathar/exult`. Every `gh` write command passes `--repo Danathar/exult`; PRs target `master`. Never touch `exult/exult`.
+- Never commit Ultima VII game data or other copyrighted assets.
+- Style: `.clang-format` (tabs, width 4, column limit 132); change only the lines you need.
+- Before a PR run `tests/run-unit-tests.sh` and `tests/e2e/run.sh`; sign off commits (`git commit -s`); do not merge.
+- New source files carry the GPL header used by the existing files.
