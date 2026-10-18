@@ -1,0 +1,149 @@
+# Path to label map for actions/labeler (.github/workflows/labeler.yml).
+# Labels missing from the repository are created by the first step of
+# labeler.yml before it applies them (colour 1d76db); create them by hand
+# first to choose another colour. Keep every label key on its own line in the
+# form 'area/<name>': the workflow reads the keys with grep.
+
+'area/engine':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '*.cc'
+          - '*.h'
+          - 'objs/**'
+          - 'files/**'
+          - 'flic/**'
+          - 'gamemgr/**'
+          - 'headers/**'
+          - 'imagewin/**'
+          - 'pathfinder/**'
+          - 'server/**'
+
+'area/usecode':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'usecode/**'
+
+'area/gumps':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'gumps/**'
+
+'area/audio':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'audio/**'
+
+'area/shapes':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'shapes/**'
+
+'area/studio':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'mapedit/**'
+
+'area/tools':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'tools/**'
+
+'area/data':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'data/**'
+          - 'content/**'
+          - 'conf/**'
+
+'area/build':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'configure.ac'
+          - 'Makefile.am'
+          - 'Makefile.common'
+          - 'Makefile.mingw'
+          - '**/Makefile.am'
+          - '**/*.mk'
+          - 'm4/**'
+          - 'exult.spec.in'
+
+'area/tests':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'tests/**'
+          - 'scripts/tests/**'
+          - '.claude/hooks/tests/**'
+
+'area/docs':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '*.md'
+          - 'README*'
+          - 'AUTHORS'
+          - 'ChangeLog'
+          - 'FAQ'
+          - 'NEWS'
+
+'area/ci':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/auto-qa-tuning.json'
+          - '.github/labeler.yml'
+          - '.github/rulesets/**'
+          - 'scripts/**'
+          - '.clang-format'
+          - '.clang-tidy'
+          - '.editorconfig'
+          - 'risk-config.json'
+          - '.coverage-thresholds.json'
+
+'area/agents':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.claude/**'
+          - '.cursor/**'
+          - 'AGENTS.md'
+          - 'CLAUDE.md'
+          - '.github/copilot-instructions.md'
+          - '.github/prompts/**'
+
+'area/governance':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'policies/**'
+          - '.github/CODEOWNERS'
+          - 'risk-config.json'
+          - 'docs/risk-tiers.md'
+          - 'docs/agent-boundaries.md'
+          - 'docs/security/**'
+          - 'COPYING'
+
+'area/platform-android':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'android/**'
+
+'area/platform-ios':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'ios/**'
+
+'area/platform-macos':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'macosx/**'
+          - 'README.macOS'
+
+'area/platform-windows':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'win32/**'
+          - 'msvcstuff/**'
+          - 'README.windows'
+
+'area/platform-linux':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'desktop/**'

@@ -1,0 +1,93 @@
+name: Agent audit trail
+
+# Reads back, weekly, who wrote and who merged each agent pull request, using
+# scripts/ai-audit-report.mjs (tests: scripts/tests/ai-audit-report.test.mjs).
+#
+# Agent PRs here are opened by the Hive GitHub App (`app/danathar-atomic-hive`,
+# ending with a signature line `— hive: agent=<name> ...`) or by the Claude
+# workflow (claude.yml, ai-fix.yml: head branch `claude/...`, no hive
+# signature). For each one the script checks: a linked issue (GitHub's
+# resolved closingIssuesReferences, or a `Closes/Fixes/Refs #N` line in the
+# body; Hive v6 PRs often say `Refs #N`), the signature line (Hive
+# PRs only), a merger that is a human or the Hive App itself (the
+# hive-serialized lane, reported separately; any other bot or an unknown
+# merger is a violation), and base `master` of Danathar/exult. The result goes
+# to the run summary.
+#
+# Failure model: a violation fails the run (`--strict`). It does not open an
+# issue. A red scheduled run is already visible in the Actions tab and in
+# GitHub's failure notifications, and keeping the token read-only (no
+# `issues: write`) means a bug here cannot write anything. A run that audited
+# zero agent PRs passes but says so at the top of the summary, because Hive may
+# be paused and an empty window is not evidence of compliance.
+#
+# Triggers: weekly and manual, not every push to master; the audit reads merged
+# PRs, so it adds nothing per push and `auto-issues.yml` already covers a red
+# master. `GH_REPO` pins every `gh` call to Danathar/exult, never the
+# upstream exult/exult (AGENTS.md). GitHub disables scheduled workflows in
+# forks until they are enabled in the Actions tab; workflow_dispatch works
+# either way.
+
+on:
+  schedule:
+    - cron: '17 5 * * 1' # Mondays 05:17 UTC; covers the previous 8 days
+  workflow_dispatch:
+    inputs:
+      since:
+        description: Audit PRs merged on or after this date (YYYY-MM-DD). Blank means the last 8 days.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: agent-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Audit merged agent pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SINCE: ${{ inputs.since }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SINCE" ]; then
+            SINCE="$(date -u -d '8 days ago' +%F)"
+          fi
+          # The script validates the date too; failing here gives a clear error
+          # before any API call.
+          case "$SINCE" in
+            [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+            *) echo "::error::since must be YYYY-MM-DD, got '$SINCE'"; exit 2 ;;
+          esac
+          if [ "$(date -u -d "$SINCE" +%F 2>/dev/null || true)" != "$SINCE" ]; then
+            echo "::error::since must be a real date, got '$SINCE'"; exit 2
+          fi
+          # `commits` is requested so a `Co-Authored-By: Claude` commit pushed
+          # onto a human PR branch (claude.yml) is seen. With --limit 500 it
+          # exceeds GitHub's GraphQL node limit, so the limit is 100; if 100
+          # PRs merged in the window the script exits 2 (possible truncation)
+          # and the audit is rerun with a narrower `since`.
+          gh pr list --repo Danathar/exult --state merged --limit 100 --search "merged:>=$SINCE" \
+            --json number,title,author,body,mergedAt,mergedBy,labels,url,baseRefName,headRefName,commits,closingIssuesReferences > merged.json
+          # --limit makes the script refuse a list that may be truncated.
+          node scripts/ai-audit-report.mjs --input merged.json --since "$SINCE" \
+            --limit 100 --strict --output report.md && status=0 || status=$?
+          if [ -f report.md ]; then cat report.md >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ "$status" -ne 0 ]; then
+            echo "::error::agent audit exited $status (1 = audit-trail violation, 2 = bad or truncated input); see the run summary"
+          fi
+          exit "$status"

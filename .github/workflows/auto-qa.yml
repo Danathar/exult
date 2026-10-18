@@ -1,0 +1,110 @@
+name: Auto-QA
+
+# Weekly self-tuning QA signal check. It reads the last window of GitHub
+# Actions runs of this repository (CI, Coverage gate and the upstream ci-*
+# workflows named in .github/auto-qa-tuning.json), runs
+# scripts/auto-qa-tuner.mjs against the rules in that file, and reports in the
+# step summary: workflows that fail often, are flaky (a re-run of the same
+# commit passed) or run slower than their budget. When there is a finding it
+# opens or updates ONE tracking issue in this repository. It never pushes a
+# commit and never edits a workflow or the tuning file: a human applies any
+# change in a pull request, and tunes the thresholds by editing the JSON.
+#
+# Two jobs so the privileged step stays small: `measure` runs repository code
+# with a read-only token; `report` has `issues: write`, runs no repository
+# code, and only reads the issue body the first job produced.
+#
+# GitHub disables scheduled workflows in forks until they are enabled in the
+# Actions tab; `workflow_dispatch` works either way.
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: auto-qa
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Measure and propose
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      findings: ${{ steps.tune.outputs.findings }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Fetch recent workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          window=$(node -p "JSON.parse(require('fs').readFileSync('.github/auto-qa-tuning.json','utf8')).window_days")
+          case "$window" in ''|*[!0-9]*) echo "::error::window_days must be an integer"; exit 2 ;; esac
+          since="$(date -u -d "$window days ago" +%F)"
+          gh run list --repo Danathar/exult --limit 1000 --created ">=$since" \
+            --json workflowName,conclusion,status,headSha,event,headBranch,attempt,createdAt,startedAt,updatedAt,databaseId,url > runs.json
+          count=$(jq length runs.json)
+          echo "Fetched $count runs created on or after $since."
+          if [ "$count" -ge 1000 ]; then
+            echo "::warning::1000 runs hit the fetch limit; older runs in the window are missing."
+          fi
+
+      - name: Propose follow-ups
+        id: tune
+        run: |
+          set -o pipefail
+          node scripts/auto-qa-tuner.mjs --runs runs.json --out-dir auto-qa-out | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: auto-qa-out
+          path: auto-qa-out
+          if-no-files-found: error
+
+  report:
+    name: Open or update the tracking issue
+    needs: measure
+    if: needs.measure.outputs.findings == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: auto-qa-out
+          path: auto-qa-out
+
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: 'Auto-QA: workflow health needs attention'
+        run: |
+          set -euo pipefail
+          # List rather than search (the search index lags and in:title is a
+          # word match). Match the exact title AND the Actions bot as author so
+          # an issue someone else opens with this title is never reused.
+          existing=$(gh issue list --repo Danathar/exult --state open --limit 1000 --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE and (.author.login == "app/github-actions" or .author.login == "github-actions[bot]" or .author.login == "github-actions"))][0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue edit --repo Danathar/exult "$existing" --body-file auto-qa-out/issue-body.md
+            gh issue comment --repo Danathar/exult "$existing" --body "Proposal refreshed by run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          else
+            gh issue create --repo Danathar/exult --title "$TITLE" --body-file auto-qa-out/issue-body.md
+          fi
