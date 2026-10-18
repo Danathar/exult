@@ -5,8 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        This tracker is for work on the `Danathar/exult` fork. If the bug also exists in upstream Exult, check <https://github.com/exult/exult/issues> and report it there; do not file it twice.
-        Never attach or paste Ultima VII game files (`static/`, `gamedat/`, `*.flx`) or other copyrighted assets. Security problems: use the private "Report a vulnerability" option on the Security tab.
+        This tracker is for work on the `Danathar/exult` fork. If you are a person and the bug also reproduces on unmodified upstream Exult, you may also report it at <https://github.com/exult/exult/issues> yourself; do not file it twice. AI agents never file or comment on upstream: they open an issue here for the owner.
+        Never attach or paste Ultima VII game files (`static/`, `gamedat/`, `*.flx`) or other copyrighted assets.
+        Security problems: private vulnerability reporting is not enabled on this repository. Open an issue that says a security problem exists, WITHOUT exploit details, and ask the owner for a private contact. If the problem is in code that also exists in upstream Exult, tell the upstream project too through its own channels.
   - type: dropdown
     id: component
     attributes:

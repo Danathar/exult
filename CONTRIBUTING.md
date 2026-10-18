@@ -12,8 +12,10 @@ on the engine and its tooling, including with AI agents under guardrails (see
   branch `master`. Do not open issues or PRs on `exult/exult` from this work. When using
   the GitHub CLI, a fork defaults to its parent, so always pass the repository:
   `gh pr create --repo Danathar/exult --base master --head <branch>`.
-- Bugs in released Exult, game behaviour and data-file questions belong upstream
-  ([bugs](https://github.com/exult/exult/issues), [questions](https://github.com/exult/exult/discussions), IRC `#exult` on Libera.Chat). Upstream's FAQ asks for the latest snapshot, the version and platform, and a relevant savegame.
+- Bugs in released Exult, game behaviour and data-file questions belong upstream.
+  That advice is for **people**: AI agents never file issues, PRs or comments on
+  `exult/exult`; they open an issue in `Danathar/exult` for the owner. Upstream
+  channels ([bugs](https://github.com/exult/exult/issues), [questions](https://github.com/exult/exult/discussions), IRC `#exult` on Libera.Chat). Upstream's FAQ asks for the latest snapshot, the version and platform, and a relevant savegame.
   Check there first; the issue templates here say the same.
 - **Upstream changes arrive through the owner**, who syncs `master` from upstream.
   Contributors and agents do not merge upstream into this fork or add an
@@ -37,16 +39,16 @@ on the engine and its tooling, including with AI agents under guardrails (see
 
 ## Build
 
-From a clone, on Linux (the recipe the upstream `ci-linux.yml` uses; see that
-file for the exact package list):
+From a clone, on Debian/Ubuntu. This is a minimal sketch, not the exact CI
+recipe: upstream's `ci-linux.yml` (full package list, extra `./configure`
+options) and the upstream `INSTALL`/`README` are authoritative.
 
 ```bash
-# Debian/Ubuntu build dependencies (abridged; ci-linux.yml is authoritative)
-sudo apt-get install build-essential autoconf-archive bison flex cmake \
-  zlib1g-dev libogg-dev libvorbis-dev libasound2-dev libfluidsynth-dev \
-  libpng-dev libfreetype6-dev libxml2-dev
-# SDL3 and SDL3_image 3.2.x are also required (build from source if your
-# distribution does not package them).
+sudo apt-get install build-essential autoconf automake libtool pkg-config \
+  autoconf-archive bison flex cmake zlib1g-dev libogg-dev libvorbis-dev \
+  libasound2-dev libfluidsynth-dev libpng-dev libfreetype6-dev libxml2-dev
+# SDL3 3.2.x is required (build from source if your distribution does not
+# package it). SDL3_image is optional: without it only some tools are disabled.
 autoreconf -v -i && ./configure && make -j"$(nproc)"
 ```
 
@@ -88,15 +90,13 @@ whole files in a functional PR.
 
 ## Risk tiers
 
-How closely a change is reviewed depends on what it touches
-([docs/risk-tiers.md](docs/risk-tiers.md) and `risk-config.json`, added by the
-agent-safety PR):
-
-| tier | paths |
-|---|---|
-| 1 | docs, comments, tests only |
-| 2 | ordinary engine and tool code |
-| 3 | build system (`configure.ac`, `Makefile.am`, `*.mk`), `.github/**`, `.claude/settings.json`, `.claude/hooks/**`, `policies/**`, `risk-config.json`, `CODEOWNERS`, `AGENTS.md`, `COPYING`, savegame and file-format code (`files/`, `gamedat.cc`, `objs/` serialization) |
+How closely a change is reviewed depends on what it can break, not on diff
+size. [docs/risk-tiers.md](docs/risk-tiers.md) (with `risk-config.json`) is the
+source: Tier 1 is docs and tests by path, Tier 2 is ordinary engine and tool
+code, Tier 3 is the build system, `.github/**`, agent configuration and
+savegame/file-format code. Classify your files with
+`node scripts/check-policies.mjs --classify <path>...` (both files arrive with
+the agent-safety PR).
 
 Tier 3 changes need the owner's review. Review criteria:
 [docs/review-rubric.md](docs/review-rubric.md).
@@ -105,5 +105,7 @@ Tier 3 changes need the owner's review. Review criteria:
 
 Use the issue templates. For a bug in this fork, give the game (BG, SI, mod),
 the version or commit, the platform and compiler, reproduction steps, and say
-whether it needs a particular savegame. Never attach game files. Report
-security problems privately through the Security tab.
+whether it needs a particular savegame. Never attach game files. Private
+vulnerability reporting is not enabled here: open an issue that says a security
+problem exists, without exploit details, and ask the owner for a private contact.
+If the code also exists in upstream Exult, tell upstream too.

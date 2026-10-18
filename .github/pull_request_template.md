@@ -6,9 +6,10 @@
 
 <!-- Highest tier touched; see docs/risk-tiers.md. -->
 
-- [ ] Tier 1: docs, comments, tests only
-- [ ] Tier 2: ordinary engine or tool code
-- [ ] Tier 3: build system (`configure.ac`, `Makefile.am`, `*.mk`), `.github/**`, agent config and hooks, `policies/`, `risk-config.json`, `CODEOWNERS`, `AGENTS.md`, `COPYING`, or savegame / file-format code (`files/`, `gamedat.cc`, `objs/` serialization)
+- [ ] Tier 1: only `docs/**`, `*.md`, `*.txt`, `tests/**`
+- [ ] Tier 2: engine and tool source (`*.cc`, `*.h`, `*.uc`, `*.sh`, `scripts/**`)
+- [ ] Tier 3: `configure.ac`, `Makefile.am`, `*.mk`, `.github/**`, agent config and hooks, `policies/**`, `risk-config.json`, `AGENTS.md`, `COPYING`, savegame / file-format code (`files/**`, `gamedat.cc`, parts of `objs/`), or any change raised by docs/risk-tiers.md
+<!-- Classify: node scripts/check-policies.mjs --classify <path>... -->
 
 ## Checks run
 
