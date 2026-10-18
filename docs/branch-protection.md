@@ -103,6 +103,11 @@ gh api -X POST repos/Danathar/exult/rulesets --input .github/rulesets/master.jso
 Then run the comparison above. The file spells out parameters GitHub would
 otherwise fill in with defaults, so the diff stays empty.
 
-Removing or renaming a required job without first editing the ruleset leaves
-every open PR waiting for a status that never arrives. Change the ruleset in
-the same PR, and apply it right after the merge.
+Removing or renaming a required job needs the live ruleset changed **before**
+the PR merges: the PR's own run no longer reports the old name, so with the old
+ruleset live it can never merge, and every other open PR would also wait for a
+status that never arrives. Order: change the job and
+`.github/rulesets/master.json` in one PR; once its other checks are green, the
+owner PUTs that PR's ruleset file (command above, run from the PR branch);
+then merge, update the other open PRs (`gh pr update-branch <N> --repo Danathar/exult`)
+and run the comparison above on `master`.
