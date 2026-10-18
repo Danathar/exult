@@ -628,6 +628,8 @@ test('repo-target: GH_REPO and set-default for another repo fail', () => {
     assert.ok(run({ 'docs/a.md': 'export GH_REPO=octocat/other-repo\n' }).length > 0);
     assert.ok(run({ 'docs/a.md': 'gh repo set-default octocat/other-repo\n' }).length > 0);
     assert.deepEqual(run({ 'docs/a.md': 'gh repo set-default Danathar/exult\n' }), []);
+    assert.deepEqual(run({ 'docs/a.md': 'gh repo set-default --view\n' }), []);
+    assert.deepEqual(run({ 'docs/a.md': 'gh repo set-default -v\n' }), []);
 });
 
 test('repo-target: read-only gh on another repo is allowed', () => {

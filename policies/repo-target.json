@@ -27,6 +27,6 @@
     "forbiddenPatterns": [
         "\\bgh\\s+(?:(?:pr|issue|release|workflow|label)\\s+(?:create|comment|edit|close|reopen|merge|review|delete|run|enable|disable|ready|upload|delete-asset|lock|unlock|transfer|pin|unpin|update-branch|revert|clone|develop)|run\\s+(?:rerun|cancel|delete))\\b[^\\n]*?(?:--repo|-R)[ =](?!Danathar/exult(?![\\w.-]))[\\w.-]+/[\\w.-]+",
         "GH_REPO=(?!Danathar/exult(?![\\w.-]))[\\w.-]+/[\\w.-]+",
-        "gh\\s+repo\\s+set-default\\s+(?!Danathar/exult(?![\\w.-]))\\S+"
+        "gh\\s+repo\\s+set-default\\s+(?!-|Danathar/exult(?![\\w.-]))\\S+"
     ]
 }
