@@ -1,0 +1,41 @@
+name: Policy check
+
+# Runs scripts/check-policies.mjs: the repo-target, workflow-permissions,
+# agent-guardrails, credential-safety and game-data policies in policies/, the
+# drift check between docs/risk-tiers.md and risk-config.json, and CODEOWNERS
+# coverage of owner-review paths; then the checker's own tests. The workflow
+# policy applies to fork-added workflows only; upstream exult workflows are
+# excluded (see policies/README.md). Node built-ins only, so there is no npm
+# install. No path filter: this job runs on every pull request so it can be a
+# required check.
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: policy-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy-check:
+    name: policy-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Check policies
+        run: node scripts/check-policies.mjs
+
+      - name: Test the policy checker
+        run: node --test scripts/tests/check-policies.test.mjs
