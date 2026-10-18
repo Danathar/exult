@@ -1,0 +1,36 @@
+# Only the Tier 3 (critical) paths from docs/risk-tiers.md and risk-config.json
+# are listed, and there is no catch-all `*`. A ruleset that requires code owner
+# review (planned, see docs/branch-protection.md once it lands) makes every path
+# listed here need the owner's approving review before it can merge, and a `*`
+# line would extend that to every pull request. Tier 1 and Tier 2 paths merge on
+# the required checks. scripts/check-policies.mjs fails when an owner-review path
+# is missing here, when a later line takes one off the owner, or when a `*` line
+# comes back. docs/agent-boundaries.md explains it.
+
+# Build system.
+/configure.ac                                   @Danathar
+Makefile.am                                     @Danathar
+*.mk                                            @Danathar
+
+# Workflows, repository metadata, rules and checks that bound agents.
+/.github/                                       @Danathar
+/.claude/settings.json                          @Danathar
+/.claude/hooks/                                 @Danathar
+/.claude/skills/                                @Danathar
+/.cursor/rules/                                 @Danathar
+/policies/                                      @Danathar
+/scripts/check-policies.mjs                     @Danathar
+/risk-config.json                               @Danathar
+/AGENTS.md                                      @Danathar
+/CLAUDE.md                                      @Danathar
+/docs/risk-tiers.md                             @Danathar
+/docs/agent-boundaries.md                       @Danathar
+/docs/security/                                 @Danathar
+
+# Licence text.
+/COPYING                                        @Danathar
+
+# Savegame and file-format code.
+/files/                                         @Danathar
+/gamedat.cc                                     @Danathar
+/objs/                                          @Danathar

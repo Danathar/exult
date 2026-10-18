@@ -1,0 +1,99 @@
+{
+    "$schema": "https://json.schemastore.org/claude-code-settings.json",
+    "permissions": {
+        "allow": [
+            "Bash(tests/run-unit-tests.sh)",
+            "Bash(tests/e2e/run.sh)",
+            "Bash(autoreconf -v -i)",
+            "Bash(./configure:*)",
+            "Bash(make:*)",
+            "Bash(shellcheck:*)",
+            "Bash(bash -n:*)",
+            "Bash(actionlint)",
+            "Bash(clang-format --dry-run:*)",
+            "Bash(node --test '.claude/hooks/tests/*.test.mjs')",
+            "Bash(node --test 'scripts/tests/*.test.mjs')",
+            "Bash(node scripts/check-policies.mjs)",
+            "Bash(git status:*)",
+            "Bash(git diff:*)",
+            "Bash(git log:*)",
+            "Bash(git show:*)",
+            "Bash(git branch)",
+            "Bash(git branch -a)",
+            "Bash(git branch -r)",
+            "Bash(git branch -v)",
+            "Bash(git branch -vv)",
+            "Bash(git branch --list)",
+            "Bash(git branch --show-current)",
+            "Bash(git ls-files:*)"
+        ],
+        "ask": [
+            "Bash(git push:*)",
+            "Bash(git clean:*)",
+            "Edit(.github/**)",
+            "Write(.github/**)",
+            "Edit(.claude/settings.json)",
+            "Write(.claude/settings.json)",
+            "Edit(.claude/hooks/**)",
+            "Write(.claude/hooks/**)",
+            "Edit(policies/**)",
+            "Write(policies/**)",
+            "Edit(scripts/check-policies.mjs)",
+            "Write(scripts/check-policies.mjs)",
+            "Edit(risk-config.json)",
+            "Write(risk-config.json)",
+            "Edit(AGENTS.md)",
+            "Write(AGENTS.md)",
+            "Edit(COPYING)",
+            "Write(COPYING)",
+            "Edit(configure.ac)",
+            "Write(configure.ac)",
+            "Edit(**/Makefile.am)",
+            "Write(**/Makefile.am)",
+            "Edit(**/*.mk)",
+            "Write(**/*.mk)",
+            "Edit(files/**)",
+            "Write(files/**)",
+            "Edit(gamedat.cc)",
+            "Write(gamedat.cc)",
+            "Edit(objs/**)",
+            "Write(objs/**)"
+        ],
+        "deny": [
+            "Bash(git push --force:*)",
+            "Bash(git push -f:*)",
+            "Bash(git push --force-with-lease:*)",
+            "Bash(git reset --hard:*)",
+            "Bash(git remote add:*)",
+            "Bash(gh pr merge:*)",
+            "Bash(sudo:*)",
+            "Bash(doas:*)",
+            "Bash(pkexec:*)",
+            "Bash(su:*)",
+            "Bash(make install:*)",
+            "Bash(make uninstall:*)",
+            "Bash(apt:*)",
+            "Bash(apt-get:*)",
+            "Bash(dnf:*)",
+            "Bash(yum:*)",
+            "Bash(rpm-ostree:*)",
+            "Bash(pacman:*)",
+            "Bash(brew:*)",
+            "Bash(rm -rf gamedat:*)",
+            "Bash(rm -rf static:*)"
+        ]
+    },
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-bash.mjs\""
+                    }
+                ]
+            }
+        ]
+    }
+}
