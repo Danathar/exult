@@ -27,7 +27,7 @@ is Tier 2.
 | ---- | ---- | ------ | ----------------- | ------ |
 | 1 | low | `docs/**`, `**/*.md`, `**/*.txt`, `tests/**` | `node scripts/check-policies.mjs` | `ci` |
 | 2 | standard | `**/*.cc`, `**/*.cpp`, `**/*.h`, `**/*.hpp`, `**/*.mm`, `**/*.uc`, `**/*.sh`, `scripts/**` | `tests/run-unit-tests.sh`, `tests/e2e/run.sh`, `node scripts/check-policies.mjs`, `node --test 'scripts/tests/*.test.mjs'` | `ci` |
-| 3 | critical | `configure.ac`, `**/Makefile.am`, `**/*.mk`, `.github/**`, `.claude/settings.json`, `.claude/hooks/**`, `.claude/skills/**`, `.cursor/rules/**`, `policies/**`, `scripts/check-policies.mjs`, `risk-config.json`, `AGENTS.md`, `CLAUDE.md`, `COPYING`, `docs/risk-tiers.md`, `docs/agent-boundaries.md`, `docs/security/**`, `files/**`, `gamedat.cc`, `objs/**` | `tests/run-unit-tests.sh`, `tests/e2e/run.sh`, `node scripts/check-policies.mjs`, `node --test 'scripts/tests/*.test.mjs'`, `node --test '.claude/hooks/tests/*.test.mjs'`, `actionlint` | `owner` |
+| 3 | critical | `configure.ac`, `**/Makefile.am`, `**/*.mk`, `.github/**`, `.claude/settings.json`, `.claude/hooks/**`, `.claude/skills/**`, `.cursor/rules/**`, `policies/**`, `scripts/check-policies.mjs`, `risk-config.json`, `AGENTS.md`, `CLAUDE.md`, `COPYING`, `docs/risk-tiers.md`, `docs/agent-boundaries.md`, `docs/security/**`, `files/**`, `gamedat.cc`, `objs/animate.*`, `objs/barge.*`, `objs/chunks.*`, `objs/contain.*`, `objs/egg.*`, `objs/iregobjs.*`, `objs/objs.*`, `objs/spellbook.*`, `objs/virstone.*` | `tests/run-unit-tests.sh`, `tests/e2e/run.sh`, `node scripts/check-policies.mjs`, `node --test 'scripts/tests/*.test.mjs'`, `node --test '.claude/hooks/tests/*.test.mjs'`, `actionlint` | `owner` |
 
 Review values: `owner` means the repository owner (Danathar) reads the diff and
 merges it, and a green CI run alone is not enough. `ci` means the required CI
@@ -106,10 +106,12 @@ tier".
   written boundary agents are judged by. Ordinary `docs/**` is Tier 1, but these
   are Tier 3 so an agent cannot change them under the `ci` gate. Edit them
   together with the policy files they describe.
-- **Savegame and file-format code (`files/**`, `gamedat.cc`, `objs/**`).** A
-  bug here corrupts or loses a player's saved game. `objs/**` is listed as a
-  whole directory because object serialization is spread over its files;
-  serialization code elsewhere is covered by "Raise the tier".
+- **Savegame and file-format code (`files/**`, `gamedat.cc`, and in `objs/` the files that define `write_ireg`/`write_ifix`).** A
+  bug here corrupts or loses a player's saved game. The `objs/` list is the
+  files a grep for those functions finds (`animate`, `barge`, `chunks`,
+  `contain`, `egg`, `iregobjs`, `objs`, `spellbook`, `virstone`); the other
+  `objs/` files are Tier 2, and serialization added elsewhere is covered by
+  "Raise the tier".
 
 ## Pull request notes by tier
 

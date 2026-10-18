@@ -118,10 +118,10 @@ test('real repository trees: classify picks the most dangerous tier', () => {
     for (const p of [
         '.github/workflows/ci.yml', '.github/CODEOWNERS', '.claude/hooks/guard-bash.mjs', '.claude/settings.json',
         'policies/repo-target.json', 'scripts/check-policies.mjs', 'risk-config.json', 'COPYING', 'AGENTS.md',
-        'configure.ac', 'Makefile.am', 'objs/Makefile.am', 'files/module.mk', 'gamedat.cc', 'objs/egg.cc',
+        'configure.ac', 'Makefile.am', 'objs/Makefile.am', 'files/module.mk', 'gamedat.cc', 'objs/egg.cc', 'objs/egg.h', 'objs/contain.cc', 'objs/objs.cc',
         'files/Flex.cc', 'docs/security/SECURITY-AI.md', 'docs/risk-tiers.md', '.github/pull_request_template.md',
     ]) assert.equal(tier(p), 3, p);
-    for (const p of ['shapes/shapeinf.cc', 'exult.cc', 'tools/ucc.cc', 'scripts/pr-metrics.mjs', 'tests/run-unit-tests.sh']) {
+    for (const p of ['shapes/shapeinf.cc', 'objs/objnames.cc', 'objs/jawbone.cc', 'objs/objiter.h', 'exult.cc', 'tools/ucc.cc', 'scripts/pr-metrics.mjs', 'tests/run-unit-tests.sh']) {
         assert.equal(tier(p), 2, p);
     }
     for (const p of ['README.md', 'docs/quality.md', 'docs/a/b.md', 'tests/unit/x.txt']) {

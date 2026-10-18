@@ -61,7 +61,15 @@
                 "docs/security/**",
                 "files/**",
                 "gamedat.cc",
-                "objs/**"
+                "objs/animate.*",
+                "objs/barge.*",
+                "objs/chunks.*",
+                "objs/contain.*",
+                "objs/egg.*",
+                "objs/iregobjs.*",
+                "objs/objs.*",
+                "objs/spellbook.*",
+                "objs/virstone.*"
             ],
             "required_commands": [
                 "tests/run-unit-tests.sh",

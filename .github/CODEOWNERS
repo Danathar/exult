@@ -30,7 +30,16 @@ Makefile.am                                     @Danathar
 # Licence text.
 /COPYING                                        @Danathar
 
-# Savegame and file-format code.
+# Savegame and file-format code. In objs/ only the files that hold the
+# write_ireg/write_ifix serialization (found with grep); the rest of objs/ is Tier 2.
 /files/                                         @Danathar
 /gamedat.cc                                     @Danathar
-/objs/                                          @Danathar
+/objs/animate.*                                 @Danathar
+/objs/barge.*                                   @Danathar
+/objs/chunks.*                                  @Danathar
+/objs/contain.*                                 @Danathar
+/objs/egg.*                                     @Danathar
+/objs/iregobjs.*                                @Danathar
+/objs/objs.*                                    @Danathar
+/objs/spellbook.*                               @Danathar
+/objs/virstone.*                                @Danathar
