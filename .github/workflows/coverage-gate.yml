@@ -1,0 +1,62 @@
+name: Coverage gate
+
+# Builds the unit tests (tests/run-unit-tests.sh) with --coverage, measures line
+# coverage of the product sources they compile, and fails when it is below the
+# floor in .coverage-thresholds.json. No path filter, so it always reports.
+# The floor and the measured file set live in .coverage-thresholds.json; raise
+# the floor when coverage rises.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: coverage-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Coverage gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: mirror.gcr.io/library/debian:13
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install compiler, gcovr and jq
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends g++ libc6-dev gcovr jq
+
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build and run unit tests with coverage
+        env:
+          COVERAGE: "1"
+          BUILD_DIR: ${{ github.workspace }}/build-coverage
+        run: tests/run-unit-tests.sh
+
+      - name: Enforce floor
+        env:
+          BUILD_DIR: ${{ github.workspace }}/build-coverage
+        run: |
+          set -o pipefail
+          floor="$(jq -er '.line_coverage_floor' .coverage-thresholds.json)"
+          filter="$(jq -er '.source_filter' .coverage-thresholds.json)"
+          echo "Line coverage floor: ${floor}%"
+          gcovr --root . --object-directory "$BUILD_DIR" \
+            --filter "${GITHUB_WORKSPACE}${filter}" \
+            --fail-under-line "$floor" --txt | tee coverage.txt
+
+      - name: Publish table
+        if: always()
+        run: |
+          if [ -s coverage.txt ]; then
+            { echo '### Line coverage (floor from .coverage-thresholds.json)'; echo '```'; cat coverage.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,0 +1,80 @@
+name: CI
+
+# Fork-level tests that run on every pull request and every push to master
+# (deliberately NO path filter, so the checks always report and can be required
+# by branch protection). The upstream ci-*.yml workflows still do the full
+# multi-platform builds. Job display names are referenced by the ruleset
+# (docs/branch-protection.md); do not rename them.
+#
+# Jobs run in a Debian 13 container: SDL3 and SDL3_image are packaged there, so
+# nothing is built from source. Container images come from mirror.gcr.io
+# (Google's mirror of Docker Hub official images) to avoid Docker Hub pull limits.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: mirror.gcr.io/library/debian:13
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cxx: g++
+            package: g++
+          - compiler: clang
+            cxx: clang++
+            package: clang
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install compiler
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ${{ matrix.package }} libc6-dev
+
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build and run unit tests
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: |
+          "$CXX" --version | head -1
+          tests/run-unit-tests.sh
+
+  e2e:
+    name: E2E (tools)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: mirror.gcr.io/library/debian:13
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            g++ make autoconf automake libtool autoconf-archive pkg-config bison flex \
+            zlib1g-dev libsdl3-dev libsdl3-image-dev libpng-dev libogg-dev libvorbis-dev
+
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build ucc and expack, then run the end-to-end checks
+        run: tests/e2e/run.sh
