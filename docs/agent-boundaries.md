@@ -43,7 +43,8 @@ of them before they run; other agents are bound by this list.
 - `sudo`, in any form.
 - `make install`, `cmake --install` and other installs into the system, and
   system package managers (`dnf`, `apt`, `rpm-ostree`, `brew`, ...). Build in
-  the tree. `make install DESTDIR=/tmp/<dir>` is allowed to inspect the layout.
+  the tree and run from there; there is no `DESTDIR` exception, because the
+  install hooks also touch the host.
 - Deleting or moving Ultima VII game data, savegames or the user's Exult
   configuration (`gamedat/`, the repository-root `static/`, `*.sav`, `~/.exult`,
   `~/.config/exult`, installed game directories), and `git clean -x`, which

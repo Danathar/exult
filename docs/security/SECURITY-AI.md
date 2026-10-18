@@ -70,8 +70,8 @@ layer assumes the one inside it can fail.
    `--repo Danathar/exult` (and any naming another repository, or a
    `gh api` mutation outside `repos/Danathar/exult`), the `gh` PR merge command,
    `git push` to anything but `origin` or to `master`, force pushes, new
-   remotes, `sudo`, `make install` (except `DESTDIR` under `/tmp` or
-   `/var/tmp`), system package installs, `curl | sh`, and deleting game data.
+   remotes, `sudo`, `make install` (always, `DESTDIR` or not), system package installs,
+   `curl | sh`, and deleting game data.
    It is a backstop for honest mistakes, not a sandbox: it does not stop
    deliberate obfuscation (built strings, scripts written to disk, aliases),
    and it only covers Claude Code. Other agents rely on layers 1, 4 and 5.

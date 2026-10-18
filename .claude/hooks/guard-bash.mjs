@@ -62,8 +62,8 @@
 //   - sudo / doas / pkexec / run0 / su in any position of a wrapper chain,
 //     including behind systemd-run and flatpak-spawn.
 //   - `make install`, `uninstall`, `install-*` goals (also gmake, `cmake
-//     --install`, `ninja install`, `meson install`) unless DESTDIR is a
-//     directory under /tmp or /var/tmp.
+//     --install`, `ninja install`, `meson install`), whatever DESTDIR says:
+//     Exult's install hooks (update-mime-database, ...) also act on the host.
 //   - package managers that change the system: apt, dnf, yum, zypper, pacman,
 //     rpm-ostree, apk, brew, snap, flatpak, dpkg, rpm and similar, with an
 //     install/remove/upgrade style subcommand; `npm|pnpm install -g`,
@@ -921,12 +921,9 @@ function literalPayload(f) {
 }
 
 const INSTALL_GOAL = /^(?:install|uninstall|install-[\w-]+|uninstall-[\w-]+)$/;
-const scratchDir = (value) => /^\/(?:var\/)?tmp\/[^$`~*?[{\\]+$/.test(value) && !value.split('/').includes('..');
 
-/** `make install` and friends write to the host unless DESTDIR points into scratch space. */
-function checkInstall(cmd, args, env) {
-    const destdir = [...args.filter((a) => a.startsWith('DESTDIR=')).map((a) => a.slice(8)), ...(env.DESTDIR === undefined ? [] : [env.DESTDIR])];
-    const scratch = destdir.length > 0 && destdir.every(scratchDir);
+/** `make install` and friends write to the host; there is no exception. */
+function checkInstall(cmd, args) {
     let installing = false;
     if (MAKERS.has(cmd) || cmd === 'ninja') installing = args.some((a) => INSTALL_GOAL.test(a));
     else if (cmd === 'meson') installing = args.includes('install');
@@ -934,10 +931,10 @@ function checkInstall(cmd, args, env) {
         installing = args.some((a) => a === '--install' || a.startsWith('--install=')) ||
             args.some((a, i) => (a === '--target' || a === '-t') && args[i + 1] === 'install');
     } else if (cmd === 'checkinstall') installing = true;
-    if (!installing || scratch) return null;
+    if (!installing) return null;
     return block(
-        `Blocked: \`${cmd} ... install\` writes to the host (/usr/local by default). Build in the tree and run from there; ` +
-            'to inspect the install layout use DESTDIR=/tmp/<dir> (or /var/tmp/<dir>).'
+        `Blocked: \`${cmd} ... install\` writes to the host (/usr/local by default) and runs install hooks such as update-mime-database. ` +
+            'Build in the tree and run from there; ask the owner to install.'
     );
 }
 
@@ -1124,7 +1121,7 @@ function checkSegment(words, state) {
             // `export NAME` without a value exports an earlier assignment: value unknown (null).
             const eq = a.indexOf('=');
             const name = eq === -1 ? a : a.slice(0, eq);
-            if (/^(GIT_CONFIG_|GIT_SSH)/i.test(name) || WATCHED_ENV.test(name) || name === 'DESTDIR') {
+            if (/^(GIT_CONFIG_|GIT_SSH)/i.test(name) || WATCHED_ENV.test(name)) {
                 (state.exportedEnv ??= {})[name] = eq === -1 ? null : a.slice(eq + 1);
             }
         }
@@ -1136,7 +1133,7 @@ function checkSegment(words, state) {
     }
     if (cmd === 'git') return checkGit(args, inlineEnv, state.exportedEnv ?? {});
     if (cmd === 'node' || cmd === 'nodejs') return checkNode(cmd, args, env);
-    if (MAKERS.has(cmd) || ['ninja', 'meson', 'cmake', 'checkinstall'].includes(cmd)) return checkInstall(cmd, args, env);
+    if (MAKERS.has(cmd) || ['ninja', 'meson', 'cmake', 'checkinstall'].includes(cmd)) return checkInstall(cmd, args);
     if (PKG_MANAGERS.has(cmd) || ['npm', 'pnpm', 'yarn', 'cargo', 'pip', 'pip3'].includes(cmd)) return checkPackages(cmd, args);
     if (DELETERS.has(cmd)) return checkDelete(cmd, args);
     if (cmd === 'source' || cmd === '.') {
