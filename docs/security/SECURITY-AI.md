@@ -146,8 +146,9 @@ Pull requests and issues go to `Danathar/exult`, never to `exult/exult`. Pass
 gh pr create --repo Danathar/exult --base master --head my-branch
 ```
 
-A bare `gh` command targets the fork's parent. In workflows,
-`GH_REPO: ${{ github.repository }}` in `env:` scopes `gh` to this repository.
+A bare `gh` command targets the fork's parent, and `GH_REPO` does not
+substitute for the flag (it can be skipped by conditional flow or unset), so
+every write names the repository explicitly, in workflows too.
 [policies/repo-target.json](../../policies/repo-target.json) enforces this in
 agent-direction Markdown and, together with
 [policies/workflow-permissions.json](../../policies/workflow-permissions.json),
@@ -174,8 +175,8 @@ For fork-added workflows:
   with the tag in a `# vX` comment.
 - Event-controlled strings (issue titles, branch names, PR bodies, inputs)
   reach shell steps through `env:`, not by expression interpolation in `run:`.
-- Every `gh` write command passes `--repo Danathar/exult` or
-  `${{ github.repository }}`, or runs where `GH_REPO` is set to one of them.
+- Every `gh` write command passes `--repo Danathar/exult` (or
+  `--repo ${{ github.repository }}`); `GH_REPO` alone is not accepted.
 - No workflow merges a pull request or approves one. Merging is done by Hive
   under its serialized strategy after the required checks pass, or by the
   owner.

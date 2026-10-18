@@ -387,14 +387,6 @@ export function checkCodeowners(config, text, owner, files = []) {
 const indentOf = (l) => l.match(/^\s*/)[0].length;
 const isBlank = (l) => l.trim() === '';
 
-/** Index of the nearest earlier non-blank line with smaller indent, or -1. */
-function parentOf(code, i, indent = indentOf(code[i])) {
-    for (let j = i - 1; j >= 0; j--) {
-        if (!isBlank(code[j]) && indentOf(code[j]) < indent) return j;
-    }
-    return -1;
-}
-
 /**
  * Top-level `permissions:` must exist and must not grant write access
  * (`write-all` or any `<scope>: write`); wider scopes belong on a job.
@@ -429,46 +421,9 @@ export function checkTopLevelPermissions(f, code, policy) {
 }
 
 /**
- * GH_REPO values valid for the block that starts at line `a`: a direct
- * `env:` child of that block (workflow, job or step) that sets GH_REPO.
- */
-function blockGhRepo(code, a) {
-    // a === -1 is the workflow root: its children sit at indent 0.
-    const indent = a === -1 ? -1 : indentOf(code[a]);
-    const dash = a !== -1 && /^\s*-\s/.test(code[a]);
-    let childIndent = a === -1 ? 0 : dash ? indent + 2 : -1;
-    let end = code.length;
-    for (let j = a + 1; j < code.length; j++) {
-        if (isBlank(code[j])) continue;
-        if (indentOf(code[j]) <= indent) {
-            end = j;
-            break;
-        }
-        if (childIndent === -1) childIndent = indentOf(code[j]);
-    }
-    const found = [];
-    for (let j = a + 1; j < end; j++) {
-        const m = code[j].match(/^\s*GH_REPO\s*:\s*(.+?)\s*$/);
-        if (!m) continue;
-        const envLine = parentOf(code, j);
-        if (
-            envLine !== -1 &&
-            /^\s*env\s*:\s*$/.test(code[envLine]) &&
-            indentOf(code[envLine]) === childIndent
-        ) {
-            found.push({ line: j, value: m[1] });
-        }
-    }
-    return found;
-}
-
-/**
- * Every `gh` write command must name this repository: `--repo`/`-R` with an allowed
- * literal, or with `$GH_REPO` when the command's own step, its job or the
- * workflow sets GH_REPO to an allowed value in `env:`; or no flag at all when
- * such a GH_REPO is in scope. Scope is by YAML block, so a GH_REPO in another
- * job or step does not count. Any GH_REPO or --repo naming another repository
- * is a violation.
+ * Every `gh` write command must carry `--repo`/`-R` with an allowed literal.
+ * GH_REPO (env: or command-local) never substitutes for the flag, and one
+ * naming another repository is a violation.
  */
 // Value of --repo/-R: a GH_REPO reference, the github.repository expression,
 // or an owner/repo token that stops at the first character that cannot be in
@@ -482,29 +437,16 @@ export function checkGhScope(f, code, policy) {
     const allowed = policy.allowedRepoValues;
     const unq = (x) => x.replace(/^["']|["']$/g, '').replace(/\s+/g, ' ');
     const okLiteral = (x) => allowed.includes(unq(x));
-    const reportedBad = new Set();
     code.forEach((l, i) => {
         const m = l.match(/^\s*GH_REPO\s*:\s*(.+?)\s*$/);
         if (m && !okLiteral(m[1])) {
             v.push(`${f}:${i + 1}: GH_REPO is "${m[1]}", expected ${allowed[0]} or Danathar/exult`);
-            reportedBad.add(i);
         }
     });
     const logical = logicalLines(code.join('\n'));
     for (const { line, text: t } of logical) {
         const writes = findWriteCommands(t, policy.ghWriteCommandPattern);
         if (writes.length === 0) continue;
-        // Blocks enclosing the command: its own line, then its ancestors.
-        const chain = [];
-        let at = line - 1;
-        chain.push(at);
-        while ((at = parentOf(code, at)) !== -1) chain.push(at);
-        // A step that starts with "- run:" is its own block; a "run: |" body
-        // sits under the step's "- name:" ancestor, found by parentOf above.
-        const okEnv = (g) => okLiteral(g.value) && !reportedBad.has(g.line);
-        const scoped =
-            chain.some((a) => blockGhRepo(code, a).some(okEnv)) ||
-            blockGhRepo(code, -1).some(okEnv);
         // Judge each write command on its own segment of the line, so a
         // line that lists several (an --allowedTools string) is not
         // misread as one command with one flag.
@@ -514,8 +456,7 @@ export function checkGhScope(f, code, policy) {
         starts.forEach((from, n) => {
             const seg = t.slice(from, starts[n + 1] ?? t.length);
             const cmd = seg.match(new RegExp(policy.ghWriteCommandPattern))[0];
-            // A command-local GH_REPO (`GH_REPO=x gh ...`, `env GH_REPO=x gh ...`)
-            // overrides the scoped env: value, so it must be valid itself.
+            // A command-local GH_REPO naming another repository is refused too.
             const prefix = t.slice(0, from).split(/;|&&|\|\||\||\(|`/).pop();
             const local = prefix.match(/\bGH_REPO=(\S+)/);
             if (local && !okLiteral(local[1])) {
@@ -525,20 +466,11 @@ export function checkGhScope(f, code, policy) {
                 return;
             }
             const flag = seg.match(REPO_FLAG);
-            if (flag) {
-                const val = flag[1];
-                const viaEnv = /^\$\{?GH_REPO\}?$/.test(val);
-                if (viaEnv ? !scoped : !okLiteral(val)) {
-                    v.push(
-                        viaEnv
-                            ? `${f}:${line}: "${cmd}" uses $GH_REPO but no valid GH_REPO is set in this step, job or workflow env`
-                            : `${f}:${line}: "${cmd}" targets "${val}", expected ${allowed[0]} or Danathar/exult`,
-                    );
-                }
-            } else if (!scoped && !local) {
-                v.push(
-                    `${f}:${line}: "${cmd}" has no --repo and no valid GH_REPO is set in this step, job or workflow env`,
-                );
+            if (!flag) {
+                // GH_REPO never satisfies the rule: every gh write passes --repo explicitly.
+                v.push(`${f}:${line}: "${cmd}" has no --repo (GH_REPO does not count; pass --repo Danathar/exult)`);
+            } else if (!okLiteral(flag[1])) {
+                v.push(`${f}:${line}: "${cmd}" targets "${flag[1]}", expected ${allowed[0]} or Danathar/exult`);
             }
         });
     }

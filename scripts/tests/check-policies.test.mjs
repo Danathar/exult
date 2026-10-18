@@ -284,23 +284,25 @@ permissions:
 jobs:
 ${jobs}`;
 
-test('workflows: gh write command needs a valid GH_REPO or --repo', () => {
+test('workflows: gh write command needs an explicit --repo', () => {
     const cmd = GOOD_WF + '      - run: gh issue comment 1 --body hi\n';
     const v = run({ '.github/workflows/a.yml': cmd });
     assert.equal(v.length, 1);
     assert.match(v[0], /a\.yml:\d+: "gh issue comment" has no --repo/);
 
+    // GH_REPO in env: does not substitute for the explicit flag.
     const env = 'env:\n  GH_REPO: ${{ github.repository }}\njobs:';
-    assert.deepEqual(run({ '.github/workflows/a.yml': cmd.replace('jobs:', env) }), []);
+    assert.equal(run({ '.github/workflows/a.yml': cmd.replace('jobs:', env) }).length, 1);
+    assert.equal(run({ '.github/workflows/a.yml': GOOD_WF + '      - run: GH_REPO=Danathar/exult gh pr close 1\n' }).length, 1);
     const lit = GOOD_WF + '      - run: gh pr merge 2 --repo Danathar/exult\n';
     assert.deepEqual(run({ '.github/workflows/a.yml': lit }), []);
 });
 
-test('workflows: --repo "$GH_REPO" needs GH_REPO in scope', () => {
+test('workflows: --repo "$GH_REPO" is not accepted', () => {
     const flag = GOOD_WF + '      - run: gh pr merge 2 --repo "$GH_REPO"\n';
     const v = run({ '.github/workflows/a.yml': flag });
     assert.equal(v.length, 1);
-    assert.match(v[0], /uses \$GH_REPO but no valid GH_REPO is set/);
+    assert.match(v[0], /targets "\$GH_REPO"/);
 });
 
 test('workflows: GH_REPO or --repo pointing at upstream is rejected', () => {
@@ -309,66 +311,12 @@ test('workflows: GH_REPO or --repo pointing at upstream is rejected', () => {
         '.github/workflows/a.yml': cmd.replace('jobs:', 'env:\n  GH_REPO: octocat/other-repo\njobs:'),
     });
     assert.ok(badEnv.some((x) => /GH_REPO is "octocat\/other-repo"/.test(x)));
-    assert.ok(badEnv.some((x) => /no --repo and no valid GH_REPO/.test(x)));
+    assert.ok(badEnv.some((x) => /has no --repo/.test(x)));
     const badFlag = run({
         '.github/workflows/a.yml': GOOD_WF + '      - run: gh pr merge 2 -R octocat/other-repo\n',
     });
     assert.equal(badFlag.length, 1);
     assert.match(badFlag[0], /targets "octocat\/other-repo"/);
-});
-
-test('workflows: GH_REPO in another job or step does not scope a write', () => {
-    const otherJob = wfWith(`  a:
-    runs-on: ubuntu-latest
-    env:
-      GH_REPO: \${{ github.repository }}
-    steps:
-      - run: gh pr view 1
-  b:
-    runs-on: ubuntu-latest
-    steps:
-      - run: gh pr close 1
-`);
-    const v = run({ '.github/workflows/a.yml': otherJob });
-    assert.equal(v.length, 1);
-    assert.match(v[0], /a\.yml:16: "gh pr close" has no --repo/);
-
-    const otherStep = wfWith(`  a:
-    runs-on: ubuntu-latest
-    steps:
-      - name: scoped
-        env:
-          GH_REPO: \${{ github.repository }}
-        run: gh pr close 1
-      - name: unscoped
-        run: |
-          gh pr close 2
-`);
-    const v2 = run({ '.github/workflows/a.yml': otherStep });
-    assert.equal(v2.length, 1);
-    assert.match(v2[0], /a\.yml:16: "gh pr close" has no --repo/);
-});
-
-test('workflows: step, job and workflow GH_REPO each scope their writes', () => {
-    const ok = wfWith(`  a:
-    runs-on: ubuntu-latest
-    env:
-      GH_REPO: Danathar/exult
-    steps:
-      - run: gh pr close 1
-      - name: multi
-        run: |
-          gh issue comment 1 --body hi
-          gh pr merge 2 --repo "$GH_REPO"
-  b:
-    runs-on: ubuntu-latest
-    steps:
-      - name: s
-        env:
-          GH_REPO: \${{ github.repository }}
-        run: gh pr close 3
-`);
-    assert.deepEqual(run({ '.github/workflows/a.yml': ok }), []);
 });
 
 test('workflows: an unrelated --repo elsewhere does not scope another write', () => {
@@ -436,8 +384,10 @@ test('workflows: command-local GH_REPO overrides are checked', () => {
         assert.equal(v.length, 1, bad);
         assert.match(v[0], /is preceded by GH_REPO=/);
     }
+    // A correct local GH_REPO is still not an explicit --repo.
+    assert.equal(run({ '.github/workflows/a.yml': scopedJob('GH_REPO=Danathar/exult gh pr close 1') }).length, 1);
     assert.deepEqual(
-        run({ '.github/workflows/a.yml': scopedJob('GH_REPO=Danathar/exult gh pr close 1') }),
+        run({ '.github/workflows/a.yml': scopedJob('GH_REPO=Danathar/exult gh pr close 1 --repo Danathar/exult') }),
         [],
     );
     // A local value does not leak into the next command after a separator.
@@ -448,8 +398,8 @@ test('workflows: command-local GH_REPO overrides are checked', () => {
       - run: GH_REPO=Danathar/exult gh pr close 1; gh pr close 2
 `),
     });
-    assert.equal(v.length, 1);
-    assert.match(v[0], /"gh pr close" has no --repo/);
+    assert.equal(v.length, 2);
+    assert.match(v[1], /"gh pr close" has no --repo/);
 });
 
 test('policies cover gh pr revert and gh label clone in markdown and workflows', () => {

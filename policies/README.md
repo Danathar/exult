@@ -56,9 +56,9 @@ For every fork-added `.github/workflows/*.yml` (see "Scope"):
   commit SHA (keep the tag in a trailing `# vX` comment); local `./` and
   `docker://` references are skipped;
 - every logical line that runs a `gh` write command passes `--repo`/`-R` with
-  `Danathar/exult` or `${{ github.repository }}`; or passes `"$GH_REPO"`, or
-  nothing, when `env:` of that command's own step, its job or the workflow sets
-  `GH_REPO` to one of those values. Any other `GH_REPO` or `--repo` value fails;
+  `Danathar/exult` or `${{ github.repository }}`. `GH_REPO` (in `env:` or
+  before the command) never substitutes for the flag; a `GH_REPO` naming another
+  repository, or any other `--repo` value, fails;
 - `run:` scripts contain no attacker-controlled expression such as
   `${{ github.event.issue.title }}`, `github.head_ref` or `inputs.*`; pass it
   through `env:` and read `"$VAR"`. Numbers, SHAs and
