@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a change to this fork's engine, tools, build or CI
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This tracker is for work on the `Danathar/exult` fork. A feature you want in released Exult belongs on the upstream tracker, <https://github.com/exult/exult/issues>.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What is not possible or inconvenient today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: Include new options (`exult.cfg` keys, command-line flags) or file-format changes involved.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Engine (rendering, input, audio)
+        - Usecode or game logic
+        - Exult Studio
+        - Tools (ucc, expack, ipack and others)
+        - Build system or portability
+        - Tests / CI
+        - Docs
+    validations:
+      required: true
+  - type: checkboxes
+    id: compat
+    attributes:
+      label: Compatibility
+      options:
+        - label: I understand that changes affecting savegame or data-file formats, or the original games' usecode behaviour, need explicit owner approval
+          required: true
