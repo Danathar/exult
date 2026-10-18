@@ -51,7 +51,8 @@ const allowed = [
     'git config --get remote.origin.url',
     // pushing a branch to origin
     'git push origin acmm/agent-safety',
-    'git push -u origin HEAD',
+    // `git push -u origin HEAD` depends on the checked-out branch (blocked on
+    // master, as on a CI push to master); covered by the temp-repo test below.
     'git push origin HEAD:refs/heads/feature',
     // gh, read-only and scoped
     'gh pr view 3 --repo Danathar/exult',
