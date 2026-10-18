@@ -1,8 +1,9 @@
 # Only the Tier 3 (critical) paths from docs/risk-tiers.md and risk-config.json
-# are listed, and there is no catch-all `*`. A ruleset that requires code owner
-# review (planned, see docs/branch-protection.md once it lands) makes every path
-# listed here need the owner's approving review before it can merge, and a `*`
-# line would extend that to every pull request. Tier 1 and Tier 2 paths merge on
+# are listed, and there is no catch-all `*`. The master ruleset
+# (docs/branch-protection.md) does not require code owner review, so these
+# lines only request the owner's review; if a ruleset ever requires it, every
+# path listed here needs the owner's approving review before it can merge, and
+# a `*` line would extend that to every pull request. Tier 1 and Tier 2 paths merge on
 # the required checks. scripts/check-policies.mjs fails when an owner-review path
 # is missing here, when a later line takes one off the owner, or when a `*` line
 # comes back. docs/agent-boundaries.md explains it.

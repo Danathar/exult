@@ -64,11 +64,11 @@ Note: upstream `.gitignore` ignores `.github`, so new files there need
 
 ## Who decides what lands
 
-- **Required checks.** The ruleset intended for `master` requires `CI`
+- **Required checks.** The `master` ruleset requires `CI`
   (`Unit tests (gcc)`, `Unit tests (clang)`, `E2E (tools)`), `Coverage gate`,
-  `policy-check` and `agent-tooling`. The ruleset is applied by the owner
-  (issue #39, [branch-protection.md](branch-protection.md) once it exists); if
-  it differs from this paragraph, the live ruleset wins:
+  `policy-check` and `agent-tooling`, on a branch that is up to date with
+  `master` ([branch-protection.md](branch-protection.md)); if it differs from
+  this paragraph, the live ruleset wins:
   `gh api repos/Danathar/exult/rulesets`.
 - **Serialized merging.** Hive's `hive-serialized` lane merges one PR at a time
   after required checks pass (the live setting is read from Hive; not

@@ -98,8 +98,8 @@ tests/e2e/run.sh          # builds the command-line tools and runs end-to-end te
 
 CI (`.github/workflows/ci.yml`) runs them as the jobs `Unit tests (gcc)`,
 `Unit tests (clang)` and `E2E (tools)`. `Coverage gate`, `agent-tooling` and
-`policy-check` are separate workflows. The owner's planned branch ruleset will
-require these names, so do not rename them. The upstream `ci-*.yml` build
+`policy-check` are separate workflows. The branch ruleset on `master`
+(`docs/branch-protection.md`) requires these names, so do not rename them. The upstream `ci-*.yml` build
 workflows are path-filtered (they skip `docs/**`, `*.md`, `README*`, ...), so a
 docs-only PR only gets the repository's own checks.
 
