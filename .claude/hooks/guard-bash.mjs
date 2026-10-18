@@ -7,8 +7,8 @@
 // machine, or (d) deleting Ultima VII game data and savegames. It is NOT a
 // sandbox against deliberate obfuscation (eval of built strings, shell
 // variables, scripts written to disk and executed, aliases, ...). The real
-// boundaries are token scope, the Hive GitHub App's repository access, branch
-// protection (planned, #39; not in place yet) and review of the changes (docs/risk-tiers.md,
+// boundaries are token scope, the Hive GitHub App's repository access, the
+// master branch ruleset (docs/branch-protection.md) and review of the changes (docs/risk-tiers.md,
 // docs/agent-boundaries.md); findings that need deliberate obfuscation are out
 // of scope here.
 //

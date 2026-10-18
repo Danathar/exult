@@ -13,12 +13,12 @@ under "Where to look".
 
 | signal | where it lives | what it tells you | blocks merge |
 |---|---|---|---|
-| CI | `.github/workflows/ci.yml` (workflow `CI`), jobs `Unit tests (gcc)`, `Unit tests (clang)`, `E2E (tools)` (tests PR) | unit tests built with gcc and clang (`tests/run-unit-tests.sh`) and end-to-end checks of the tools (`tests/e2e/run.sh`). Runs on every PR and push to `master` | intended required checks |
-| Coverage gate | `.github/workflows/coverage-gate.yml`, job `Coverage gate` (tests PR) | test coverage has not dropped below the recorded floor | intended required check |
-| upstream platform matrix | upstream `ci-linux.yml`, `ci-macos.yml`, `ci-windows.yml`, `ci-msvc.yml`, `ci-android.yml`, `ci-ios.yml`, `ci-freebsd.yml`, `ci-omnios.yml` | the engine still builds on each platform. They are path-filtered: they skip docs-only and `*.md` changes, so a docs PR shows none of them | not decided here (see the ruleset PR / [branch-protection.md](branch-protection.md) once it exists) |
+| CI | `.github/workflows/ci.yml` (workflow `CI`), jobs `Unit tests (gcc)`, `Unit tests (clang)`, `E2E (tools)` (tests PR) | unit tests built with gcc and clang (`tests/run-unit-tests.sh`) and end-to-end checks of the tools (`tests/e2e/run.sh`). Runs on every PR and push to `master` | yes, required checks |
+| Coverage gate | `.github/workflows/coverage-gate.yml`, job `Coverage gate` (tests PR) | test coverage has not dropped below the recorded floor | yes, required check |
+| upstream platform matrix | upstream `ci-linux.yml`, `ci-macos.yml`, `ci-windows.yml`, `ci-msvc.yml`, `ci-android.yml`, `ci-ios.yml`, `ci-freebsd.yml`, `ci-omnios.yml` | the engine still builds on each platform. They are path-filtered: they skip docs-only and `*.md` changes, so a docs PR shows none of them | not required (path-filtered, see [branch-protection.md](branch-protection.md)); treat a red one as a blocker |
 | format-check | `.github/workflows/format-check.yml` | clang-format 19 diff on every PR; `continue-on-error`, so informational only | no |
-| agent-tooling | `.github/workflows/agent-tooling.yml`, job `agent-tooling` (agent-safety PR) | `node --test` of the command-gate hook tests and of `scripts/tests/*.test.mjs` | intended required check |
-| policy-check | `.github/workflows/policy-check.yml`, job `policy-check`, `scripts/check-policies.mjs`, `policies/` (agent-safety PR) | machine-checkable repo policies (workflow permissions, `--repo` on documented `gh` writes, and so on) | intended required check |
+| agent-tooling | `.github/workflows/agent-tooling.yml`, job `agent-tooling` (agent-safety PR) | `node --test` of the command-gate hook tests and of `scripts/tests/*.test.mjs` | yes, required check |
+| policy-check | `.github/workflows/policy-check.yml`, job `policy-check`, `scripts/check-policies.mjs`, `policies/` (agent-safety PR) | machine-checkable repo policies (workflow permissions, `--repo` on documented `gh` writes, and so on) | yes, required check |
 | PR metrics | `.github/workflows/pr-metrics.yml`, [metrics.md](metrics.md), [metrics/](metrics/README.md) | acceptance rate and time to merge by author class | no, report only |
 | auto-QA, agent audit, nightly compliance | `.github/workflows/auto-qa.yml`, `agent-audit.yml`, `nightly-compliance.yml` (automation PR) | scheduled hygiene reports; read each file's header | no |
 | upstream-only | `codeql.yml`, `coverity-scan.yml`, `snapshots*.yml` | disabled in this fork | n/a |

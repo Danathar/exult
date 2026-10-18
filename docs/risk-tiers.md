@@ -34,14 +34,12 @@ merges it, and a green CI run alone is not enough. `ci` means the required CI
 checks must pass and an agent may open the pull request; Hive merges it under
 its `hive-serialized` strategy once the checks are green.
 
-The required commands name entry points other pull requests add:
-`tests/run-unit-tests.sh` and `tests/e2e/run.sh` (the test suites), and the
-`CI`, `Coverage gate`, `policy-check` and `agent-tooling` workflows. Until those
-have merged, say in the pull request which of them did not exist yet. `actionlint`
-is the workflow linter and is run only when a `.github/workflows/` file changed.
-Whether the checks are *required* for merging depends on the branch ruleset,
-which the owner applies separately; this file does not claim that it is in
-place.
+The required commands name these entry points: `tests/run-unit-tests.sh` and
+`tests/e2e/run.sh` (the test suites), and the `CI`, `Coverage gate`,
+`policy-check` and `agent-tooling` workflows. `actionlint` is the workflow
+linter and is run only when a `.github/workflows/` file changed. The `master`
+ruleset requires those six check jobs for every merge; see
+[branch-protection.md](branch-protection.md).
 
 ## Raise the tier
 

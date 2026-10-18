@@ -29,10 +29,11 @@ matches applies, raised by the rules in "Raise the tier" in
 else: there is no catch-all `*`. `node scripts/check-policies.mjs` fails when a
 path of a tier that needs owner review is missing there, when a `*` entry is
 added, or when a later entry overrides the owner for such a path (GitHub
-applies the last matching line). CODEOWNERS only *requests* the owner's review.
-It becomes a merge gate when the branch ruleset requires code owner review; the
-owner applies that ruleset separately, and until it is in place this repository
-does not claim that a Tier 3 pull request cannot merge without the owner.
+applies the last matching line). CODEOWNERS only *requests* the owner's review:
+the `master` ruleset ([branch-protection.md](branch-protection.md)) requires a
+pull request and six status checks but not code owner review, so this
+repository does not claim that a Tier 3 pull request cannot merge without the
+owner.
 
 ## Always off limits
 

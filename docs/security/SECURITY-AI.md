@@ -80,9 +80,9 @@ layer assumes the one inside it can fail.
    `scripts/check-policies.mjs` on every pull request (section 7).
 5. **Review.** `.github/CODEOWNERS` names the owner for Tier 3 paths, and
    [docs/agent-boundaries.md](../agent-boundaries.md) says what an agent may
-   not do. CODEOWNERS only *requests* review. It blocks a merge when the
-   branch ruleset requires code owner review; applying that ruleset is the
-   owner's separate step and this policy does not assume it has been done.
+   not do. CODEOWNERS only *requests* review: the `master` ruleset
+   ([branch-protection.md](../branch-protection.md)) requires a pull request
+   and six status checks, but not code owner review.
 6. **Token and credential scope.** The repository and its workflows are
    limited by `GITHUB_TOKEN` permissions and by the repository access of the
    Hive GitHub App. Those limits are configured on GitHub, not in this

@@ -108,6 +108,7 @@ forgets `--repo Danathar/exult`, a missing `permissions:` block, an unpinned
 action, an event expression interpolated into a script, a committed token or
 game-data path. It is not a shell or YAML parser and does not defend against
 deliberately obfuscated commands. The hard boundaries are the repository-scoped
-`GITHUB_TOKEN` and the owner's merge; required status checks and a code owner
-review rule are planned with the branch ruleset (#39) and are not in place yet.
-CODEOWNERS only requests the owner's review until that ruleset exists.
+`GITHUB_TOKEN`, the branch ruleset on `master` (pull request plus six required
+status checks, see `docs/branch-protection.md`) and the owner's merge. The
+ruleset does not require code owner review, so CODEOWNERS only requests the
+owner's review.

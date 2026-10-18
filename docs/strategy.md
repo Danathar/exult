@@ -54,9 +54,9 @@ Honest and incremental; each step needs the previous one to hold.
 
 1. **Now (bootstrap, 2026-10):** agents open PRs for ACMM issues; the owner
    reads and merges them (or Hive's serialized lane merges after checks).
-2. **Next:** the required-check set and ruleset are applied by the owner
-   (issue #39); agents get small, well-specified issues in Tier 1 and Tier 2
-   paths.
+2. **Next:** with the required-check ruleset in place (issue #39,
+   [branch-protection.md](branch-protection.md)), agents get small,
+   well-specified issues in Tier 1 and Tier 2 paths.
 3. **Later, only if the numbers justify it:** wider agent autonomy for Tier 2,
    judged by the PR metrics and review outcomes. Tier 3 stays human-reviewed.
    There is no date for this; the metrics are too thin to decide anything yet.
