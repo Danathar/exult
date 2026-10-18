@@ -1,0 +1,6 @@
+{
+  "line_coverage_floor": 70,
+  "source_filter": "/(istring\\.cc|files/|rect\\.h|hash_utils\\.h)",
+  "measured_line_coverage": 74,
+  "notes": "Read by .github/workflows/coverage-gate.yml. Line coverage over the product sources the unit tests in tests/unit compile (the filter), measured with gcc 14 + gcovr on Debian 13. The floor is the measured value rounded down; raise it when coverage rises."
+}

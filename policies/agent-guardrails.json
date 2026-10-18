@@ -1,0 +1,51 @@
+{
+    "$comment": "Keeps the agent guardrails from being refactored away. Evaluated by scripts/check-policies.mjs (checkFileRules; comment lines ignored). These prove a rule is present, not that it works: .claude/hooks/tests/ does that. See docs/agent-boundaries.md.",
+    "files": [
+        {
+            "path": ".claude/settings.json",
+            "required": [
+                {
+                    "pattern": "\"Bash\\(sudo:\\*\\)\"",
+                    "why": "sudo must stay denied"
+                },
+                {
+                    "pattern": "\"Bash\\(git push --force:\\*\\)\"",
+                    "why": "force pushes must stay denied"
+                },
+                {
+                    "pattern": "\"Bash\\(make install:\\*\\)\"",
+                    "why": "make install must stay denied"
+                },
+                {
+                    "pattern": "\"Bash\\(git remote add:\\*\\)\"",
+                    "why": "adding remotes (an upstream remote) must stay denied"
+                },
+                {
+                    "pattern": "\"Bash\\(gh pr merge:\\*\\)\"",
+                    "why": "agents must not merge pull requests"
+                },
+                {
+                    "pattern": "\"matcher\":\\s*\"Bash\"",
+                    "why": "the Bash PreToolUse hook must stay registered"
+                },
+                {
+                    "pattern": "guard-bash\\.mjs",
+                    "why": "the hook command must run guard-bash.mjs"
+                }
+            ]
+        },
+        {
+            "path": ".claude/hooks/guard-bash.mjs",
+            "required": [
+                {
+                    "pattern": "^export const REPO = 'danathar/exult';",
+                    "why": "the guard must pin the repository to Danathar/exult"
+                },
+                {
+                    "pattern": "remote may be pushed to",
+                    "why": "the guard must keep refusing pushes to any remote but origin"
+                }
+            ]
+        }
+    ]
+}

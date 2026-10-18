@@ -1,0 +1,55 @@
+# Tests the repository's agent tooling: the Claude Code Bash guard hook under
+# .claude/hooks/ (it keeps agents from writing to the upstream exult/exult
+# repository, pushing anywhere but origin, installing on the host or deleting
+# game data) and checks that .claude/settings.json is valid and keeps its
+# required parts. It also runs every Node script test under scripts/tests/ when
+# any exist, so other script changes do not need a runner of their own.
+# Only Node is used; there is no npm install. No path filter: this job runs on
+# every pull request so it can be a required check.
+name: Agent tooling
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-tooling-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-tooling:
+    name: agent-tooling
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Validate .claude/settings.json
+        run: |
+          node -e '
+            const s = JSON.parse(require("node:fs").readFileSync(".claude/settings.json", "utf8"));
+            for (const key of ["allow", "ask", "deny"]) {
+              if (!Array.isArray(s.permissions?.[key])) throw new Error("permissions." + key + " is missing");
+            }
+            if (!s.hooks?.PreToolUse?.some((e) => e.matcher === "Bash")) throw new Error("no PreToolUse hook for Bash");
+          '
+
+      - name: Run hook tests
+        run: node --test '.claude/hooks/tests/*.test.mjs'
+
+      - name: Run script tests (if any)
+        run: |
+          if compgen -G 'scripts/tests/*.test.mjs' > /dev/null; then
+            node --test 'scripts/tests/*.test.mjs'
+          else
+            echo "No scripts/tests/*.test.mjs files; nothing to run."
+          fi

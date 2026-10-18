@@ -1,0 +1,10 @@
+{
+    "$comment": "Ultima VII game data is copyrighted and never committed. Evaluated by scripts/check-policies.mjs (checkGameData), case-insensitively. The globs name only the original game's layout and savegames, so the data Exult ships itself (content/, data/, *.flx built from Exult's own sources) is unaffected. See docs/agent-boundaries.md.",
+    "forbiddenGlobs": [
+        { "glob": "gamedat/**", "why": "the unpacked game state directory (gamedat) must not be committed" },
+        { "glob": "static/**", "why": "the original game's static data directory must not be committed" },
+        { "glob": "**/*.sav", "why": "savegames must not be committed" },
+        { "glob": "**/u7speech.spc", "why": "original game speech data must not be committed" },
+        { "glob": "**/u7voice.flx", "why": "original game voice data must not be committed" }
+    ]
+}

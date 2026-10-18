@@ -1,0 +1,33 @@
+{
+    "$comment": "Workflow hygiene for the workflows this fork added. Evaluated by scripts/check-policies.mjs. The upstream exult/exult workflows are NOT held to it (see excludeGlobs): they have no permissions block and use unpinned third-party actions, and editing them would make every upstream merge conflict. See policies/README.md.",
+    "workflowGlobs": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml"
+    ],
+    "excludeGlobs": [
+        ".github/workflows/ci-*.yml",
+        ".github/workflows/codeql.yml",
+        ".github/workflows/coverity-scan.yml",
+        ".github/workflows/format-check.yml",
+        ".github/workflows/notify.yml",
+        ".github/workflows/released.yml",
+        ".github/workflows/snapshots*.yml"
+    ],
+    "requireTopLevelPermissions": true,
+    "forbiddenTriggers": [
+        "pull_request_target"
+    ],
+    "trustedActionOwners": [
+        "actions",
+        "github"
+    ],
+    "pinPattern": "^[0-9a-f]{40}$",
+    "ghWriteNeedsRepo": true,
+    "ghWriteCommandPattern": "\\bgh\\s+(?:(?:pr|issue|release|workflow|label)\\s+(?:create|comment|edit|close|reopen|merge|review|delete|run|enable|disable|ready|upload|delete-asset|lock|unlock|transfer|pin|unpin|update-branch|revert|clone|develop)|run\\s+(?:rerun|cancel|delete))\\b",
+    "allowedRepoValues": [
+        "${{ github.repository }}",
+        "Danathar/exult"
+    ],
+    "forbidTopLevelWrite": true,
+    "forbiddenRunExpressions": "\\bgithub\\.event\\.(?!(?:number|action|issue\\.number|pull_request\\.(?:number|head\\.sha|base\\.sha)|repository\\.(?:name|full_name|default_branch))(?![\\w.]))|\\bgithub\\.head_ref\\b|\\bgithub\\.ref_name\\b|\\binputs\\."
+}
