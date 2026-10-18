@@ -1,0 +1,20 @@
+# EditorConfig: https://editorconfig.org
+# Mirrors .clang-format (tabs, width 4, column limit 132). Only properties the
+# existing tree already follows are set. end_of_line, charset,
+# insert_final_newline and trim_trailing_whitespace are deliberately NOT set:
+# a few .uc files use CRLF, some files lack a final newline, and .clang-format
+# itself has a BOM. Whole-file formatting and the 132 column limit are clang-format's job.
+# Strict checkers (editorconfig-checker) still flag lines that clang-format
+# aligns with spaces after tabs; that is the .clang-format style, not a bug here.
+root = true
+
+[*.{cc,h,cpp,hpp,uc,ll,yy,ac,sh}]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+
+[{Makefile*,*.am,*.mk}]
+indent_style = tab
+
+[*.{yml,yaml}]
+indent_style = space
