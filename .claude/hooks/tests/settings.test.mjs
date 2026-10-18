@@ -31,11 +31,10 @@ test('allow rules are the contract commands (node --test only in quoted glob for
     assert.deepEqual(allow.filter((r) => /^Bash\((sudo|su|doas|pkexec|apt|dnf|make install|git push)/.test(r)), []);
 });
 
-test('Tier 3 paths ask before Edit and Write', () => {
-    const tier3 = [
-        '.github/**', '.claude/settings.json', '.claude/hooks/**', 'policies/**', 'scripts/check-policies.mjs',
-        'risk-config.json', 'AGENTS.md', 'COPYING', 'configure.ac', '**/Makefile.am', '**/*.mk', 'files/**', 'gamedat.cc', 'objs/**',
-    ];
+test('every Tier 3 path of risk-config.json asks before Edit and Write', () => {
+    const risk = JSON.parse(readFileSync(`${ROOT}risk-config.json`, 'utf8'));
+    const tier3 = risk.tiers.find((t) => t.tier === 3).paths;
+    assert.ok(tier3.length > 10);
     for (const path of tier3) {
         for (const tool of ['Edit', 'Write']) assert.ok(ask.includes(`${tool}(${path})`), `${tool}(${path}) does not ask`);
     }

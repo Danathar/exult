@@ -23,6 +23,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'coverage']);
@@ -73,6 +74,21 @@ export function walk(root, rel = '') {
         }
     }
     return out.sort();
+}
+
+/**
+ * Files the policies apply to: the tracked files when `root` is a git
+ * checkout (so ignored local files such as gamedat/ or *.sav never count),
+ * else every file under it (test fixture trees).
+ */
+export function listFiles(root) {
+    if (fs.existsSync(path.join(root, '.git'))) {
+        const r = spawnSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8', maxBuffer: 1 << 28 });
+        if (r.status === 0) {
+            return [...new Set(r.stdout.split('\0').filter(Boolean))].filter((f) => fs.existsSync(path.join(root, f))).sort();
+        }
+    }
+    return walk(root);
 }
 
 function readJson(root, rel, violations) {
@@ -693,7 +709,7 @@ export function checkRiskTiers(config, markdown) {
 
 export function checkAll(root) {
     const violations = [];
-    const files = walk(root);
+    const files = listFiles(root);
 
     const target = readJson(root, 'policies/repo-target.json', violations);
     if (target) violations.push(...checkRepoTarget(root, target, files));

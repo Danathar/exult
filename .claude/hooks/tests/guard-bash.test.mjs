@@ -5,14 +5,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { checkCommand, normalizeRepo, namesOtherRepo, tokenize } from '../guard-bash.mjs';
 
 const HOOK = fileURLToPath(new URL('../guard-bash.mjs', import.meta.url));
 
-function run(command, toolName = 'Bash') {
+function run(command, toolName = 'Bash', cwd = undefined) {
     return spawnSync(process.execPath, [HOOK], {
         input: JSON.stringify({ tool_name: toolName, tool_input: { command } }),
         encoding: 'utf8',
+        cwd,
     });
 }
 
@@ -73,6 +77,9 @@ const allowed = [
     'rm -f exult',
     'rm -rf build content/demo/static/combos.flx',
     'rm -rf autom4te.cache',
+    'rm android/app/src/main/java/info/exult/SavegamesFragment.java',
+    'git ls-files "*.cc" | xargs clang-format --dry-run',
+    'gh pr new --repo Danathar/exult --base master --head b --title t',
     'find . -name "*.o" -delete',
     'mv exult.old exult.new',
     // package managers, read-only
@@ -124,6 +131,16 @@ const blocked = [
     'git push --delete origin acmm/x',
     'git push origin :acmm/x',
     'git push origin master',
+    'git push --all origin',
+    'git push --branches origin',
+    'git push origin refs/heads/*:refs/heads/*',
+    'gh pr new --base master --head b --title t',
+    'gh api -X DELETE repos/Danathar/exult',
+    'gh api -X PATCH repos/Danathar/exult -f private=true',
+    'gh api -X PUT repos/Danathar/exult/pulls/3/merge',
+    'gh api -X PUT repos/Danathar/exult/contents/x -f message=m',
+    'gh api -X POST repos/Danathar/exult/rulesets -f name=x',
+    'gh api -X PUT repos/Danathar/exult/actions/secrets/X',
     'git push origin HEAD:master',
     'git push origin HEAD:refs/heads/master',
     'git push --repo=https://github.com/exult/exult.git origin x',
@@ -282,4 +299,22 @@ test('empty command is allowed', () => {
 test('malformed hook input fails closed', () => {
     const r = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8' });
     assert.equal(r.status, 2);
+});
+
+test('pushing HEAD or no refspec is blocked on master and allowed on other branches', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'guard-push-'));
+    try {
+        const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' });
+        git('init', '-q', '-b', 'master');
+        for (const cmd of ['git push -u origin HEAD', 'git push origin @', 'git push origin']) {
+            assert.equal(run(cmd, 'Bash', dir).status, 2, cmd);
+        }
+        git('checkout', '-q', '-b', 'feature');
+        for (const cmd of ['git push -u origin HEAD', 'git push origin @', 'git push origin', 'git push origin feature']) {
+            assert.equal(run(cmd, 'Bash', dir).status, 0, cmd);
+        }
+        assert.equal(run('git push origin HEAD:master', 'Bash', dir).status, 2);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
 });

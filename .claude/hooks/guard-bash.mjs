@@ -8,7 +8,7 @@
 // sandbox against deliberate obfuscation (eval of built strings, shell
 // variables, scripts written to disk and executed, aliases, ...). The real
 // boundaries are token scope, the Hive GitHub App's repository access, branch
-// protection and review of the changes (docs/risk-tiers.md,
+// protection (planned, #39; not in place yet) and review of the changes (docs/risk-tiers.md,
 // docs/agent-boundaries.md); findings that need deliberate obfuscation are out
 // of scope here.
 //
@@ -90,6 +90,7 @@
 
 import { basename, resolve } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const REPO = 'danathar/exult';
@@ -502,7 +503,16 @@ function checkGhApi(args) {
 
     // `{owner}/{repo}` placeholders resolve to gh's default repo, which may be a different repository.
     const m = /^repos\/([^/]+\/[^/?#]+)(?:[/?#]|$)/i.exec(endpoint);
-    if (m && m[1].toLowerCase() === REPO) return null;
+    if (m && m[1].toLowerCase() === REPO) {
+        const rest = endpoint.slice(`repos/${m[1]}`.length).replace(/^\/+/, '').split(/[?#]/)[0];
+        const risky = /^(?:pulls\/\d+\/merge|merges|git\/refs\/heads\/master|contents(?:\/|$)|branches(?:\/|$)|rulesets|actions\/(?:secrets|variables)|collaborators|hooks|keys|transfer)/;
+        if (rest === '' || risky.test(rest)) {
+            return block(
+                `Blocked: mutating \`gh api\` call to "${endpoint}": repository settings, merges, master, contents, branches, rulesets, secrets, hooks and keys are the owner's.`
+            );
+        }
+        return null;
+    }
 
     return block(
         `Blocked: mutating \`gh api\` call (${method ?? 'implicit POST'}) to "${endpoint || '?'}"; ` +
@@ -566,7 +576,7 @@ function checkGh(args, envRepo) {
     if (!isTarget(target)) {
         return block(`Blocked: \`gh ${group} ${action}\` targets "${target}", not Danathar/exult.`);
     }
-    if (group === 'pr' && action === 'create') return checkPrCreate(args);
+    if (group === 'pr' && (action === 'create' || action === 'new')) return checkPrCreate(args);
     return null;
 }
 
@@ -641,7 +651,7 @@ function riskyEnv(env) {
     });
 }
 
-function checkGit(args, inlineEnv = {}, exported = {}) {
+function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
     // Walk global options to find the subcommand, vetting `-c key=value`.
     let i = 0;
     while (i < args.length && args[i].startsWith('-')) {
@@ -658,6 +668,7 @@ function checkGit(args, inlineEnv = {}, exported = {}) {
         if (a.startsWith('--exec-path=')) {
             return block('Blocked: `git --exec-path=DIR` runs git commands from another directory.');
         }
+        if (a === '-C') cwd = resolve(cwd ?? process.cwd(), args[i + 1] ?? '.');
         i += ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'].includes(a) ? 2 : 1;
     }
     const sub = args[i];
@@ -682,7 +693,7 @@ function checkGit(args, inlineEnv = {}, exported = {}) {
                 'Read the output on stdout instead (pipe it, or use the Write tool to save it).'
         );
     }
-    if (sub === 'push') return checkGitPush(rest);
+    if (sub === 'push') return checkGitPush(rest, cwd);
     if (sub === 'remote') return checkGitRemote(rest);
     if (sub === 'clean' && rest.some((a) => /^-[a-zA-Z]*[xX]/.test(a))) {
         return block('Blocked: `git clean -x/-X` deletes ignored files, including a gitignored `gamedat` directory with saves.');
@@ -746,10 +757,17 @@ function checkGitConfig(rest) {
 const PUSH_DANGER = [
     ['--force', 'force push'], ['--force-with-lease', 'force push'], ['--force-if-includes', 'force push'],
     ['--mirror', '`git push --mirror` overwrites the remote'], ['--delete', 'deleting remote refs'],
+    ['--all', 'pushing every branch, master included'], ['--branches', 'pushing every branch, master included'],
     ['--prune', 'deleting remote refs (--prune)'], ['--repo', '`git push --repo` redirects the push; name the remote `origin` instead'],
 ];
 
-function checkGitPush(rest) {
+/** Name of the checked-out branch in `cwd`, or null (detached HEAD, not a repository). */
+function currentBranch(cwd) {
+    const r = spawnSync('git', ['symbolic-ref', '--short', 'HEAD'], { cwd: cwd ?? process.cwd(), encoding: 'utf8' });
+    return r.status === 0 ? r.stdout.trim() : null;
+}
+
+function checkGitPush(rest, cwd) {
     const positionals = [];
     for (let i = 0; i < rest.length; i++) {
         const a = rest[i];
@@ -783,6 +801,15 @@ function checkGitPush(rest) {
     }
     if (refspecs.some((r) => r.startsWith(':'))) {
         return block('Blocked: `git push origin :ref` deletes a remote ref.');
+    }
+    if (refspecs.some((r) => r.includes('*'))) {
+        return block('Blocked: a wildcard refspec can reach master; name the branch.');
+    }
+    // No refspec, or HEAD / @ as the source: git pushes the current branch to its own name.
+    if (refspecs.length === 0 || refspecs.some((r) => r === 'HEAD' || r === '@')) {
+        if (currentBranch(cwd) === 'master') {
+            return block('Blocked: the checked-out branch is master, so this push would update master. Switch to a branch and open a PR.');
+        }
     }
     return null;
 }
@@ -907,7 +934,7 @@ const MAKERS = new Set(['make', 'gmake']);
 // xargs; everything else (gh, git, node, python, the checker, curl, ...) is refused.
 const XARGS_SAFE = new Set([
     'shellcheck', 'grep', 'egrep', 'fgrep', 'cat', 'wc', 'ls', 'head', 'tail', 'sort', 'uniq', 'echo', 'printf', 'true',
-    'basename', 'dirname', 'stat', 'file',
+    'basename', 'dirname', 'stat', 'file', 'clang-format',
 ]);
 const XARGS_OPAQUE = (cmd) => !XARGS_SAFE.has(cmd);
 
@@ -969,7 +996,7 @@ const GAME_DATA = new RegExp(
         '(?:^|/)gamedat(?:/|$)',
         '^(?:\\./)?static(?:/|$)',
         '\\.sav$',
-        '(?:^|/)savegame',
+        '(?:^|/)savegames?(?:/|$)',
         '(?:^|/)\\.exult(?:\\.cfg)?(?:/|$)',
         '(?:^|/)\\.(?:config|local/share)/exult(?:/|$)',
         '/share/(?:games/)?exult(?:/|$)',
@@ -1131,7 +1158,7 @@ function checkSegment(words, state) {
         const envRepo = inlineEnv.GH_REPO ?? state.exportedGhRepo ?? null;
         return checkGh(args, envRepo);
     }
-    if (cmd === 'git') return checkGit(args, inlineEnv, state.exportedEnv ?? {});
+    if (cmd === 'git') return checkGit(args, inlineEnv, state.exportedEnv ?? {}, state.cwd);
     if (cmd === 'node' || cmd === 'nodejs') return checkNode(cmd, args, env);
     if (MAKERS.has(cmd) || ['ninja', 'meson', 'cmake', 'checkinstall'].includes(cmd)) return checkInstall(cmd, args);
     if (PKG_MANAGERS.has(cmd) || ['npm', 'pnpm', 'yarn', 'cargo', 'pip', 'pip3'].includes(cmd)) return checkPackages(cmd, args);

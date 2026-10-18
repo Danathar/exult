@@ -963,3 +963,19 @@ test('repo-target: one --repo does not cover a second gh write on the same line'
     const v = run({ 'docs/a.md': 'gh pr create --repo Danathar/exult && gh pr merge 3\n' });
     assert.ok(v.some((x) => /"gh pr merge" without/.test(x)), v.join('|'));
 });
+
+test('git checkouts: ignored local files (gamedat/, saves) are not scanned; fixture trees are', () => {
+    const dir = fixture({ '.gitignore': 'gamedat\n*.sav\n', 'gamedat/u7map': 'x\n', 'a.sav': 'x\n' });
+    try {
+        assert.ok(checkAll(dir).some((x) => /^gamedat\/u7map: /.test(x)), 'a plain tree is walked');
+        const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+        git('init', '-q');
+        assert.deepEqual(checkAll(dir), []);
+        fs.writeFileSync(path.join(dir, 'b.sav'), 'x\n');
+        fs.mkdirSync(path.join(dir, 'static'));
+        fs.writeFileSync(path.join(dir, 'static/x'), 'x\n');
+        assert.ok(checkAll(dir).some((x) => /^static\/x: /.test(x)), 'untracked, unignored files still count');
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
