@@ -65,7 +65,7 @@ const allowed = [
     'gh pr create --repo Danathar/exult --base master --head acmm/x --title t',
     'gh pr create -R Danathar/exult --base master --head b --title t',
     'gh pr --repo Danathar/exult create --base=master --head=b --title t',
-    'GH_REPO=Danathar/exult gh issue create --title t --body b',
+    'GH_REPO=Danathar/exult gh issue create --repo Danathar/exult --title t --body b',
     'gh issue comment 5 --repo Danathar/exult --body "see exult/exult"',
     'gh repo set-default Danathar/exult',
     'gh repo view exult/exult',
@@ -78,7 +78,7 @@ const allowed = [
     'rm -rf build content/demo/static/combos.flx',
     'rm -rf autom4te.cache',
     'rm android/app/src/main/java/info/exult/SavegamesFragment.java',
-    'git ls-files "*.cc" | xargs clang-format --dry-run',
+    'clang-format --dry-run exult.cc',
     'gh pr new --repo Danathar/exult --base master --head b --title t',
     'find . -name "*.o" -delete',
     'mv exult.old exult.new',
@@ -95,6 +95,14 @@ const blocked = [
     'gh pr create --repo exult/exult --base master --head b',
     'gh pr create -R exult/exult --base master --head b',
     'gh issue create --repo Danathar/exult --repo exult/exult',
+    'GH_REPO=Danathar/exult gh issue create --title t --body b',
+    'export GH_REPO=Danathar/exult; gh issue create --title t',
+    'false && export GH_REPO=Danathar/exult; gh issue create --title t',
+    'export GH_REPO=Danathar/exult; unset GH_REPO; gh issue create --title t',
+    'git ls-files "*.cc" | xargs clang-format -i',
+    'git ls-files "*.cc" | xargs clang-format --dry-run',
+    'git --git-dir=/tmp/other/.git push origin feature',
+    'cd $HOME/other && git push origin feature',
     'GH_REPO=exult/exult gh issue create --title t',
     'export GH_REPO=exult/exult; gh issue comment 1 --body x',
     'gh issue comment 5 --body x',
@@ -306,6 +314,7 @@ test('pushing HEAD or no refspec is blocked on master and allowed on other branc
     try {
         const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' });
         git('init', '-q', '-b', 'master');
+        git('remote', 'add', 'origin', 'https://github.com/Danathar/exult');
         for (const cmd of ['git push -u origin HEAD', 'git push origin @', 'git push origin']) {
             assert.equal(run(cmd, 'Bash', dir).status, 2, cmd);
         }
@@ -314,6 +323,14 @@ test('pushing HEAD or no refspec is blocked on master and allowed on other branc
             assert.equal(run(cmd, 'Bash', dir).status, 0, cmd);
         }
         assert.equal(run('git push origin HEAD:master', 'Bash', dir).status, 2);
+        // origin must be this repository, however the repository is reached
+        git('remote', 'set-url', 'origin', 'https://github.com/exult/exult.git');
+        assert.equal(run('git push origin feature', 'Bash', dir).status, 2, 'upstream origin');
+        assert.equal(run(`git -C ${dir} push origin feature`).status, 2, '-C into an upstream-origin repo');
+        assert.equal(run(`cd ${dir} && git push origin feature`).status, 2, 'cd into an upstream-origin repo');
+        git('remote', 'set-url', 'origin', 'https://github.com/Danathar/exult');
+        assert.equal(run(`git -C ${dir} push origin feature`).status, 0, '-C into a good repo');
+        assert.equal(run(`cd ${dir} && git push origin feature`).status, 0, 'cd into a good repo');
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }

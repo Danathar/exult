@@ -29,7 +29,8 @@
 //   GitHub / git
 //   - gh pr|issue|discussion|release|workflow|run|label|repo|secret|variable|
 //     ruleset|cache subcommands that are not read-only and do not target
-//     Danathar/exult via --repo/-R or a GH_REPO= prefix (this includes
+//     Danathar/exult via an explicit --repo/-R (GH_REPO never counts: it can be
+//     skipped by conditional flow or unset; one naming another repo blocks) (this includes
 //     `gh pr create` and `gh issue create` without --repo); a write whose
 //     arguments name a github.com URL of another repository.
 //   - gh pr merge (Hive merges; agents never do), `gh repo` writes, and
@@ -543,7 +544,12 @@ function checkGh(args, envRepo) {
 
     const action = plain[1] ?? '';
     const flagRepo = repoFlag(args);
-    const target = flagRepo ?? envRepo;
+    if (envRepo !== null && !isTarget(envRepo)) {
+        return block(`Blocked: GH_REPO is "${envRepo}", not Danathar/exult.`);
+    }
+    // GH_REPO never satisfies the requirement: `false && export GH_REPO=...; gh ...`
+    // and a later `unset GH_REPO` leave it unset at run time. Only --repo/-R counts.
+    const target = flagRepo;
 
     if (group === 'repo' && action === 'set-default') {
         const rest = plain.slice(2);
@@ -571,7 +577,7 @@ function checkGh(args, envRepo) {
 
 
     if (target === null) {
-        return block(`Blocked: \`gh ${group} ${action}\` has no --repo/-R/GH_REPO; gh would resolve the repository from git remotes or its default.`);
+        return block(`Blocked: \`gh ${group} ${action}\` has no --repo/-R (GH_REPO does not count); gh would resolve the repository from git remotes or its default.`);
     }
     if (!isTarget(target)) {
         return block(`Blocked: \`gh ${group} ${action}\` targets "${target}", not Danathar/exult.`);
@@ -652,6 +658,7 @@ function riskyEnv(env) {
 }
 
 function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
+    let redirected = false;
     // Walk global options to find the subcommand, vetting `-c key=value`.
     let i = 0;
     while (i < args.length && args[i].startsWith('-')) {
@@ -668,7 +675,8 @@ function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
         if (a.startsWith('--exec-path=')) {
             return block('Blocked: `git --exec-path=DIR` runs git commands from another directory.');
         }
-        if (a === '-C') cwd = resolve(cwd ?? process.cwd(), args[i + 1] ?? '.');
+        if (a === '-C') cwd = cwd === null ? null : resolve(cwd ?? process.cwd(), args[i + 1] ?? '.');
+        if (a === '--git-dir' || a === '--work-tree' || a.startsWith('--git-dir=') || a.startsWith('--work-tree=')) redirected = true;
         i += ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'].includes(a) ? 2 : 1;
     }
     const sub = args[i];
@@ -693,7 +701,10 @@ function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
                 'Read the output on stdout instead (pipe it, or use the Write tool to save it).'
         );
     }
-    if (sub === 'push') return checkGitPush(rest, cwd);
+    if (sub === 'push') {
+        if (redirected) return block('Blocked: `git push` with --git-dir/--work-tree; the repository being pushed cannot be verified.');
+        return checkGitPush(rest, cwd);
+    }
     if (sub === 'remote') return checkGitRemote(rest);
     if (sub === 'clean' && rest.some((a) => /^-[a-zA-Z]*[xX]/.test(a))) {
         return block('Blocked: `git clean -x/-X` deletes ignored files, including a gitignored `gamedat` directory with saves.');
@@ -791,6 +802,15 @@ function checkGitPush(rest, cwd) {
     }
     if (remote !== 'origin') {
         return block(`Blocked: \`git push ${remote}\`; only the \`origin\` remote may be pushed to.`);
+    }
+    // `origin` must really be Danathar/exult in the repository the push runs in
+    // (`cd /elsewhere && git push origin x`, `git -C /elsewhere push origin x`).
+    if (cwd === null) {
+        return block('Blocked: `git push` after a `cd` this hook cannot resolve; the repository being pushed cannot be verified.');
+    }
+    const url = spawnSync('git', ['remote', 'get-url', '--push', 'origin'], { cwd: cwd ?? process.cwd(), encoding: 'utf8' });
+    if (url.status !== 0 || !isTarget(url.stdout.trim())) {
+        return block('Blocked: `origin` of the repository this push runs in is not https://github.com/Danathar/exult.');
     }
     if (refspecs.some((r) => r.startsWith('+'))) {
         return block('Blocked: force push via "+" refspec.');
@@ -934,7 +954,7 @@ const MAKERS = new Set(['make', 'gmake']);
 // xargs; everything else (gh, git, node, python, the checker, curl, ...) is refused.
 const XARGS_SAFE = new Set([
     'shellcheck', 'grep', 'egrep', 'fgrep', 'cat', 'wc', 'ls', 'head', 'tail', 'sort', 'uniq', 'echo', 'printf', 'true',
-    'basename', 'dirname', 'stat', 'file', 'clang-format',
+    'basename', 'dirname', 'stat', 'file',
 ]);
 const XARGS_OPAQUE = (cmd) => !XARGS_SAFE.has(cmd);
 
@@ -1154,8 +1174,14 @@ function checkSegment(words, state) {
         }
         return null;
     }
+    if (cmd === 'cd' || cmd === 'pushd' || cmd === 'popd') {
+        const target = args.find((a) => !a.startsWith('-'));
+        const known = cmd !== 'popd' && target !== undefined && target !== '-' && state.cwd !== null && !/[$`~{*?[\\]/.test(target);
+        state.cwd = known ? resolve(state.cwd ?? process.cwd(), target) : null;
+        return null;
+    }
     if (cmd === 'gh') {
-        const envRepo = inlineEnv.GH_REPO ?? state.exportedGhRepo ?? null;
+        const envRepo = inlineEnv.GH_REPO ?? state.exportedGhRepo ?? null; // only used to refuse a foreign value
         return checkGh(args, envRepo);
     }
     if (cmd === 'git') return checkGit(args, inlineEnv, state.exportedEnv ?? {}, state.cwd);
