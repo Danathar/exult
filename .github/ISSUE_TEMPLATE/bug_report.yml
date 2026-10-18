@@ -1,0 +1,78 @@
+name: Bug report
+description: A defect in this fork's code, build or tooling (engine, Exult Studio, ucc, expack, ipack, CI)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This tracker is for work on the `Danathar/exult` fork. If you are a person and the bug also reproduces on unmodified upstream Exult, you may also report it at <https://github.com/exult/exult/issues> yourself; do not file it twice. AI agents never file or comment on upstream: they open an issue here for the owner.
+        Never attach or paste Ultima VII game files (`static/`, `gamedat/`, `*.flx`) or other copyrighted assets.
+        Security problems: private vulnerability reporting is not enabled on this repository. Open an issue that says a security problem exists, WITHOUT exploit details, and ask the owner for a private contact. If the problem is in code that also exists in upstream Exult, tell the upstream project too through its own channels.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Exult engine
+        - Exult Studio
+        - ucc (usecode compiler) or other tools (expack, ipack, shp2pcx, splitshp, textpack)
+        - Build system (autotools, CMake, MSVC, Android, iOS)
+        - CI / workflows
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game or mod
+      description: Which game data you were running, if the bug involves the engine.
+      options:
+        - Not applicable (build or tool bug)
+        - Ultima VII The Black Gate (BG)
+        - Ultima VII Part 2 Serpent Isle (SI)
+        - A mod (name it below)
+        - Several or unsure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, starting from a fresh start or a named savegame. For a build bug, the exact commands.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Output of `exult --version` or the `git rev-parse HEAD` of the checkout you built.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS and version, architecture, compiler and version, SDL3 version. For example Debian 13 x86_64, gcc 14, SDL3 3.2.x.
+    validations:
+      required: true
+  - type: checkboxes
+    id: savegame
+    attributes:
+      label: Savegame
+      description: Savegames come from the original game data and can be large. Do not attach one unless asked; say whether the bug needs one.
+      options:
+        - label: The bug needs a particular savegame to reproduce (I can share it privately if asked)
+        - label: It reproduces from a new game
+  - type: textarea
+    id: log
+    attributes:
+      label: Output, log or backtrace
+      description: Terminal output, `stderr.txt`/`stdout.txt` on Windows, crash backtrace, compiler error. Remove personal paths if you wish.
+      render: text
