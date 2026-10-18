@@ -113,7 +113,7 @@ jobs:
           ref=""
           proceed=true
           if [ "$IS_PR" = "true" ]; then
-            read -r cross state head < <(gh pr view "$NUM" --repo "$GH_REPO" \
+            read -r cross state head < <(gh pr view "$NUM" --repo Danathar/exult \
               --json isCrossRepository,state,headRefName \
               --jq '[.isCrossRepository, .state, .headRefName] | @tsv')
             if [ "$cross" = "true" ]; then
@@ -127,7 +127,7 @@ jobs:
             fi
           fi
           if [ "$proceed" = "false" ]; then
-            gh issue comment "$NUM" --repo "$GH_REPO" --body "Claude did not run: $reason"
+            gh issue comment "$NUM" --repo Danathar/exult --body "Claude did not run: $reason"
             {
               echo "## Claude skipped"
               echo

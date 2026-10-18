@@ -133,7 +133,7 @@ jobs:
           ref=""
           proceed=true
           if [ "$IS_PR" = "true" ]; then
-            read -r cross state head < <(gh pr view "$NUM" --repo "$GH_REPO" \
+            read -r cross state head < <(gh pr view "$NUM" --repo Danathar/exult \
               --json isCrossRepository,state,headRefName \
               --jq '[.isCrossRepository, .state, .headRefName] | @tsv')
             if [ "$cross" = "true" ]; then
@@ -147,7 +147,7 @@ jobs:
             fi
           fi
           if [ "$proceed" = "false" ]; then
-            gh issue comment "$NUM" --repo "$GH_REPO" --body "AI fix refused: $reason"
+            gh issue comment "$NUM" --repo Danathar/exult --body "AI fix refused: $reason"
             {
               echo "## AI fix refused"
               echo
@@ -204,7 +204,7 @@ jobs:
           GH_REPO: Danathar/exult
           NUM: ${{ github.event.issue.number || github.event.pull_request.number }}
         run: |
-          gh issue comment "$NUM" --repo "$GH_REPO" --body "$(printf 'AI fix requested by @%s ([run](%s/%s/actions/runs/%s)).\n\nBefore applying anything, the agent reads %s and %s. It verifies each finding against the code first, and reports findings it rejects instead of forcing a change.\n' \
+          gh issue comment "$NUM" --repo Danathar/exult --body "$(printf 'AI fix requested by @%s ([run](%s/%s/actions/runs/%s)).\n\nBefore applying anything, the agent reads %s and %s. It verifies each finding against the code first, and reports findings it rejects instead of forcing a change.\n' \
             "$GITHUB_ACTOR" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" 'AGENTS.md' 'docs/review-rubric.md')"
 
       - name: Detect Anthropic credential

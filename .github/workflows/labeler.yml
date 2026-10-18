@@ -46,12 +46,12 @@ jobs:
           set -euo pipefail
           # List first, create only the absent ones, and let any other gh
           # failure (permissions, network) fail the step.
-          existing=$(gh label list --repo "$GH_REPO" --limit 500 --json name --jq '.[].name')
+          existing=$(gh label list --repo Danathar/exult --limit 500 --json name --jq '.[].name')
           grep -oE "^'area/[a-z-]+'" .github/labeler.yml | tr -d "'" | while read -r label; do
             if printf '%s\n' "$existing" | grep -qxF "$label"; then
               echo "$label already exists"
             else
-              gh label create "$label" --repo "$GH_REPO" --color 1d76db --description "Changes under $label paths (labeler)"
+              gh label create "$label" --repo Danathar/exult --color 1d76db --description "Changes under $label paths (labeler)"
             fi
           done
 

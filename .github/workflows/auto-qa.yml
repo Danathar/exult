@@ -55,7 +55,7 @@ jobs:
           window=$(node -p "JSON.parse(require('fs').readFileSync('.github/auto-qa-tuning.json','utf8')).window_days")
           case "$window" in ''|*[!0-9]*) echo "::error::window_days must be an integer"; exit 2 ;; esac
           since="$(date -u -d "$window days ago" +%F)"
-          gh run list --repo "$GH_REPO" --limit 1000 --created ">=$since" \
+          gh run list --repo Danathar/exult --limit 1000 --created ">=$since" \
             --json workflowName,conclusion,status,headSha,event,headBranch,attempt,createdAt,startedAt,updatedAt,databaseId,url > runs.json
           count=$(jq length runs.json)
           echo "Fetched $count runs created on or after $since."
@@ -100,11 +100,11 @@ jobs:
           # List rather than search (the search index lags and in:title is a
           # word match). Match the exact title AND the Actions bot as author so
           # an issue someone else opens with this title is never reused.
-          existing=$(gh issue list --repo "$GH_REPO" --state open --limit 1000 --json number,title,author \
+          existing=$(gh issue list --repo Danathar/exult --state open --limit 1000 --json number,title,author \
             --jq '[.[] | select(.title == env.TITLE and (.author.login == "app/github-actions" or .author.login == "github-actions[bot]" or .author.login == "github-actions"))][0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue edit --repo "$GH_REPO" "$existing" --body-file auto-qa-out/issue-body.md
-            gh issue comment --repo "$GH_REPO" "$existing" --body "Proposal refreshed by run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+            gh issue edit --repo Danathar/exult "$existing" --body-file auto-qa-out/issue-body.md
+            gh issue comment --repo Danathar/exult "$existing" --body "Proposal refreshed by run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
           else
-            gh issue create --repo "$GH_REPO" --title "$TITLE" --body-file auto-qa-out/issue-body.md
+            gh issue create --repo Danathar/exult --title "$TITLE" --body-file auto-qa-out/issue-body.md
           fi

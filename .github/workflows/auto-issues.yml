@@ -85,13 +85,13 @@ jobs:
           # word match, not an exact one. Match the exact title AND the Actions
           # bot as author, so an issue anyone else opens with this title is
           # never the one a failure is reported into.
-          existing=$(gh issue list --repo "$GH_REPO" --state open --limit 1000 --json number,title,author \
+          existing=$(gh issue list --repo Danathar/exult --state open --limit 1000 --json number,title,author \
             --jq '[.[] | select(.title == env.TITLE and (.author.login == "app/github-actions" or .author.login == "github-actions[bot]" or .author.login == "github-actions"))][0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --repo "$GH_REPO" --body "$body"
+            gh issue comment "$existing" --repo Danathar/exult --body "$body"
             exit 0
           fi
-          open_count=$(gh issue list --repo "$GH_REPO" --state open --label "$LABEL" --limit 1000 --json number --jq length)
+          open_count=$(gh issue list --repo Danathar/exult --state open --label "$LABEL" --limit 1000 --json number --jq length)
           if [ "$open_count" -ge "$MAX_OPEN" ]; then
             {
               echo "## Auto issues: cap reached"
@@ -102,5 +102,5 @@ jobs:
             echo "::warning::$open_count open $LABEL issues; cap of $MAX_OPEN reached, no new issue opened."
             exit 0
           fi
-          gh label create "$LABEL" --repo "$GH_REPO" --color d93f0b --description "Opened by Auto issues when a gating workflow fails on master" 2>/dev/null || true
-          gh issue create --repo "$GH_REPO" --title "$TITLE" --body "$body" --label "$LABEL"
+          gh label create "$LABEL" --repo Danathar/exult --color d93f0b --description "Opened by Auto issues when a gating workflow fails on master" 2>/dev/null || true
+          gh issue create --repo Danathar/exult --title "$TITLE" --body "$body" --label "$LABEL"

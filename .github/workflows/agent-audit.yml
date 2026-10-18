@@ -81,7 +81,7 @@ jobs:
           # exceeds GitHub's GraphQL node limit, so the limit is 100; if 100
           # PRs merged in the window the script exits 2 (possible truncation)
           # and the audit is rerun with a narrower `since`.
-          gh pr list --repo "$GH_REPO" --state merged --limit 100 --search "merged:>=$SINCE" \
+          gh pr list --repo Danathar/exult --state merged --limit 100 --search "merged:>=$SINCE" \
             --json number,title,author,body,mergedAt,mergedBy,labels,url,baseRefName,headRefName,commits,closingIssuesReferences > merged.json
           # --limit makes the script refuse a list that may be truncated.
           node scripts/ai-audit-report.mjs --input merged.json --since "$SINCE" \
