@@ -32,7 +32,9 @@ Hive is outside this repository (a self-hosted dashboard plus the GitHub App
 - Pause does not stop GitHub workflows, local Claude Code or omp sessions, or
   review bots, and does not undo anything already pushed.
 
-Confirm Hive has stopped:
+Confirm the pause itself in Hive: the dashboard card, or `GET /api/repos/pauses`
+(owner-only; **unverified for this instance**). The command below only checks
+recent agent activity; it cannot show that a pause is in effect.
 
 ```bash
 gh pr list --repo Danathar/exult --state all --author app/danathar-atomic-hive --limit 5 --json number,createdAt,title

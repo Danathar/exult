@@ -13,7 +13,7 @@ on the engine and its tooling, including with AI agents under guardrails (see
   the GitHub CLI, a fork defaults to its parent, so always pass the repository:
   `gh pr create --repo Danathar/exult --base master --head <branch>`.
 - Bugs in released Exult, game behaviour and data-file questions belong upstream
-  ([issues](https://github.com/exult/exult/issues), IRC `#exult` on Libera.Chat).
+  ([bugs](https://github.com/exult/exult/issues), [questions](https://github.com/exult/exult/discussions), IRC `#exult` on Libera.Chat). Upstream's FAQ asks for the latest snapshot, the version and platform, and a relevant savegame.
   Check there first; the issue templates here say the same.
 - **Upstream changes arrive through the owner**, who syncs `master` from upstream.
   Contributors and agents do not merge upstream into this fork or add an

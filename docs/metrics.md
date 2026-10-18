@@ -39,9 +39,10 @@ Author classes, from the `author` object `gh` prints:
 | other bots | any other app or bot account: `app/dependabot`, the Codex connector, and so on |
 | other humans | any other non-bot account |
 
-The split exists because the rate means different things per class: the owner
-merges their own PRs, while Hive PRs are written by an agent and reviewed by
-the owner (see [review-rubric.md](review-rubric.md)). A PR that an agent opens
+The split is by PR **author** only. The data does not record who reviewed or
+merged a PR (Hive's serialized lane or the owner may do the merging), so do not
+read the classes as reviewer or merger roles; review criteria are in
+[review-rubric.md](review-rubric.md). A PR that an agent opens
 with the owner's own credentials (a local agent session using the owner's
 `gh` login) is attributed by GitHub to the owner and lands in the owner row;
 the script cannot tell it apart from a hand-written one.
@@ -84,7 +85,7 @@ days. It has read-only permissions and commits nothing. Runs are listed at
   decided PR was merged rather than closed. It only becomes informative for a
   class whose PRs are decided by someone other than their author: watch the
   Hive app row. A Hive PR that is closed unmerged is the useful event.
-- **Time to merge** measures how long the owner took to review, plus CI time.
+- **Time to merge** measures the whole wait from opening to merge: review, CI, and the merge lane.
   Short medians mean small PRs and fast review, not low rigor. Read the p90
   for the slow tail, and read neither without the sample size in the JSON
   (`timeToMergeHours.samples`).

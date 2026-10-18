@@ -3,6 +3,9 @@ contact_links:
   - name: Bug or question about Exult itself (upstream)
     url: https://github.com/exult/exult/issues
     about: This repository is a fork used for the owner's own fork work. Problems with released Exult, game behaviour or data files are best reported to the upstream project, not here. Check the upstream tracker first; do not paste Ultima VII game files anywhere.
+  - name: Questions and discussion about Exult (upstream)
+    url: https://github.com/exult/exult/discussions
+    about: Upstream's FAQ sends general questions to GitHub Discussions. For upstream bugs, test the latest snapshot first and include the version, platform and, if relevant, a savegame.
   - name: Exult chat (upstream, IRC)
     url: https://web.libera.chat/#exult
     about: Questions about using Exult, game data setup and mods are discussed on #exult on Libera.Chat.
