@@ -38,7 +38,10 @@
 # arbitrary shell). Treat everything the agent reads as a possible prompt
 # injection. Mitigations: only maintainers can trigger a run,
 # `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'` strips credentials from subprocess
-# environments, and branch protection still gates what is pushed.
+# environments. What is enforced today: a pre-push hook in the checkout rejects
+# pushes to master, and the issue path starts on a `claude/ai-fix-<number>`
+# branch. The branch ruleset for master (issue #39) is not in place yet; once it
+# is, it is the real server-side control.
 #
 # Checks on agent pushes: commits pushed and PRs opened with the workflow's
 # GITHUB_TOKEN do not start other workflows (a GitHub rule against recursive
@@ -67,7 +70,13 @@ on:
     types: [created]
 
 concurrency:
-  group: ai-fix-${{ github.event.issue.number || github.event.pull_request.number }}
+  # Only events that would really start a run share a group, so an unrelated
+  # comment or label event cannot replace a pending real request.
+  group: >-
+    ${{ github.event.sender.type != 'Bot' && (
+      (github.event_name != 'issue_comment' && github.event.label.name == 'ai-fix-requested') ||
+      (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/ai-fix') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    ) && format('ai-fix-{0}', github.event.issue.number || github.event.pull_request.number) || github.run_id }}
   cancel-in-progress: false
 
 permissions: {}
@@ -156,6 +165,37 @@ jobs:
         with:
           ref: ${{ steps.target.outputs.ref }}
           fetch-depth: 0
+
+      # Agents must never push to master. Until the repository ruleset lands
+      # (issue #39) nothing server-side stops it, so a local pre-push hook
+      # rejects any push to refs/heads/master from this checkout. This covers
+      # `git push` run by the agent. It is not a sandbox: code the agent writes
+      # itself could still push with the workflow token, which has
+      # contents: write.
+      - name: Block pushes to master from this checkout
+        if: steps.target.outputs.proceed == 'true'
+        run: |
+          cat > .git/hooks/pre-push <<'HOOK'
+          #!/bin/sh
+          while read -r _local_ref _local_sha remote_ref _remote_sha; do
+            case "$remote_ref" in
+              refs/heads/master)
+                echo "Agents must not push to master; push a branch and open a PR." >&2
+                exit 1
+                ;;
+            esac
+          done
+          exit 0
+          HOOK
+          sed -i 's/^          //' .git/hooks/pre-push
+          chmod 0755 .git/hooks/pre-push
+
+      - name: Create the work branch for an issue
+        if: steps.target.outputs.proceed == 'true' && steps.target.outputs.is_pr != 'true'
+        env:
+          NUM: ${{ github.event.issue.number }}
+        run: git switch -c "claude/ai-fix-$NUM"
+
 
       - name: Acknowledge the request
         if: steps.target.outputs.proceed == 'true'
@@ -249,7 +289,7 @@ jobs:
 
             1. Read the issue or PR with `gh issue view` or `gh pr view`, using --repo Danathar/exult. `gh pr view` does not return inline review comments; fetch them with `${{ runner.temp }}/gh-review-read.sh pr-comments <number>` (inline comments) and `${{ runner.temp }}/gh-review-read.sh pr-reviews <number>` (review summaries). That script is read-only; do not call `gh api` directly.
             2. For each finding, verify the claim against the code at this checkout. Judge it by docs/review-rubric.md. Skip, and say why, any finding that is wrong, not actionable, or needs a merge order instead of a code change.
-            3. For a pull request, commit the fixes to the checked-out head branch and push with exactly `git push -u origin HEAD` (no other push form is permitted). For an issue, create a branch from master with `git switch -c <branch>`, push with exactly `git push -u origin HEAD`, then open a PR with `gh pr create --repo Danathar/exult --base master --head <branch>`.
+            3. For a pull request, commit the fixes to the checked-out head branch and push with exactly `git push -u origin HEAD` (no other push form is permitted). For an issue, the checkout is already on the branch claude/ai-fix-<number> (created from master); stay on it, push with exactly `git push -u origin HEAD`, then open a PR with `gh pr create --repo Danathar/exult --base master --head claude/ai-fix-<number>`. Pushing to master is rejected by a hook.
             4. Before committing, run `tests/run-unit-tests.sh` and, for changes to the tools, `tests/e2e/run.sh`; run `shellcheck` on any changed shell script; for workflow or script changes also `node --test 'scripts/tests/*.test.mjs'`. If a build or test cannot run on this runner (for example tests/e2e/run.sh when SDL3 is not installed), say so in your closing comment; never claim a check passed that you did not run. Follow .clang-format and the surrounding code style. End every commit message with the trailer line Co-Authored-By: Claude (this is the audit marker agent-audit.yml looks for). Do not merge anything.
             5. Finish with one comment (`gh issue comment --repo Danathar/exult` or `gh pr comment --repo Danathar/exult`) listing which findings you applied and which you rejected, with the reason for each. Pushes and PRs made with the workflow token do not start CI, so if you pushed or opened a PR, end the comment by telling the maintainer to re-run the checks (close and reopen the PR, or push an empty commit) before the required checks can pass.
           claude_args: >-

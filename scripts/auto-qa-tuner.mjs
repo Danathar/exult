@@ -6,9 +6,14 @@
 // commits; output goes to --out-dir for the workflow to publish as a step
 // summary and a tracking issue.
 //
+// A re-run that passed (attempt > 1, success) counts as flaky: the earlier
+// attempt is not in `gh run list` output, but a re-run is only worth doing after
+// a failure. A re-run of a cancelled run would be counted too; that is a known
+// over-count.
+//
 // Input: JSON array from
 //   gh run list --repo Danathar/exult --limit 1000 --created ">=YYYY-MM-DD" \
-//     --json workflowName,conclusion,status,headSha,event,headBranch,createdAt,startedAt,updatedAt,databaseId,url
+//     --json workflowName,conclusion,status,headSha,event,headBranch,attempt,createdAt,startedAt,updatedAt,databaseId,url
 //
 // Usage: node scripts/auto-qa-tuner.mjs --runs runs.json [--root <dir>] [--out-dir <dir>] [--now <ISO date>]
 // Exit: 0 report written (findings or not); 2 bad usage or unreadable input.
@@ -68,12 +73,17 @@ export function workflowStats(runs) {
     const groups = new Map();
     for (const r of done) {
         const key = `${r.headSha}\u0000${r.event}`;
-        const g = groups.get(key) ?? { ok: false, bad: false };
-        if (r.conclusion === 'success') g.ok = true;
-        else g.bad = true;
+        const g = groups.get(key) ?? { ok: false, bad: false, retried: false };
+        if (r.conclusion === 'success') {
+            g.ok = true;
+            // `gh run list` shows only the latest attempt of a run: a re-run
+            // that passed replaces the failed attempt, so it appears as a
+            // success with attempt > 1.
+            if (Number(r.attempt) > 1) g.retried = true;
+        } else g.bad = true;
         groups.set(key, g);
     }
-    const flaky = [...groups.values()].filter((g) => g.ok && g.bad).length;
+    const flaky = [...groups.values()].filter((g) => (g.ok && g.bad) || g.retried).length;
     const okDurations = done
         .filter((r) => r.conclusion === 'success')
         .map(durationMinutes)
@@ -123,7 +133,7 @@ export function analyze(runs, tuning, now = new Date()) {
             findings.push({
                 workflow: name,
                 kind: 'flaky',
-                detail: `${stats.flakyGroups} of ${stats.groups} commit/event groups both failed and passed (${round(stats.flakyRate * 100, 1)}%, threshold ${round(tuning.flaky_rate_threshold * 100, 1)}%).`,
+                detail: `${stats.flakyGroups} of ${stats.groups} commit/event groups were flaky (failed and passed, or passed only on a re-run) (${round(stats.flakyRate * 100, 1)}%, threshold ${round(tuning.flaky_rate_threshold * 100, 1)}%).`,
                 suggestion: 'A re-run changed the result, so something is nondeterministic (network fetches, timing, runner image drift). Find it. A flaky check that is required for merging blocks and misleads.',
             });
         }

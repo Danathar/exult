@@ -12,9 +12,11 @@ name: Nightly compliance
 # repository (GH_REPO below, never the upstream exult/exult) and never closes it.
 #
 # Some checks cover files that other pull requests of the ACMM series add
-# (check-policies.mjs, .claude/settings.json, .github/rulesets/master.json).
-# Each one is skipped with a notice in the step summary when its file does not
-# exist yet, and is a real check once it does. The required-files list is not
+# (tests/run-unit-tests.sh, tests/e2e/run.sh, check-policies.mjs,
+# .claude/settings.json, .github/rulesets/master.json). Each one is skipped
+# with a notice in the step summary when its file does not exist yet, and is a
+# real check once it does. The ruleset comparison also needs the optional
+# secret RULESET_READ_TOKEN. The required-files list is not
 # skipped: a file on that list that is missing fails the job.
 #
 # The jobs repeat the commands of ci.yml and policy-check.yml rather than
@@ -49,7 +51,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Detect the unit test script
+        id: have
+        run: |
+          if [ -x tests/run-unit-tests.sh ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "tests/run-unit-tests.sh does not exist yet; unit tests skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Run unit tests
+        if: steps.have.outputs.present == 'true'
         env:
           CXX: ${{ matrix.cxx }}
         run: |
@@ -62,7 +75,20 @@ jobs:
     timeout-minutes: 40
     container: mirror.gcr.io/library/debian:13
     steps:
+      - uses: actions/checkout@v7
+
+      - name: Detect the e2e script
+        id: have
+        run: |
+          if [ -x tests/e2e/run.sh ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "tests/e2e/run.sh does not exist yet; e2e skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Install build dependencies
+        if: steps.have.outputs.present == 'true'
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends \
@@ -71,9 +97,8 @@ jobs:
             libpng-dev libfreetype6-dev libxml2-dev libsdl3-dev libsdl3-image-dev \
             git ca-certificates
 
-      - uses: actions/checkout@v7
-
       - name: Run the end-to-end test
+        if: steps.have.outputs.present == 'true'
         run: tests/e2e/run.sh
 
   meta:

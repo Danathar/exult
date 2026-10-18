@@ -87,16 +87,23 @@ test('a longer fence is not closed by a shorter inner fence', () => {
 });
 
 test('missing linked issue is a violation', () => {
-    assert.deepEqual(auditPr(pr({ closingIssuesReferences: [] })), ['linked-issue']);
+    assert.deepEqual(auditPr(pr({ body: SIG, closingIssuesReferences: [] })), ['linked-issue']);
 });
 
-test('body text never counts as a linked issue, nor does a missing field', () => {
-    for (const body of ['Closes #12', 'Closes #999999', '```\nCloses #3\n```']) {
-        assert.equal(hasLinkedIssue({ body: `${body}\n${SIG}` }), false);
+test('body references count as a link, but not inside code fences or for other repos', () => {
+    const none = (body) => ({ body: `${body}\n${SIG}` });
+    for (const body of ['Closes #12', 'Refs #5', 'refs Danathar/exult#7', 'Fixes: #3', 'Related to #9']) {
+        assert.equal(hasLinkedIssue(none(body)), true, body);
     }
-    const p = pr({ body: `Closes #5\n${SIG}` });
+    for (const body of ['```\nCloses #3\n```', 'exult/exult#5 is related', 'Refs exult/exult#5', 'see #5', 'no link']) {
+        assert.equal(hasLinkedIssue(none(body)), false, body);
+    }
+    const p = pr({ body: `Refs #5\n${SIG}` });
     delete p.closingIssuesReferences;
-    assert.deepEqual(auditPr(p), ['linked-issue']);
+    assert.deepEqual(auditPr(p), []);
+    const q = pr({ body: `No link\n${SIG}` });
+    delete q.closingIssuesReferences;
+    assert.deepEqual(auditPr(q), ['linked-issue']);
 });
 
 test('only resolved references in this repository count', () => {
@@ -104,15 +111,14 @@ test('only resolved references in this repository count', () => {
         number: 5,
         repository: { name, owner: { login: owner } },
     });
-    const body = `Closes #999999\n${SIG}`;
-    // Body text alone does not count when GitHub reports no resolved issue.
+    const body = `No link here\n${SIG}`;
     assert.deepEqual(
         auditPr(pr({ body, closingIssuesReferences: [] })),
         ['linked-issue']
     );
     // An issue of another repository does not count.
     assert.deepEqual(
-        auditPr(pr({ closingIssuesReferences: [ref('exult', 'exult')] })),
+        auditPr(pr({ body: SIG, closingIssuesReferences: [ref('exult', 'exult')] })),
         ['linked-issue']
     );
     assert.deepEqual(
@@ -385,7 +391,10 @@ test('Claude workflow PRs are detected by head branch or claude.ai/code link', (
         classify(pr({ ...base, body: 'Closes #5\n[Create PR](https://claude.ai/code/session_1)' })).reason,
         'claude-workflow'
     );
-    assert.equal(classify(pr({ ...base, headRefName: 'feature/claude-notes' })).agent, false);
+    assert.equal(
+        classify(pr({ ...base, author: { login: 'Danathar' }, headRefName: 'feature/claude-notes' })).agent,
+        false
+    );
 });
 
 test('Claude workflow PRs need no hive signature but still need a link, a non-bot merge and base master', () => {
@@ -395,7 +404,7 @@ test('Claude workflow PRs need no hive signature but still need a link, a non-bo
         headRefName: 'claude/issue-5',
     });
     assert.deepEqual(auditPr(claude), []);
-    assert.deepEqual(auditPr({ ...claude, closingIssuesReferences: [] }), ['linked-issue']);
+    assert.deepEqual(auditPr({ ...claude, body: 'Claude fix', closingIssuesReferences: [] }), ['linked-issue']);
     assert.deepEqual(auditPr({ ...claude, mergedBy: { login: 'github-actions[bot]' } }), ['human-merge']);
     assert.deepEqual(auditPr({ ...claude, baseRefName: 'main' }), ['base']);
 });
@@ -414,4 +423,13 @@ test('a Co-Authored-By: Claude commit on a human PR marks it as agent work', () 
     const none = pr({ ...human, commits: [{ messageHeadline: 'x', messageBody: 'about Claude' }] });
     assert.equal(classify(none).agent, false);
     assert.equal(classify({ ...human, commits: undefined }).agent, false);
+});
+
+test('PRs authored by github-actions are classified as workflow agent PRs', () => {
+    for (const login of ['app/github-actions', 'github-actions[bot]']) {
+        assert.deepEqual(classify(pr({ author: { login }, body: 'Refs #5' })), {
+            agent: true,
+            reason: 'claude-workflow',
+        });
+    }
 });

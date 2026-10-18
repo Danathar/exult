@@ -56,7 +56,7 @@ jobs:
           case "$window" in ''|*[!0-9]*) echo "::error::window_days must be an integer"; exit 2 ;; esac
           since="$(date -u -d "$window days ago" +%F)"
           gh run list --repo "$GH_REPO" --limit 1000 --created ">=$since" \
-            --json workflowName,conclusion,status,headSha,event,headBranch,createdAt,startedAt,updatedAt,databaseId,url > runs.json
+            --json workflowName,conclusion,status,headSha,event,headBranch,attempt,createdAt,startedAt,updatedAt,databaseId,url > runs.json
           count=$(jq length runs.json)
           echo "Fetched $count runs created on or after $since."
           if [ "$count" -ge 1000 ]; then

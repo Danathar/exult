@@ -74,6 +74,12 @@ test('a re-run that passed counts the commit as flaky', () => {
     assert.equal(s.failed, 1);
 });
 
+test('a success on attempt 2 counts as flaky even though the failed attempt is hidden', () => {
+    const s = workflowStats([run({ headSha: 'a', attempt: 2 }), run({ headSha: 'b', attempt: 1 })]);
+    assert.equal(s.groups, 2);
+    assert.equal(s.flakyGroups, 1);
+});
+
 test('cancelled and skipped runs are ignored', () => {
     const s = workflowStats([run({ conclusion: 'cancelled' }), run({ conclusion: 'skipped' }), run()]);
     assert.equal(s.completed, 1);

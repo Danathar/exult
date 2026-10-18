@@ -14,15 +14,15 @@
  * (`app/danathar-atomic-hive` in `gh` output, `danathar-atomic-hive[bot]` in
  * REST/webhook output) or its body has a `— hive: agent=<name> ...` signature
  * line (the Hive lane), or it was opened by the Claude workflow (claude.yml, ai-fix.yml):
- * head branch `claude/...` or a `claude.ai/code` link in the body, or any commit with a `Co-Authored-By: Claude` trailer (claude.yml pushes onto
+ * head branch `claude/...` or a `claude.ai/code` link in the body, an author of `github-actions` (a PR opened by a workflow), or any commit with a `Co-Authored-By: Claude` trailer (claude.yml pushes onto
  * existing PR branches, so the PR author alone does not show it; this needs the
  * `commits` field, so the input must be fetched with a smaller --limit). Everything else is counted as non-agent and listed only as a number,
  * so a window with zero agent PRs reads as "nothing was audited", not as a pass.
  *
  * Requirements checked per agent PR (see docs/agent-boundaries.md and AGENTS.md):
  *   linked-issue   GitHub's resolved closingIssuesReferences name an issue of
- *                  Danathar/exult (body text is not consulted; a missing
- *                  field counts as no link)
+ *                  Danathar/exult, or the body (outside code fences) has a
+ *                  `Closes|Fixes|Refs|... #N` reference to this repository
  *   signature      Hive-lane PRs only: body has a `— hive: agent=...` line (Claude
  *                  workflow PRs carry no such line and are not checked for it)
  *   human-merge    merged by a human account or by the Hive App itself. This
@@ -60,6 +60,8 @@ export function hasClaudeCommit(pr) {
         CLAUDE_TRAILER.test(`${c?.messageHeadline ?? ''}\n${c?.messageBody ?? ''}`)
     );
 }
+
+export const WORKFLOW_BOT_LOGINS = ['app/github-actions', 'github-actions[bot]'];
 
 export const AGENT_LOGINS = [
     'app/danathar-atomic-hive',
@@ -119,25 +121,59 @@ export function classify(pr) {
     ) {
         return { agent: true, reason: 'claude-workflow' };
     }
+    if (WORKFLOW_BOT_LOGINS.includes(pr?.author?.login)) {
+        return { agent: true, reason: 'claude-workflow' };
+    }
     if (hasClaudeCommit(pr)) {
         return { agent: true, reason: 'claude-commit' };
     }
     return { agent: false, reason: null };
 }
 
+const ISSUE_REF = new RegExp(
+    String.raw`\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?|references?|related to)\s*:?\s+(?:${REPO.replace('/', '\\/')})?#\d+`,
+    'i'
+);
+
+/** Body text with fenced code blocks removed (examples are not references). */
+export function stripFences(body) {
+    const kept = [];
+    let fence = null;
+    for (const line of lines(body)) {
+        const open = /^(`{3,}|~{3,})(.*)$/.exec(line.trim());
+        if (open) {
+            const [, marker, rest] = open;
+            if (fence === null) fence = marker;
+            else if (marker[0] === fence[0] && marker.length >= fence.length && rest.trim() === '') fence = null;
+            continue;
+        }
+        if (fence === null) kept.push(line);
+    }
+    return kept.join('\n');
+}
+
 /**
- * True when GitHub's resolved `closingIssuesReferences` name an issue of this
- * repository. Body text is never consulted: `Closes #999999`, or an example in
- * a code fence, is not a link. Input without the field is treated as having no
- * link, so a caller that forgot to request it gets violations, not a false pass.
+ * True when the PR is linked to an issue of this repository: either GitHub's
+ * resolved `closingIssuesReferences` name one, or the body (outside code fences)
+ * has a `Closes|Fixes|Resolves|Refs|Related to #N` line, with `#N` unqualified
+ * or `Danathar/exult#N`. Hive v6 PRs do not auto-close issues and often say
+ * `Refs #N`, so the resolved list alone would flag every one of them. A
+ * reference qualified with another repository (`exult/exult#5`) never counts.
+ * The issue number is not looked up, so a typo passes; the audit reads text,
+ * it does not verify existence.
  */
 export function hasLinkedIssue(pr) {
-    if (!Array.isArray(pr?.closingIssuesReferences)) return false;
-    return pr.closingIssuesReferences.some(
-        (ref) =>
-            `${ref?.repository?.owner?.login}/${ref?.repository?.name}`.toLowerCase() ===
-            REPO.toLowerCase()
-    );
+    if (
+        Array.isArray(pr?.closingIssuesReferences) &&
+        pr.closingIssuesReferences.some(
+            (ref) =>
+                `${ref?.repository?.owner?.login}/${ref?.repository?.name}`.toLowerCase() ===
+                REPO.toLowerCase()
+        )
+    ) {
+        return true;
+    }
+    return ISSUE_REF.test(stripFences(pr?.body));
 }
 
 export function isBotAccount(user) {

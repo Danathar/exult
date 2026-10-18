@@ -7,7 +7,8 @@ name: Agent audit trail
 # ending with a signature line `— hive: agent=<name> ...`) or by the Claude
 # workflow (claude.yml, ai-fix.yml: head branch `claude/...`, no hive
 # signature). For each one the script checks: a linked issue (GitHub's
-# resolved closingIssuesReferences, not body text), the signature line (Hive
+# resolved closingIssuesReferences, or a `Closes/Fixes/Refs #N` line in the
+# body; Hive v6 PRs often say `Refs #N`), the signature line (Hive
 # PRs only), a merger that is a human or the Hive App itself (the
 # hive-serialized lane, reported separately; any other bot or an unknown
 # merger is a violation), and base `master` of Danathar/exult. The result goes
