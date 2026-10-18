@@ -1,0 +1,27 @@
+{
+    "$comment": "Tunable QA rules read by scripts/auto-qa-tuner.mjs (run by .github/workflows/auto-qa.yml). The tuner reads recent GitHub Actions runs and proposes follow-ups (fix a flaky workflow, investigate failures, raise a timeout). It never edits this file or any workflow and never commits: proposals go to a tracking issue and a human applies them. Edit the numbers here to tune it.",
+    "window_days": 14,
+    "min_runs": 5,
+    "failure_rate_threshold": 0.3,
+    "flaky_rate_threshold": 0.1,
+    "slow_p95_minutes": 45,
+    "timeout_headroom_factor": 1.5,
+    "workflows": [
+        "CI",
+        "Coverage gate",
+        "ci-linux",
+        "ci-macos",
+        "ci-windows",
+        "ci-msvc",
+        "ci-android",
+        "ci-ios",
+        "ci-freebsd",
+        "ci-omnios"
+    ],
+    "rules": {
+        "failure_rate_threshold": "A workflow is flagged when failed or timed-out runs divided by completed runs (success, failure, timed_out) in the window exceeds this fraction. Cancelled and skipped runs are ignored.",
+        "flaky_rate_threshold": "Runs are grouped by workflow, commit and event. A group is flaky when it has both a failed and a successful run (a re-run passed, or a re-trigger passed). A workflow is flagged when flaky groups divided by groups exceeds this fraction.",
+        "slow_p95_minutes": "A workflow is flagged when the 95th percentile of successful run durations exceeds this many minutes. The proposal is ceil(p95 * timeout_headroom_factor) rounded up to a multiple of 5, as a timeout-minutes value to compare with the workflow file.",
+        "min_runs": "Workflows with fewer completed runs than this in the window are reported as insufficient data and are never flagged. Names in `workflows` that match no run (for example a workflow that is not merged yet) are reported the same way."
+    }
+}

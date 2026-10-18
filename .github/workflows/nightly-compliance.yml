@@ -1,0 +1,195 @@
+name: Nightly compliance
+
+# Re-runs the contract checks against master every night so slow drift (a new
+# runner image, a new distro package, a ruleset edited in the web UI, a file
+# deleted by accident) is noticed without a pull request:
+#   unit      tests/run-unit-tests.sh with gcc and clang
+#   e2e       tests/e2e/run.sh in a Debian 13 container (builds ucc and expack)
+#   meta      required files present, policy check, script and hook tests,
+#             .claude/settings.json and hook syntax, and the live ruleset
+#             against .github/rulesets/master.json
+# On a scheduled failure it opens or updates ONE tracking issue in this
+# repository (GH_REPO below, never the upstream exult/exult) and never closes it.
+#
+# Some checks cover files that other pull requests of the ACMM series add
+# (check-policies.mjs, .claude/settings.json, .github/rulesets/master.json).
+# Each one is skipped with a notice in the step summary when its file does not
+# exist yet, and is a real check once it does. The required-files list is not
+# skipped: a file on that list that is missing fails the job.
+#
+# The jobs repeat the commands of ci.yml and policy-check.yml rather than
+# calling them, so a change to those workflows cannot silently disable this
+# one. They do not use game data: the unit tests and the e2e test create their
+# own inputs.
+#
+# GitHub disables scheduled workflows in forks until they are enabled in the
+# Actions tab; `workflow_dispatch` works either way.
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-compliance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests (${{ matrix.cxx }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++, clang++]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run unit tests
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: |
+          "$CXX" --version
+          tests/run-unit-tests.sh
+
+  e2e:
+    name: E2E (tools, debian container)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: mirror.gcr.io/library/debian:13
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential autoconf automake libtool autoconf-archive pkg-config bison flex \
+            zlib1g-dev libogg-dev libvorbis-dev libasound2-dev libfluidsynth-dev \
+            libpng-dev libfreetype6-dev libxml2-dev libsdl3-dev libsdl3-image-dev \
+            git ca-certificates
+
+      - uses: actions/checkout@v7
+
+      - name: Run the end-to-end test
+        run: tests/e2e/run.sh
+
+  meta:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Required files are present
+        run: |
+          set -euo pipefail
+          missing=0
+          for f in \
+            AGENTS.md CLAUDE.md COPYING \
+            .github/CODEOWNERS .github/pull_request_template.md .github/copilot-instructions.md \
+            .claude/settings.json risk-config.json \
+            docs/risk-tiers.md docs/agent-boundaries.md docs/review-rubric.md \
+            tests/run-unit-tests.sh tests/e2e/run.sh \
+            .github/workflows/ci.yml .github/workflows/coverage-gate.yml \
+            .github/workflows/agent-tooling.yml .github/workflows/policy-check.yml
+          do
+            if [ ! -e "$f" ]; then
+              echo "::error file=$f::required file is missing"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Policy-as-code check
+        run: |
+          if [ -f scripts/check-policies.mjs ]; then
+            node scripts/check-policies.mjs
+          else
+            echo "scripts/check-policies.mjs does not exist yet; skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Script and hook tests
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(scripts/tests/*.test.mjs .claude/hooks/tests/*.test.mjs)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no node tests found; skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node --test "${files[@]}"
+
+      - name: Claude settings and hooks are valid
+        run: |
+          set -euo pipefail
+          if [ ! -f .claude/settings.json ]; then
+            echo ".claude/settings.json does not exist yet; skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          jq empty .claude/settings.json
+          shopt -s nullglob
+          for h in .claude/hooks/*.mjs; do
+            node --check "$h"
+          done
+
+      - name: Live ruleset matches .github/rulesets/master.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          file=.github/rulesets/master.json
+          if [ ! -f "$file" ]; then
+            echo "$file does not exist yet; ruleset comparison skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          name=$(jq -r .name "$file")
+          id=$(gh api "repos/$REPO/rulesets" --jq ".[] | select(.name == \"$name\") | .id" | head -n 1)
+          if [ -z "$id" ]; then
+            echo "::error::no live ruleset named '$name' in $REPO"
+            exit 1
+          fi
+          # bypass_actors is returned only to admins, so it is not compared here.
+          fields='{name,target,enforcement,conditions,rules}'
+          diff <(gh api "repos/$REPO/rulesets/$id" --jq "$fields" | jq -S .) \
+               <(jq -S "$fields" "$file")
+
+  report:
+    name: Open or update the tracking issue
+    needs: [unit, e2e, meta]
+    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: 'Nightly compliance failing'
+          UNIT: ${{ needs.unit.result }}
+          E2E: ${{ needs.e2e.result }}
+          META: ${{ needs.meta.result }}
+        run: |
+          set -euo pipefail
+          failed=""
+          for pair in "unit tests:$UNIT" "e2e:$E2E" "repository checks:$META"; do
+            [ "${pair#*:}" = "success" ] || failed="$failed ${pair%%:*} (${pair#*:});"
+          done
+          body=$(printf 'The nightly compliance run failed on %s.\n\nChecks that did not pass:%s\n\nRun: %s/%s/actions/runs/%s\n\nThis issue is not closed automatically; close it once the nightly is green.\n' \
+            "$(date -u +%Y-%m-%d)" "$failed" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          existing=$(gh issue list --repo "$GH_REPO" --state open --limit 1000 --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE and (.author.login == "app/github-actions" or .author.login == "github-actions[bot]" or .author.login == "github-actions"))][0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment --repo "$GH_REPO" "$existing" --body "$body"
+          else
+            gh issue create --repo "$GH_REPO" --title "$TITLE" --body "$body"
+          fi
