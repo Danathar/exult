@@ -6,15 +6,17 @@
  *   gh pr list --repo Danathar/exult --state merged --limit 500 \
  *     --json number,title,author,body,mergedAt,mergedBy,labels,url,baseRefName,headRefName,closingIssuesReferences
  * `closingIssuesReferences` and `baseRefName` are required; a PR without them is reported as
- * a violation, not assumed to be linked or to target master. `commits` may be present but is not
- * read (and asking `gh` for it with --limit 500 exceeds GitHub's GraphQL node
- * limit).
+ * a violation, not assumed to be linked or to target master. `commits` (messageHeadline, messageBody) is read
+ * when present, for the Claude trailer; asking `gh` for it with --limit 500
+ * exceeds GitHub's GraphQL node limit, so agent-audit.yml uses a smaller limit.
  *
  * A PR is agent-authored when its author is the Hive GitHub App
  * (`app/danathar-atomic-hive` in `gh` output, `danathar-atomic-hive[bot]` in
  * REST/webhook output) or its body has a `— hive: agent=<name> ...` signature
  * line (the Hive lane), or it was opened by the Claude workflow (claude.yml, ai-fix.yml):
- * head branch `claude/...` or a `claude.ai/code` link in the body. Everything else is counted as non-agent and listed only as a number,
+ * head branch `claude/...` or a `claude.ai/code` link in the body, or any commit with a `Co-Authored-By: Claude` trailer (claude.yml pushes onto
+ * existing PR branches, so the PR author alone does not show it; this needs the
+ * `commits` field, so the input must be fetched with a smaller --limit). Everything else is counted as non-agent and listed only as a number,
  * so a window with zero agent PRs reads as "nothing was audited", not as a pass.
  *
  * Requirements checked per agent PR (see docs/agent-boundaries.md and AGENTS.md):
@@ -49,6 +51,15 @@ import { fileURLToPath } from 'node:url';
 export const REPO = 'Danathar/exult';
 export const PR_URL_PREFIX = `https://github.com/${REPO}/pull/`;
 const CLAUDE_BODY = /claude\.ai\/code/i;
+const CLAUDE_TRAILER = /^co-authored-by:\s*claude\b/im;
+
+/** True when any commit carries the `Co-Authored-By: Claude` trailer (claude.yml and ai-fix.yml are told to add it). */
+export function hasClaudeCommit(pr) {
+    if (!Array.isArray(pr?.commits)) return false;
+    return pr.commits.some((c) =>
+        CLAUDE_TRAILER.test(`${c?.messageHeadline ?? ''}\n${c?.messageBody ?? ''}`)
+    );
+}
 
 export const AGENT_LOGINS = [
     'app/danathar-atomic-hive',
@@ -94,7 +105,7 @@ export function findSignature(body) {
     return null;
 }
 
-/** @returns {{agent: boolean, reason: 'app-author'|'signature'|'claude-workflow'|null}} */
+/** @returns {{agent: boolean, reason: 'app-author'|'signature'|'claude-workflow'|'claude-commit'|null}} */
 export function classify(pr) {
     if (AGENT_LOGINS.includes(pr?.author?.login)) {
         return { agent: true, reason: 'app-author' };
@@ -107,6 +118,9 @@ export function classify(pr) {
         CLAUDE_BODY.test(String(pr?.body ?? ''))
     ) {
         return { agent: true, reason: 'claude-workflow' };
+    }
+    if (hasClaudeCommit(pr)) {
+        return { agent: true, reason: 'claude-commit' };
     }
     return { agent: false, reason: null };
 }
@@ -148,7 +162,7 @@ export function auditPr(pr) {
     const violations = [];
 
     if (!hasLinkedIssue(pr)) violations.push('linked-issue');
-    if (classify(pr).reason !== 'claude-workflow' && !findSignature(pr.body)) {
+    if (!String(classify(pr).reason).startsWith('claude-') && !findSignature(pr.body)) {
         violations.push('signature');
     }
 
@@ -221,7 +235,7 @@ export function renderMarkdown(report) {
     );
     if (report.agent === 0) {
         out.push(
-            '**No agent-authored PRs were found, so nothing was audited.** This is not a pass of the audit-trail rules; check the window and the classification (author `app/danathar-atomic-hive` or a `— hive: agent=...` body line, head branch `claude/...` or a claude.ai/code link).',
+            '**No agent-authored PRs were found, so nothing was audited.** This is not a pass of the audit-trail rules; check the window and the classification (author `app/danathar-atomic-hive` or a `— hive: agent=...` body line, head branch `claude/...`, a claude.ai/code link or a `Co-Authored-By: Claude` commit trailer).',
             ''
         );
         return out.join('\n');

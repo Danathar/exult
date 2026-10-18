@@ -399,3 +399,19 @@ test('Claude workflow PRs need no hive signature but still need a link, a non-bo
     assert.deepEqual(auditPr({ ...claude, mergedBy: { login: 'github-actions[bot]' } }), ['human-merge']);
     assert.deepEqual(auditPr({ ...claude, baseRefName: 'main' }), ['base']);
 });
+
+test('a Co-Authored-By: Claude commit on a human PR marks it as agent work', () => {
+    const human = pr({
+        author: { login: 'Danathar', is_bot: false },
+        body: 'Closes #5',
+        commits: [
+            { messageHeadline: 'fix typo', messageBody: '' },
+            { messageHeadline: 'review fixes', messageBody: 'Details\n\nCo-Authored-By: Claude <noreply@anthropic.com>' },
+        ],
+    });
+    assert.deepEqual(classify(human), { agent: true, reason: 'claude-commit' });
+    assert.deepEqual(auditPr(human), []);
+    const none = pr({ ...human, commits: [{ messageHeadline: 'x', messageBody: 'about Claude' }] });
+    assert.equal(classify(none).agent, false);
+    assert.equal(classify({ ...human, commits: undefined }).agent, false);
+});

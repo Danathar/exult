@@ -103,7 +103,7 @@ jobs:
       - name: Check requester is a maintainer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
+          GH_REPO: Danathar/exult
           ACTOR: ${{ github.actor }}
         run: |
           role=$(gh api "repos/$GH_REPO/collaborators/$ACTOR/permission" \
@@ -117,7 +117,7 @@ jobs:
         id: target
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
+          GH_REPO: Danathar/exult
           NUM: ${{ github.event.issue.number || github.event.pull_request.number }}
           IS_PR: ${{ github.event_name == 'pull_request' || github.event.issue.pull_request != null }}
         run: |
@@ -161,7 +161,7 @@ jobs:
         if: steps.target.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
+          GH_REPO: Danathar/exult
           NUM: ${{ github.event.issue.number || github.event.pull_request.number }}
         run: |
           gh issue comment "$NUM" --repo "$GH_REPO" --body "$(printf 'AI fix requested by @%s ([run](%s/%s/actions/runs/%s)).\n\nBefore applying anything, the agent reads %s and %s. It verifies each finding against the code first, and reports findings it rejects instead of forcing a change.\n' \
@@ -250,7 +250,7 @@ jobs:
             1. Read the issue or PR with `gh issue view` or `gh pr view`, using --repo Danathar/exult. `gh pr view` does not return inline review comments; fetch them with `${{ runner.temp }}/gh-review-read.sh pr-comments <number>` (inline comments) and `${{ runner.temp }}/gh-review-read.sh pr-reviews <number>` (review summaries). That script is read-only; do not call `gh api` directly.
             2. For each finding, verify the claim against the code at this checkout. Judge it by docs/review-rubric.md. Skip, and say why, any finding that is wrong, not actionable, or needs a merge order instead of a code change.
             3. For a pull request, commit the fixes to the checked-out head branch and push with exactly `git push -u origin HEAD` (no other push form is permitted). For an issue, create a branch from master with `git switch -c <branch>`, push with exactly `git push -u origin HEAD`, then open a PR with `gh pr create --repo Danathar/exult --base master --head <branch>`.
-            4. Before committing, run `tests/run-unit-tests.sh` and, for changes to the tools, `tests/e2e/run.sh`; run `shellcheck` on any changed shell script; for workflow or script changes also `node --test 'scripts/tests/*.test.mjs'`. If a build or test cannot run on this runner (for example tests/e2e/run.sh when SDL3 is not installed), say so in your closing comment; never claim a check passed that you did not run. Follow .clang-format and the surrounding code style. Do not merge anything.
+            4. Before committing, run `tests/run-unit-tests.sh` and, for changes to the tools, `tests/e2e/run.sh`; run `shellcheck` on any changed shell script; for workflow or script changes also `node --test 'scripts/tests/*.test.mjs'`. If a build or test cannot run on this runner (for example tests/e2e/run.sh when SDL3 is not installed), say so in your closing comment; never claim a check passed that you did not run. Follow .clang-format and the surrounding code style. End every commit message with the trailer line Co-Authored-By: Claude (this is the audit marker agent-audit.yml looks for). Do not merge anything.
             5. Finish with one comment (`gh issue comment --repo Danathar/exult` or `gh pr comment --repo Danathar/exult`) listing which findings you applied and which you rejected, with the reason for each. Pushes and PRs made with the workflow token do not start CI, so if you pushed or opened a PR, end the comment by telling the maintainer to re-run the checks (close and reopen the PR, or push an empty commit) before the required checks can pass.
           claude_args: >-
             --max-turns 40

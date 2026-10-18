@@ -139,15 +139,24 @@ jobs:
             node --check "$h"
           done
 
+      # GET /repos/{repo}/rulesets needs a credential that can read repository
+      # rulesets; the workflow GITHUB_TOKEN has no scope for that (an empty list
+      # would read as "no ruleset"). The comparison therefore runs only when the
+      # owner adds a repository secret RULESET_READ_TOKEN (a fine-grained PAT or
+      # GitHub App token with read-only "Administration" on this repository).
       - name: Live ruleset matches .github/rulesets/master.json
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RULESET_READ_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           file=.github/rulesets/master.json
           if [ ! -f "$file" ]; then
             echo "$file does not exist yet; ruleset comparison skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ -z "$GH_TOKEN" ]; then
+            echo "secret RULESET_READ_TOKEN is not set; ruleset comparison skipped (the workflow token cannot read rulesets)" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           name=$(jq -r .name "$file")

@@ -75,13 +75,16 @@ jobs:
           if [ "$(date -u -d "$SINCE" +%F 2>/dev/null || true)" != "$SINCE" ]; then
             echo "::error::since must be a real date, got '$SINCE'"; exit 2
           fi
-          # `commits` is left out of --json on purpose: with --limit 500 it
-          # exceeds GitHub's GraphQL node limit, and the audit does not read it.
-          gh pr list --repo "$GH_REPO" --state merged --limit 500 --search "merged:>=$SINCE" \
-            --json number,title,author,body,mergedAt,mergedBy,labels,url,baseRefName,headRefName,closingIssuesReferences > merged.json
+          # `commits` is requested so a `Co-Authored-By: Claude` commit pushed
+          # onto a human PR branch (claude.yml) is seen. With --limit 500 it
+          # exceeds GitHub's GraphQL node limit, so the limit is 100; if 100
+          # PRs merged in the window the script exits 2 (possible truncation)
+          # and the audit is rerun with a narrower `since`.
+          gh pr list --repo "$GH_REPO" --state merged --limit 100 --search "merged:>=$SINCE" \
+            --json number,title,author,body,mergedAt,mergedBy,labels,url,baseRefName,headRefName,commits,closingIssuesReferences > merged.json
           # --limit makes the script refuse a list that may be truncated.
           node scripts/ai-audit-report.mjs --input merged.json --since "$SINCE" \
-            --limit 500 --strict --output report.md && status=0 || status=$?
+            --limit 100 --strict --output report.md && status=0 || status=$?
           if [ -f report.md ]; then cat report.md >> "$GITHUB_STEP_SUMMARY"; fi
           if [ "$status" -ne 0 ]; then
             echo "::error::agent audit exited $status (1 = audit-trail violation, 2 = bad or truncated input); see the run summary"
