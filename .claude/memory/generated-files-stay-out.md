@@ -8,4 +8,5 @@
 in a scratch directory and check `git status --short` before committing.
 **Why it matters:** generated files bloat the diff and conflict with upstream.
 **Evidence:** `.gitignore` entries `ucparse.cc`, `uclex.cc`;
-`git ls-files tools/compiler` lists only `ucparse.yy`/`uclex.ll`.
+`git ls-files tools/compiler` lists `ucparse.yy` and `uclex.ll`, not
+`ucparse.cc` or `uclex.cc`.

@@ -18,7 +18,7 @@ Pull requests and issues go to `Danathar/exult` (`--repo Danathar/exult`).
 | [.claude/session-summary.md](../../.claude/session-summary.md) | what is in flight now | overwritten each session |
 | this directory | recurring patterns in how the work goes | dated, kept |
 
-Example of the split: "`gh` resolves this fork to upstream" is a correction
+Example of the split: "always pass `--repo` to `gh` writes" is a correction
 (memory). "New files under a gitignored directory vanish from the commit unless
 you check status before pushing" is the kind of pattern a reflection records.
 
@@ -47,7 +47,7 @@ Observed events only, each with a PR, commit or file reference.
 The pattern, stated as narrowly as the evidence allows.
 
 ## What to do next time
-Concrete practices. If one hardens into a standing rule, move it to AGENTS.md.
+Concrete practices. If one hardens into a standing rule, propose it to the owner (AGENTS.md is Tier 3, owner-only).
 ```
 
 Rules: no event that cannot be traced to a PR, commit or file; mark guesses as

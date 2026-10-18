@@ -15,8 +15,9 @@ Pull requests, issues and comments go to `Danathar/exult` only
 - Not here: standing rules for all work ([AGENTS.md](../../AGENTS.md)), what is
   in flight ([../session-summary.md](../session-summary.md)), and patterns in
   how the work goes ([../../docs/reflections/](../../docs/reflections/README.md)).
-  A correction that hardens into a standing rule is promoted to AGENTS.md; the
-  entry stays as the reason behind the rule.
+  A correction that hardens into a standing rule is proposed to the owner for
+  AGENTS.md (it is Tier 3, owner-only); the entry stays as the reason behind
+  the rule.
 
 ## Naming and format
 
@@ -49,8 +50,8 @@ bare line number.
 
 | Entry | One line |
 |---|---|
-| [gh-defaults-to-upstream](gh-defaults-to-upstream.md) | `gh` resolves this fork to the parent `exult/exult` unless `--repo Danathar/exult` is passed |
-| [game-data-is-copyrighted](game-data-is-copyrighted.md) | Original Ultima VII files are never committed, not even as test fixtures |
+| [gh-defaults-to-upstream](gh-defaults-to-upstream.md) | `gh` may target the parent `exult/exult`; always pass `--repo Danathar/exult` on writes |
+| [game-data-is-copyrighted](game-data-is-copyrighted.md) | Files copied from an Ultima VII install are never committed, not even as test fixtures |
 | [ci-workflows-are-path-filtered](ci-workflows-are-path-filtered.md) | The upstream `ci-*` builds skip docs-only PRs, so a green PR may not have been built |
 | [github-dir-is-gitignored](github-dir-is-gitignored.md) | `.gitignore` ignores `.github`, so new files there need `git add -f` |
 | [dont-reformat-whole-files](dont-reformat-whole-files.md) | Format only the lines you change; the tree uses tabs and `.clang-format` is informational in CI |

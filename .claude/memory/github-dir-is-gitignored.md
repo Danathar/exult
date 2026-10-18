@@ -8,4 +8,5 @@ there (the workflows) are fine, but a new file needs `git add -f <path>`. Check
 with `git status --ignored --short` before committing. Do not edit `.gitignore`
 to work around it.
 **Why it matters:** workflows, templates or prompts silently missing from a PR.
-**Evidence:** `.gitignore`, entry `.github`; `git check-ignore -v .github/prompts/README.md`.
+**Evidence:** `.gitignore`, entry `.github`; `git check-ignore -v .github/new-file.md` (use an untracked path; already
+tracked files are not reported as ignored).

@@ -1,11 +1,12 @@
 # gh defaults to the upstream repository
 
 **Date:** 2026-10-18
-**Wrong:** running `gh pr create`, `gh issue create` or `gh issue comment`
-without `--repo`, assuming it targets this fork.
-**Right:** `Danathar/exult` is a fork of `exult/exult`, and `gh` can pick the
-parent as the default repository for a fork clone that has no default set. The
-default is per clone (`gh repo set-default --view`), so do not rely on it:
+**Wrong:** running `gh` commands that create or comment on PRs or issues
+without the repo flag, assuming they target this fork.
+**Right:** `Danathar/exult` is a fork of `exult/exult`, and `gh` picks its
+target from the clone's remotes and a per-clone default
+(`gh repo set-default --view`), and that default can be the parent (for example
+after `gh repo clone` of a fork). Do not rely on it:
 always pass `--repo Danathar/exult` on writes; PRs use
 `gh pr create --repo Danathar/exult --base master --head <branch>`.
 **Why it matters:** a PR or comment could land on the upstream project, which

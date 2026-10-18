@@ -15,8 +15,8 @@ tests/run-unit-tests.sh      # builds and runs the unit tests
 shows nothing, that PR has not merged yet; say so instead of inventing a
 substitute.
 
-To build the whole engine (this is what `.github/workflows/ci-linux.yml` does;
-check that file for the current package list and flags):
+To build the engine (a subset of what `.github/workflows/ci-linux.yml` does;
+check that file for the current package list and the full flag set):
 
 ```bash
 autoreconf -v -i

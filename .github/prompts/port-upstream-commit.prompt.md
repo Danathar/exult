@@ -19,6 +19,7 @@ change the owner asked for.
    fork-only files, and does not pull in game data.
 4. Run `tests/run-unit-tests.sh` (and `tests/e2e/run.sh` where relevant).
 5. Sign off the commit (`git commit -s`) and open the PR with
-   `gh pr create --repo Danathar/exult --base master --head <branch>`, linking
-   the upstream change in the body as plain text, and stating what was not
+   `gh pr create --repo Danathar/exult --base master --head <branch>`, citing
+   the upstream commit SHA (or the URL inside a code span, so GitHub does not
+   cross-reference upstream PRs), and stating what was not
    verified.

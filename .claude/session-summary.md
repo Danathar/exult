@@ -19,14 +19,15 @@ Start of session:
    `gh pr list --repo Danathar/exult` and `gh issue list --repo Danathar/exult`.
 
 End of session. This is one tracked file, so concurrent PRs that all rewrite it
-conflict. Rule: only the session that lands work on `master` (or a dedicated
-handoff PR opened after the merge) rewrites it, starting from the current
+conflict. Rule: agents do not merge, so it is rewritten in a dedicated handoff
+PR opened after the work has merged (or by the owner), starting from the current
 `origin/master` copy. A session that opens a PR to be merged later puts its
 notes in the PR body and leaves this file alone. The session that updates it:
 
 1. Updates "Current state" to match `master` now.
 2. Replaces the "Last session" entry (overwrite; do not append a history).
-   What is worth keeping goes to AGENTS.md, `memory/` or `docs/reflections/`.
+   What is worth keeping goes to `memory/` or `docs/reflections/`; propose
+   standing rules to the owner (AGENTS.md is Tier 3, owner-only).
 3. Rewrites "Open threads" and "Next steps", one line each with an issue or PR
    number.
 4. Records only observed things; marks guesses `[INFERENCE]`.

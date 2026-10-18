@@ -15,12 +15,14 @@ For the owner, one way to do it (check each command against your own setup;
 this skill has not been exercised by an agent):
 
 1. Make sure no ACMM or Hive PRs are mid-merge: Hive merges serially.
-2. Use GitHub's "Sync fork" on `Danathar/exult`, or locally fetch upstream
-   with a temporary remote and merge it on a branch, not directly on `master`.
-3. Expect conflicts only where this fork added files: `.github/`, `.claude/`,
-   `.cursor/`, `AGENTS.md`, `CLAUDE.md`, `.editorconfig`, `docs/`, `tests/`,
-   `scripts/`, `policies/`. Upstream does not use those names today, but check.
+2. Locally fetch upstream with a temporary remote and merge it on a branch,
+   then open a PR to `Danathar/exult`. Avoid GitHub's "Sync fork" button: it
+   updates `master` directly and bypasses the PR and its checks.
+3. Expect conflicts mainly where this fork added files: `.claude/`, `.cursor/`,
+   `AGENTS.md`, `CLAUDE.md`, `.editorconfig`, `tests/`, `scripts/`,
+   `policies/`. Upstream also has `.github/` and `docs/`, so check those too.
 4. Run `tests/run-unit-tests.sh` and `tests/e2e/run.sh`, and let the `ci-*`
    workflows run, before merging the sync PR.
-5. Remove the temporary remote afterwards; the clones are expected to have only
+5. Any `gh` write command passes `--repo Danathar/exult`.
+6. Remove the temporary remote afterwards; the clones are expected to have only
    `origin`.

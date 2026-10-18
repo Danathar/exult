@@ -14,8 +14,10 @@ remote and agents must not add one.
 
 - Everything goes to **`Danathar/exult`**: issues, branches, pull requests and
   comments. Never open an issue, PR or comment on `exult/exult`.
-- `gh` resolves a fork's default repository to its parent unless told
-  otherwise, so **every `gh` write command passes `--repo Danathar/exult`**,
+- `gh` picks its target repository from the clone's remotes and a per-clone
+  default, and that default can be the parent (for example after
+  `gh repo clone` of a fork). Do not rely on it: **every `gh` write command
+  passes `--repo Danathar/exult`**,
   and PRs use `gh pr create --repo Danathar/exult --base master --head <branch>`.
 - The default branch is `master`.
 - Syncing from upstream is the owner's job, not an agent's (see
@@ -60,8 +62,9 @@ Main source layout (engine sources live in the repository root):
 
 ## Build
 
-Linux, from the repository root. This is what `.github/workflows/ci-linux.yml`
-does (read it for the authoritative package list and flags):
+Linux, from the repository root. This is a subset of what
+`.github/workflows/ci-linux.yml` does (read it for the authoritative package
+list and the full flag set):
 
 ```bash
 autoreconf -v -i
@@ -93,10 +96,10 @@ tests/run-unit-tests.sh   # builds and runs the unit tests
 tests/e2e/run.sh          # builds the command-line tools and runs end-to-end tests
 ```
 
-CI (`.github/workflows/ci.yml`) runs them as the required checks
-`Unit tests (gcc)`, `Unit tests (clang)` and `E2E (tools)`, plus
-`Coverage gate`, `agent-tooling` and `policy-check`. Do not rename those jobs:
-the branch ruleset refers to them by name. The upstream `ci-*.yml` build
+CI (`.github/workflows/ci.yml`) runs them as the jobs `Unit tests (gcc)`,
+`Unit tests (clang)` and `E2E (tools)`. `Coverage gate`, `agent-tooling` and
+`policy-check` are separate workflows. The owner's planned branch ruleset will
+require these names, so do not rename them. The upstream `ci-*.yml` build
 workflows are path-filtered (they skip `docs/**`, `*.md`, `README*`, ...), so a
 docs-only PR only gets the repository's own checks.
 
@@ -123,12 +126,13 @@ another platform).
 
 ## Never commit
 
-- **Ultima VII game data or other copyrighted assets**: the original games'
-  `static/` and `gamedat/` directories, `*.flx`, `*.vga`, `*.shp`, `*.mid`
-  and other files taken from the game, and savegames (`*.sav`). Exult is
-  legal only because it requires the user's own copy. Test fixtures must be
-  synthetic or created by the test itself. (Mod content under `content/` is
-  authored for Exult and is already tracked.)
+- **Ultima VII game data or other copyrighted assets.** The rule is about
+  provenance, not file extension: Exult's own `data/` and `content/` already
+  track `.shp`, `.flx`, `.vga` and `.mid` files. Never add any file copied from
+  an Ultima VII install (its `static/` and `gamedat/` contents, original
+  archives, music, graphics) or a savegame (`*.sav`). Exult is legal only
+  because it requires the user's own copy. Test fixtures must be synthetic or
+  created by the test itself.
 - Secrets, tokens, local paths or personal configuration (`exult.cfg`).
 - Build output and generated files.
 
@@ -150,14 +154,10 @@ another platform).
 ## Risk tiers
 
 Defined in [docs/risk-tiers.md](docs/risk-tiers.md) and `risk-config.json`
-(added by the agent-safety slice):
-
-- **Tier 1:** docs, comments, tests only.
-- **Tier 2:** ordinary engine and tool code.
-- **Tier 3:** build system (`configure.ac`, `Makefile.am`, `*.mk`), `.github/**`,
-  `.claude/settings.json`, `.claude/hooks/**`, `policies/**`,
-  `risk-config.json`, `CODEOWNERS`, `AGENTS.md`, `COPYING`, and savegame or
-  file-format code (`files/`, `gamedat.cc`, serialization in `objs/`).
+(added by the agent-safety slice); the lists are not repeated here so they
+cannot drift. Classify a path with
+`node scripts/check-policies.mjs --classify <path>`. Note that `AGENTS.md`,
+`CLAUDE.md`, `.claude/**`, `.cursor/rules/**` and `.github/**` are Tier 3.
 
 Tier 3 changes need owner review; flag them in the PR. The agent boundaries are
 in [docs/agent-boundaries.md](docs/agent-boundaries.md).
@@ -180,7 +180,9 @@ At the start of work read `.claude/session-summary.md`, skim
 `.claude/memory/README.md` (index) and recent `git log`. Verify anything you
 rely on from them against the live repository: branches, PR numbers and SHAs
 drift. Put durable lessons in `.claude/memory/` and patterns in
-`docs/reflections/`, not in chat. Only the session that lands work on `master`
-rewrites the session summary; a session that opens a PR to be merged later puts
-its handoff notes in the PR body so concurrent PRs do not conflict. These files
+`docs/reflections/`, not in chat. Agents do not merge, so the session summary
+is rewritten in a dedicated handoff PR opened after the work has merged (or by
+the owner), starting from the current `origin/master` copy. A session whose PR
+is still waiting to merge puts its handoff notes in the PR body so concurrent
+PRs do not conflict. `AGENTS.md` itself is Tier 3 and owner-reviewed. These files
 are the shared handoff for every agent, not only Claude.
