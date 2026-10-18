@@ -152,6 +152,8 @@ const blocked = [
     // saves in the ignored gamedat directory
     'git clean -fdx',
     'git clean -fX',
+    'git clean -d -f -x',
+    'git -C . clean -xdf',
     // privilege
     'sudo make install',
     'sudo dnf install sdl3-devel',
