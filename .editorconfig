@@ -8,7 +8,7 @@
 # aligns with spaces after tabs; that is the .clang-format style, not a bug here.
 root = true
 
-[*.{cc,h,cpp,hpp,uc,ll,yy,ac,sh}]
+[*.{c,cc,h,cpp,hpp,uc,ll,yy,ac,sh}]
 indent_style = tab
 indent_size = 4
 tab_width = 4
