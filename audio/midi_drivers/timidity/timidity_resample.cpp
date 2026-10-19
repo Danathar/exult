@@ -36,6 +36,7 @@
 #	include <cmath>
 #	include <cstdio>
 #	include <cstdlib>
+#	include <cstring>
 
 #	ifdef NS_TIMIDITY
 namespace NS_TIMIDITY {
@@ -643,8 +644,12 @@ namespace NS_TIMIDITY {
 		if ((newlen >> FRACTION_BITS) < 4) {
 			return;
 		}
-		auto*   newdata = safe_Malloc<sint16>(newlen >> FRACTION_BITS);
-		sint16* dest    = newdata;
+		/* The resamplers look up to two samples past the end, so keep that
+		 padding zeroed. */
+		const sint32 newsamples = newlen >> FRACTION_BITS;
+		auto*        newdata    = safe_Malloc<sint16>(newsamples + 2);
+		memset(newdata, 0, (newsamples + 2) * sizeof(sint16));
+		sint16* dest = newdata;
 
 		sint32 count = (newlen >> FRACTION_BITS) - 1;
 		sint32 incr  = (sp->data_length - (1 << FRACTION_BITS)) / count;
