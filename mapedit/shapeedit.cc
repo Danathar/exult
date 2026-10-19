@@ -1671,7 +1671,7 @@ C_EXPORT void on_shinfo_frameusecode_update_clicked(GtkButton* btn, gpointer use
 	} else {
 		const char* ucfun;
 		gtk_tree_model_get(model, iter.get(), FRUC_USEFUN_COLUMN, &ucfun, -1);
-		if (!std::strcmp(ucfun, newucfun)) {
+		if (std::strcmp(ucfun, newucfun) != 0) {
 			gtk_tree_store_set(store, iter.get(), FRUC_USEFUN_COLUMN, newucfun, FRUC_MODIFIED, 1, -1);
 		}
 	}
@@ -1855,7 +1855,7 @@ C_EXPORT void on_shinfo_framenames_update_clicked(GtkButton* btn, gpointer user_
 		gtk_tree_model_get(
 				model, iter.get(), FNAME_MSGTYPE, &type, FNAME_MSGSTR, &str, FNAME_OTHERTYPE, &othertype, FNAME_OTHERMSG, &othermsg,
 				-1);
-		if (type != newtype || othertype != newothertype || !strcmp(str, newstr) || !strcmp(othermsg, newothermsg)) {
+		if (type != newtype || othertype != newothertype || strcmp(str, newstr) != 0 || strcmp(othermsg, newothermsg) != 0) {
 			gtk_tree_store_set(
 					store, iter.get(), FNAME_FRAME, static_cast<int>(newfrnum), FNAME_QUALITY, static_cast<int>(newqual),
 					FNAME_MSGTYPE, newtype, FNAME_MSGSTR, newstr, FNAME_OTHERTYPE, newothertype, FNAME_OTHERMSG, newothermsg,
@@ -2511,8 +2511,10 @@ void ExultStudio::set_shape_notebook_frame(int frnum    // Frame # to set.
 	if (!info) {
 		return;
 	}
-	set_spin("shinfo_xtiles", info->get_3d_xtiles(frnum));
-	set_spin("shinfo_ytiles", info->get_3d_ytiles(frnum));
+	// Show the shape's real dimensions (frame 0 is never reflected), since they are
+	// saved back unchanged by save_shape_notebook().
+	set_spin("shinfo_xtiles", info->get_3d_xtiles(0));
+	set_spin("shinfo_ytiles", info->get_3d_ytiles(0));
 	set_spin("shinfo_ztiles", info->get_3d_height());
 }
 
@@ -3548,9 +3550,9 @@ void ExultStudio::save_shape_notebook(
 											 : -1;    // None.
 		winfo->set_ammo(ammo);
 		const int proj_type = get_optmenu("shinfo_weapon_sprite");
-		const int proj      = proj_type == 0  ? get_spin("shinfo_weapon_proj")
-							  : ammo_use == 2 ? -3     // Weapon.
-											  : -1;    // None.
+		const int proj      = proj_type == 0   ? get_spin("shinfo_weapon_proj")
+							  : proj_type == 2 ? -3     // Weapon.
+											   : -1;    // None.
 		winfo->set_projectile(proj);
 		winfo->set_uses(get_optmenu("shinfo_weapon_uses"));
 		winfo->set_sfxs(get_spin("shinfo_weapon_sfx"), get_spin("shinfo_weapon_hitsfx"));
@@ -3614,7 +3616,8 @@ void ExultStudio::save_shape_notebook(
 	} else {
 		Armor_info*                       arinfo = info.set_armor_info(true);
 		constexpr static const std::array immun{"shinfo_armor_immun0", "shinfo_armor_immun1", "shinfo_armor_immun2",
-												"shinfo_armor_immun3", "shinfo_armor_immun4", "shinfo_armor_immun5"};
+												"shinfo_armor_immun3", "shinfo_armor_immun4", "shinfo_armor_immun5",
+												"shinfo_armor_immun6", "shinfo_armor_immun7"};
 		arinfo->set_prot(get_spin("shinfo_armor_value"));
 		arinfo->set_immune(get_bit_toggles(immun));
 	}

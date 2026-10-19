@@ -19,42 +19,40 @@ void rebuild() {
 	FILE* fi = fopen("index", "r");
 	if (fi == nullptr) {
 		printf("Can't open index file.\n");
-		exit(0);
+		exit(1);
 	}
 	FILE* fo = fopen("usecode", "wb");
 	if (fo == nullptr) {
 		printf("Can't create usecode file.\n");
-		exit(0);
+		exit(1);
 	}
-	while (!feof(fi)) {
-		char  s[10];
-		char* err = fgets(s, 10, fi);
-		assert(err != nullptr);
+	char s[32];
+	while (fgets(s, sizeof(s), fi) != nullptr) {
+		s[strcspn(s, "\r\n")] = '\0';
+		if (s[0] == '\0') {
+			continue;
+		}
 
-		char filename[18];
-		strcpy(filename, s);
-		char* pos = strchr(filename, '\n');
-		if (pos) {
-			*pos = '\0';
+		char filename[48];
+		snprintf(filename, sizeof(filename), "%s.uco", s);
+		printf("Writing function: %s... ", s);
+		FILE* fi2 = fopen(filename, "rb");
+		if (fi2 == nullptr) {
+			printf("Can't open file %s\n", filename);
+			fclose(fo);
+			exit(1);
 		}
-		strcat(filename, ".uco");
-		if (!feof(fi)) {
-			s[strlen(s) - 1] = 0;
-			printf("Writing function: %s... ", s);
-			FILE* fi2 = fopen(filename, "rb");
-			if (fi2 == nullptr) {
-				printf("Can't open file %s\n", filename);
-				exit(0);
-			}
-			while (!feof(fi2)) {
-				const unsigned c = fgetc(fi2);
-				if (!feof(fi2)) {
-					fputc(c, fo);
-				}
-			}
-			fclose(fi2);
-			printf("done\n");
+		int c;
+		while ((c = fgetc(fi2)) != EOF) {
+			fputc(c, fo);
 		}
+		fclose(fi2);
+		printf("done\n");
+	}
+	fclose(fi);
+	if (fclose(fo) != 0) {
+		printf("Error writing usecode file.\n");
+		exit(1);
 	}
 	exit(0);
 }
