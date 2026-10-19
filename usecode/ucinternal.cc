@@ -3368,7 +3368,12 @@ void Usecode_internal::read_usevars() {
 	statics.resize(cnt);
 	int i;
 	for (i = 0; i < cnt; i++) {
-		statics[i].restore(&nfile);
+		if (!statics[i].restore(&nfile)) {
+			// The rest of the file can no longer be framed.
+			cerr << "Error reading global static usecode variable #" << i << " from '" << USEVARS
+				 << "'; ignoring the rest of the file." << endl;
+			return;
+		}
 	}
 	unsigned long funid;
 	while (!nfile.eof() && (funid = nfile.read4()) != 0xffffffffU) {
@@ -3392,7 +3397,11 @@ void Usecode_internal::read_usevars() {
 		}
 		fun->statics.resize(cnt);
 		for (i = 0; i < cnt; i++) {
-			fun->statics[i].restore(&nfile);
+			if (!fun->statics[i].restore(&nfile)) {
+				cerr << "Error reading static usecode variable #" << i << " of function " << hex << setw(4) << setfill('0')
+					 << funid << dec << setfill(' ') << " from '" << USEVARS << "'; ignoring the rest of the file." << endl;
+				return;
+			}
 		}
 	}
 }

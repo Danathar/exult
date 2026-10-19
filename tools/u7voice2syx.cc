@@ -205,13 +205,15 @@ std::size_t fill_sysex_buffer(uint32 address_base, uint16 address_offset, uint32
 	}
 
 	// Calc checksum
-	char checksum = 0;
+	// (Roland checksum: low 7 bits of the two's complement of the sum)
+	unsigned int checksum = 0;
 	for (uint32 j = 5; j < sysex_data_start + len; j++) {
-		checksum += sysex_buffer[j];
+		checksum += static_cast<unsigned char>(sysex_buffer[j]);
 	}
+	checksum = (0x80 - (checksum & 0x7f)) & 0x7f;
 
 	// Set checksum
-	sysex_buffer[sysex_data_start + len] = checksum;
+	sysex_buffer[sysex_data_start + len] = static_cast<char>(checksum);
 
 	// Terminator
 	sysex_buffer[sysex_data_start + len + 1] = static_cast<char>(0xF7);
