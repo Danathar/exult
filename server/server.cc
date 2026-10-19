@@ -54,8 +54,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #	include <fcntl.h>
 #	include <unistd.h>
 
+#	include <algorithm>
 #	include <cstdio>
 #	include <cstdlib>
+#	include <cstring>
 #	include <iomanip>
 #	include <sstream>
 
@@ -498,9 +500,13 @@ static void Handle_client_message(int& fd    // Socket to client.  May be closed
 			little_endian::Write2(wptr, npc->get_shapenum());
 			Write1(wptr, npc->is_unused());
 			const std::string nm = npc->get_npc_name();
-			strcpy(reinterpret_cast<char*>(wptr), nm.c_str());
+			// Truncate the name to fit, leaving room for the ending nullptr.
+			const size_t room = sizeof(data) - (wptr - data) - 1;
+			const size_t len  = std::min(nm.size(), room);
+			std::memcpy(wptr, nm.data(), len);
+			wptr[len] = 0;
 			// Point past ending nullptr.
-			wptr += strlen(reinterpret_cast<char*>(wptr)) + 1;
+			wptr += len + 1;
 		} else {
 			little_endian::Write2(wptr, static_cast<unsigned short>(-1));
 		}

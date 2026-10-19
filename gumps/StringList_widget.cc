@@ -78,7 +78,12 @@ bool StringList_widget::mouse_down(int mx, int my, MouseButton button) {
 	}
 
 	if (button == MouseButton::Left) {
-		set_frame(my / lineheight);
+		const int line = my / lineheight;
+		// The border below the last line is part of the widget but not a selection
+		if (line >= int(selections.size())) {
+			return true;
+		}
+		set_frame(line);
 
 		activate(button);
 		gwin->add_dirty(get_rect());

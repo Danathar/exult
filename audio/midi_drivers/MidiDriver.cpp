@@ -188,7 +188,7 @@ std::vector<ConfigSetting_widget::Definition> MidiDriver::get_midi_driver_settin
 		convert.choices.push_back(ConfigSetting_widget::Definition::Choice{Strings::GeneralMidi(), "gm", "gm"});
 		convert.choices.push_back(ConfigSetting_widget::Definition::Choice{"GS", "gs", "gs"});
 		convert.choices.push_back(ConfigSetting_widget::Definition::Choice{Strings::GS127(), "gs127", "gs127"});
-		convert.choices.push_back(ConfigSetting_widget::Definition::Choice{Strings::FakeMT32(), " fakemt32 ", " fakemt32 "});
+		convert.choices.push_back(ConfigSetting_widget::Definition::Choice{Strings::FakeMT32(), "fakemt32", "fakemt32"});
 		// Real MT32 Option is only for devices that support a hardware port
 		if (driver->isRealMT32Supported()) {
 			convert.choices.push_back(ConfigSetting_widget::Definition::Choice{Strings::RealMT32(), "none", "mt32"});

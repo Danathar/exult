@@ -25,10 +25,23 @@
 #include "ucfunction.h"
 
 #include "endianio.h"
+#include "exceptions.h"
 
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 
 using std::istream;
+
+/*
+ *  Report a usecode function record that the file ends in the middle of.
+ */
+
+[[noreturn]] static void throw_truncated_function(int id) {
+	std::ostringstream name;
+	name << "usecode (function 0x" << std::hex << std::setw(4) << std::setfill('0') << id << " is truncated)";
+	throw file_read_exception(name.str());
+}
 
 /*
  *  Read in a function.
@@ -52,6 +65,15 @@ Usecode_function::Usecode_function(istream& file) : orig(nullptr) {
 		extended = false;
 	}
 
+	// A short header leaves the stream failed; read_usecode() would then
+	// loop forever, because tellg() returns -1 on a failed stream.
+	if (!file || len < 0) {
+		throw_truncated_function(id);
+	}
 	code = new unsigned char[len];    // Allocate buffer & read it in.
 	file.read(reinterpret_cast<char*>(code), len);
+	if (!file || file.gcount() != len) {
+		delete[] code;
+		throw_truncated_function(id);
+	}
 }
