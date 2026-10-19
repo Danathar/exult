@@ -20,7 +20,8 @@ on the engine and its tooling, including with AI agents under guardrails (see
 - **Upstream changes arrive through the owner**, who syncs `master` from upstream.
   Contributors and agents do not merge upstream into this fork or add an
   upstream remote. A fix that is also good for upstream is for the owner to send
-  there by hand.
+  there by hand; [`docs/fork-delta.md`](docs/fork-delta.md) lists the engine
+  fixes the fork carries that are candidates to send.
 
 ## Ground rules
 
