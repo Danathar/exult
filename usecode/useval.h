@@ -309,16 +309,25 @@ public:
 		arrayval[i] = val;
 	}
 
-	// Get an array element.
+	// Get an array element, or 0 if this is not an array or 'i' is out
+	// of range (usecode can pass short or empty arrays to intrinsics).
 	Usecode_value& get_elem(int i) {
 		static Usecode_value zval(0);
-		return (type == array_type) ? arrayval[i] : zval;
+		if (type == array_type && i >= 0 && static_cast<size_t>(i) < arrayval.size()) {
+			return arrayval[i];
+		}
+		zval = Usecode_value(0);    // In case a caller wrote to it.
+		return zval;
 	}
 
-	// Get an array element.
+	// Get an array element, or 0 if this is not an array or 'i' is out
+	// of range.
 	const Usecode_value& get_elem(int i) const {
 		static const Usecode_value zval(0);
-		return (type == array_type) ? arrayval[i] : zval;
+		if (type == array_type && i >= 0 && static_cast<size_t>(i) < arrayval.size()) {
+			return arrayval[i];
+		}
+		return zval;
 	}
 
 	Usecode_value& operator[](int i) {

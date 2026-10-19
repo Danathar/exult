@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <vector>
 
 using std::cerr;
 using std::cout;
@@ -97,8 +98,11 @@ void write4(FILE* f, unsigned int b) {
 }
 
 char* framefilename(char* shapefilename, int frame) {
-	const size_t namelen = strlen(shapefilename) + 5;
-	char*        fn      = new char[namelen];    //_xxx\0
+	char suffix[16];
+	snprintf(suffix, sizeof(suffix), "_%03i", frame);
+	const size_t suffixlen = strlen(suffix);
+	const size_t namelen   = strlen(shapefilename) + suffixlen + 1;
+	char*        fn        = new char[namelen];
 	char*        dot     = strrchr(shapefilename, '.');
 #ifdef _WIN32
 	char* slash = strrchr(shapefilename, '\\');
@@ -114,8 +118,8 @@ char* framefilename(char* shapefilename, int frame) {
 	}
 
 	memcpy(fn, shapefilename, dotpos);
-	snprintf(fn + dotpos, namelen - dotpos, "_%03i", frame);
-	strcpy(fn + dotpos + 4, shapefilename + dotpos);
+	memcpy(fn + dotpos, suffix, suffixlen);
+	strcpy(fn + dotpos + suffixlen, shapefilename + dotpos);
 
 	return fn;
 }
@@ -140,8 +144,12 @@ void split_shape(char* filename) {
 		for (int i = 0; i < num_frames; i++) {
 			char* framename = framefilename(filename, i);
 			cout << "writing " << framename << "..." << endl;
-			FILE*        framefile = fopen(framename, "wb");
-			const size_t err       = fread(data, 1, 64, shpfile);
+			FILE* framefile = fopen(framename, "wb");
+			if (!framefile) {
+				cerr << "Can't create " << framename << endl;
+				exit(1);
+			}
+			const size_t err = fread(data, 1, 64, shpfile);
 			assert(err == 64);
 			fwrite(data, 1, 64, framefile);
 			fclose(framefile);
@@ -158,6 +166,10 @@ void split_shape(char* filename) {
 			char* framename = framefilename(filename, i);
 			cout << "writing " << framename << "..." << endl;
 			FILE* framefile = fopen(framename, "wb");
+			if (!framefile) {
+				cerr << "Can't create " << framename << endl;
+				exit(1);
+			}
 
 			// Go to where frame offset is stored
 			fseek(shpfile, (i + 1) * 4, SEEK_SET);
@@ -194,11 +206,20 @@ void merge_frames(char* shapefile, char** framefiles, int numframefiles) {
 	bool tiles = false;
 
 	FILE* shpfile = fopen(shapefile, "wb");
+	if (!shpfile) {
+		cerr << "Can't create " << shapefile << endl;
+		exit(1);
+	}
 
 	int total_size = 4 + 4 * numframefiles;
 
 	for (int i = 0; i < numframefiles; i++) {
 		FILE* framefile = fopen(framefiles[i], "rb");
+		if (!framefile) {
+			cerr << "Can't open " << framefiles[i] << endl;
+			fclose(shpfile);
+			exit(1);
+		}
 
 		cout << "reading " << framefiles[i] << "..." << endl;
 
@@ -278,11 +299,8 @@ int main(int argc, char* argv[]) {
 
 	if (argc > 2) {
 		const int numframefiles = argc - 2;
-		char*     framefiles[255];
-		for (int i = 0; i < numframefiles; i++) {
-			framefiles[i] = argv[i + 2];
-		}
-		merge_frames(shapefile, framefiles, numframefiles);
+		std::vector<char*> framefiles(argv + 2, argv + argc);
+		merge_frames(shapefile, framefiles.data(), numframefiles);
 	} else {
 		split_shape(shapefile);
 	}

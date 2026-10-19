@@ -103,6 +103,11 @@ string ucxtInit::get_datadir(const Configuration& config, const UCOptions& optio
 	if (!datadir.empty() && datadir[datadir.size() - 1] != '/' && datadir[datadir.size() - 1] != '\\') {
 		datadir += '/';
 	}
+	if (datadir.empty()) {
+		// No configured data directory (e.g. -nc): use the current directory.
+		// "./" keeps Configuration from treating the name as config-relative.
+		datadir = "./";
+	}
 	if (options.verbose) {
 		cout << "datadir: " << datadir << endl;
 	}
@@ -110,8 +115,19 @@ string ucxtInit::get_datadir(const Configuration& config, const UCOptions& optio
 	return datadir;
 }
 
+// Reads one of ucxt's own data files; exits with an error if it cannot be loaded.
+static void load_data_file(Configuration& data, const string& filename, const string& root) {
+	if (!data.read_config_file(filename, root)) {
+		cerr << "Failed to load ucxt data file '" << filename
+			 << "'. Check the ucxt root setting in exult.cfg, or with -nc run ucxt from the directory containing the .data files. Exiting."
+			 << endl;
+		exit(1);
+	}
+}
+
 void ucxtInit::misc() {
-	Configuration miscdata(datadir + misc_data, misc_root);
+	Configuration miscdata;
+	load_data_file(miscdata, datadir + misc_data, misc_root);
 
 	Configuration::KeyTypeList om;
 	miscdata.getsubkeys(om, misc_root + "/offset_munge");
@@ -145,7 +161,8 @@ void ucxtInit::misc() {
 
 /* constructs the usecode tables from datafiles in the /ucxt hierachy */
 void ucxtInit::opcodes() {
-	Configuration opdata(datadir + opcodes_data, opcodes_root);
+	Configuration opdata;
+	load_data_file(opdata, datadir + opcodes_data, opcodes_root);
 
 	vector<string> keys = opdata.listkeys(opcodes_root);
 
@@ -174,7 +191,8 @@ void ucxtInit::opcodes() {
 }
 
 void ucxtInit::intrinsics(const string& intrinsic_data, const string& intrinsic_root) {
-	Configuration intdata(datadir + intrinsic_data, intrinsic_root);
+	Configuration intdata;
+	load_data_file(intdata, datadir + intrinsic_data, intrinsic_root);
 
 	Configuration::KeyTypeList ktl;
 
