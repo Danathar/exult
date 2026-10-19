@@ -104,6 +104,10 @@ const allowed = [
     'chrt -p 1234',
     'unshare -r id',
     'exec -a exult ./exult',
+    'flock -- lock make -j4',
+    "fish -c 'git status'",
+    "fish --init-command='set -x A 1' -c 'make -j4'",
+    'fish -d 3 build.fish',
     'echo function coproc',
 ];
 
@@ -251,6 +255,22 @@ const blocked = [
     'find . -name x -exec ls {} + -exec sudo id \\;',
     "ksh -c 'sudo id'",
     "busybox sh -c 'sudo id'",
+    // `--` ends a wrapper's options; the next word is its operand or command
+    'flock -- -lock gh issue create -t x',
+    'flock -- -lock sudo id',
+    'timeout -- 5 gh issue create -t x',
+    'nice -- sudo id',
+    // fish runs the values of -c/--command and -C/--init-command
+    "fish -C 'gh issue create -t x'",
+    "fish --command='gh issue create -t x'",
+    "fish --command 'gh issue create -t x'",
+    "fish --init-command 'gh issue create -t x'",
+    "fish --init-command='sudo id'",
+    "fish --comm 'sudo id'",
+    "fish -c 'echo ok' -C 'sudo id'",
+    "fish -ic 'sudo id'",
+    "fish -c'sudo id'",
+    "fish -lC 'sudo id' -c 'echo ok'",
     'function f { sudo id; }; f',
     'coproc sudo id',
     'coproc NAME { sudo id; }',

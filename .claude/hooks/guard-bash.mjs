@@ -1157,6 +1157,48 @@ function envOptions(w) {
     return { target: -1, script: null, rest: w.length };
 }
 
+// fish's long options (getopt accepts any unambiguous prefix) and the ones taking a value.
+const FISH_LONG = [
+    'command', 'debug', 'debug-output', 'debug-stack-frames', 'features', 'help', 'init-command', 'interactive', 'login',
+    'no-config', 'no-execute', 'print-debug-categories', 'print-rusage-self', 'private', 'profile', 'profile-startup', 'version',
+];
+const FISH_LONG_VALUE = new Set(['command', 'init-command', 'debug', 'debug-output', 'debug-stack-frames', 'features', 'profile', 'profile-startup']);
+// fish's short options taking a value: the rest of the word, or else the next word.
+const FISH_SHORT_VALUE = 'cCdDfop';
+
+/**
+ * Every code string a fish invocation runs: the values of -c/--command and
+ * -C/--init-command, attached (`-cCMD`, `--command=CMD`) or in the next word,
+ * in a short cluster (`-ic CMD`) or behind an abbreviated long name (`--comm`).
+ * Words that are not options are skipped rather than ending the scan, so an
+ * option after a script name is still inspected.
+ */
+function fishScripts(args) {
+    const scripts = [];
+    for (let k = 0; k < args.length; k++) {
+        const a = args[k];
+        if (a === '--') break;
+        if (!a.startsWith('-') || a === '-') continue;
+        if (a.startsWith('--')) {
+            const eq = a.indexOf('=');
+            const name = a.slice(2, eq === -1 ? undefined : eq);
+            const hits = FISH_LONG.filter((o) => o.startsWith(name));
+            const opt = hits.includes(name) ? name : hits.length === 1 ? hits[0] : null;
+            if (!FISH_LONG_VALUE.has(opt)) continue;
+            const value = eq === -1 ? args[++k] : a.slice(eq + 1);
+            if ((opt === 'command' || opt === 'init-command') && value !== undefined) scripts.push(value);
+            continue;
+        }
+        for (let j = 1; j < a.length; j++) {
+            if (!FISH_SHORT_VALUE.includes(a[j])) continue;
+            const value = j + 1 < a.length ? a.slice(j + 1) : args[++k];
+            if ((a[j] === 'c' || a[j] === 'C') && value !== undefined) scripts.push(value);
+            break;
+        }
+    }
+    return scripts;
+}
+
 /** Index of the command a wrapper (env, timeout, xargs, ...) runs, or -1 if there is none to analyse. */
 function wrapperTarget(w) {
     const cmd = basename(w[0]);
@@ -1165,12 +1207,19 @@ function wrapperTarget(w) {
     const valueOpts = WRAPPER_VALUE_OPTS[cmd] ?? [];
     let operands = WRAPPER_OPERANDS[cmd] ?? 0;
     let priority = cmd === 'chrt'; // chrt's scheduling priority may be left out
+    // After `--` every word is an operand or the command, even one starting with `-`
+    // (`flock -- -lock CMD`: -lock is the lock file).
+    let options = true;
     for (let k = 1; k < w.length; k++) {
         const a = w[k];
         // flock reads no options after its lock file: `flock FILE -c CMD` is its command form.
         if (cmd === 'flock' && operands === 0) return k;
-        if (isAssignment(a) || a === '--') continue;
-        if (a.startsWith('-') && a.length > 1) {
+        if (isAssignment(a)) continue;
+        if (options && a === '--') {
+            options = false;
+            continue;
+        }
+        if (options && a.startsWith('-') && a.length > 1) {
             if (NO_COMMAND_OPTS[cmd]?.test(a)) return -1;
             if (valueOpts.includes(a)) k++;
             continue;
@@ -1316,10 +1365,21 @@ function checkSegment(words, state) {
                 );
             }
         }
-        const c = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
-        // The script is the first non-option word after -c (`sh -c -- 'cmd'`, `sh -c -x 'cmd'`).
-        const script = c === -1 ? undefined : args.slice(c + 1).find((a) => !a.startsWith('-'));
-        if (script !== undefined) return checkCommand(script, nested());
+        // fish takes code from -c/--command and -C/--init-command (each may repeat,
+        // with the value attached or in the next word); every one of them runs.
+        if (cmd === 'fish') {
+            const scripts = fishScripts(args);
+            for (const s of scripts) {
+                const r = checkCommand(s, nested());
+                if (r) return r;
+            }
+            if (scripts.length) return null;
+        } else {
+            const c = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
+            // The script is the first non-option word after -c (`sh -c -- 'cmd'`, `sh -c -x 'cmd'`).
+            const script = c === -1 ? undefined : args.slice(c + 1).find((a) => !a.startsWith('-'));
+            if (script !== undefined) return checkCommand(script, nested());
+        }
         // `bash -n file` only parses the file; any other shell invocation runs it.
         const syntaxOnly = args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a));
         // No script operand: the shell reads its program from stdin.
