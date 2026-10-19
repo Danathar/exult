@@ -319,6 +319,11 @@ string get_game_identity(const char* savename, IDataSource* ds, const string& ti
 	else {
 		ds->seek(0x54);    // Get to where file count sits.
 		const size_t numfiles = ds->read4();
+		const size_t filesize = ds->getSize();
+		// Each entry takes 8 bytes in the table that starts at 0x80.
+		if (numfiles > (filesize < 0x80 ? 0 : (filesize - 0x80) / 8)) {
+			return "";    // Corrupt save.
+		}
 		ds->seek(0x80);    // Get to file info.
 		// Read pos., length of each file.
 		auto finfo = std::make_unique<uint32[]>(2 * numfiles);
@@ -331,6 +336,9 @@ string get_game_identity(const char* savename, IDataSource* ds, const string& ti
 			size_t len = finfo[2 * i + 1];
 			if (len <= 13) {
 				continue;
+			}
+			if (finfo[2 * i] > filesize || len > filesize - finfo[2 * i]) {
+				return "";    // Corrupt save.
 			}
 			len -= 13;
 			ds->seek(finfo[2 * i]);    // Get to it.

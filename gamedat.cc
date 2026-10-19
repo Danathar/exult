@@ -93,6 +93,11 @@ extern int save_compression;
 void Game_window::restore_flex_files(IDataSource& in, const char* basepath) {
 	in.seek(0x54);    // Get to where file count sits.
 	const size_t numfiles = in.read4();
+	const size_t filesize = in.getSize();
+	// Each entry takes 8 bytes in the table that starts at 0x80.
+	if (numfiles > (filesize < 0x80 ? 0 : (filesize - 0x80) / 8)) {
+		abort("Error reading flex: bad file count. This probably means a corrupt save game.");
+	}
 	in.seek(0x80);    // Get to file info.
 
 	// Read pos., length of each file.
@@ -107,21 +112,34 @@ void Game_window::restore_flex_files(IDataSource& in, const char* basepath) {
 		length   = in.read4();
 	}
 	const size_t baselen = strlen(basepath);
+	char         fname[50];    // Set up name.
+	// Room for the 13-byte name and a terminator (nested map entries
+	// make basepath longer).
+	if (baselen + 13 + 1 > sizeof(fname)) {
+		abort("Error reading flex: directories nested too deeply. This probably means a corrupt save game.");
+	}
 	for (const auto& [location, length] : finfo) {    // Now read each file.
 		// Get file length.
 		size_t len = length;
 		if (len <= 13) {
 			continue;
 		}
+		if (location > filesize || len > filesize - location) {
+			abort("Error reading flex: entry is past the end of the file. This probably means a corrupt save game.");
+		}
 		len -= 13;
 		in.seek(location);    // Get to it.
-		char fname[50];       // Set up name.
 		strcpy(fname, basepath);
 		in.read(&fname[baselen], 13);
-		size_t namelen = strlen(fname);
+		fname[baselen + 13] = 0;
+		size_t namelen      = strlen(fname);
 		// Watch for names ending in '.'.
-		if (fname[namelen - 1] == '.') {
+		if (namelen > baselen && fname[namelen - 1] == '.') {
 			fname[namelen - 1] = 0;
+		}
+		// Names come from the save file: never write outside basepath.
+		if (!is_safe_relative_path(&fname[baselen])) {
+			abort("Error reading flex: invalid file name. This probably means a corrupt save game.");
 		}
 		// Now read the file.
 		auto buf = in.readN(len);
@@ -642,6 +660,14 @@ bool Game_window::get_saveinfo(
 	// Now get dir info
 	in.seek(0x54);    // Get to where file count sits.
 	const size_t numfiles = in.read4();
+	const size_t filesize = in.getSize();
+	// Need the first two entries; each entry takes 8 bytes in the table
+	// that starts at 0x80.
+	if (numfiles < 2 || filesize < 0x80 || numfiles > (filesize - 0x80) / 8) {
+		std::cerr << "Error reading flex: bad file count in '" << fname
+				  << "'. This probably means a corrupt save game." << endl;
+		return false;
+	}
 	in.seek(0x80);    // Get to file info.
 
 	// Read pos., length of each file.
@@ -664,14 +690,18 @@ bool Game_window::get_saveinfo(
 		if (len <= 13) {
 			continue;
 		}
+		if (location > filesize || len > filesize - location) {
+			return false;
+		}
 		len -= 13;
 		in.seek(location);    // Get to it.
 		char fname[50];       // Set up name.
 		strcpy(fname, GAMEDAT);
 		in.read(&fname[sizeof(GAMEDAT) - 1], 13);
-		const size_t namelen = strlen(fname);
+		fname[sizeof(GAMEDAT) - 1 + 13] = 0;
+		const size_t namelen            = strlen(fname);
 		// Watch for names ending in '.'.
-		if (fname[namelen - 1] == '.') {
+		if (namelen > sizeof(GAMEDAT) - 1 && fname[namelen - 1] == '.') {
 			fname[namelen - 1] = 0;
 		}
 
@@ -794,6 +824,13 @@ bool Game_window::Restore_level2(unzFile& unzipfile, const char* dirname, int di
 	char* oname = oname2;
 	oname2 += oname2offset;
 
+	// No stored file can be larger than the entry holding it.
+	unz_file_info entry_info;
+	if (unzGetCurrentFileInfo(unzipfile, &entry_info, nullptr, 0, nullptr, 0, nullptr, 0) != UNZ_OK) {
+		std::cerr << "Couldn't get current file info" << std::endl;
+		return false;
+	}
+
 	if (unzOpenCurrentFile(unzipfile) != UNZ_OK) {
 		std::cerr << "Couldn't open current file" << std::endl;
 		return false;
@@ -820,12 +857,21 @@ bool Game_window::Restore_level2(unzFile& unzipfile, const char* dirname, int di
 		}
 		const unsigned char* ptr  = size_buffer;
 		const int            size = little_endian::Read4(ptr);
+		if (size < 0 || static_cast<uLong>(size) > entry_info.uncompressed_size) {
+			std::cerr << "Bad size for '" << oname2 << "'. This probably means a corrupt save game." << std::endl;
+			return false;
+		}
 
 		if (size) {
 			// Watch for names ending in '.'.
 			const int namelen = strlen(oname2);
 			if (oname2[namelen - 1] == '.') {
 				oname2[namelen - 1] = 0;
+			}
+			// Names come from the save file: never write outside dirname.
+			if (!is_safe_relative_path(oname2)) {
+				std::cerr << "Invalid file name in save game." << std::endl;
+				return false;
 			}
 
 			// Now read the file.
@@ -933,6 +979,10 @@ bool Game_window::restore_gamedat_zip(const char* fname    // Name of savegame f
 
 		// Level 2 compression handling
 		if (level2zip) {
+			// Names come from the save file: never write outside GAMEDAT.
+			if (!is_safe_relative_path(oname2)) {
+				abort("Invalid file name in zip '%s'.", fname);
+			}
 			// Files for map # > 0; create dir first.
 			U7mkdir(oname.c_str(), 0755);
 			// Put a final marker in the dir name.
@@ -957,6 +1007,10 @@ bool Game_window::restore_gamedat_zip(const char* fname    // Name of savegame f
 		// Watch for names ending in '.'.
 		if (oname.back() == '.') {
 			oname.pop_back();
+		}
+		// Names come from the save file: never write outside GAMEDAT.
+		if (!is_safe_relative_path(std::string_view(oname).substr(std::size(GAMEDAT) - 1))) {
+			abort("Invalid file name in zip '%s'.", fname);
 		}
 		// Watch out for multimap games.
 		for (char& c : oname) {
