@@ -32,6 +32,9 @@ Builds the command-line tools `ucc` and `expack` (autoreconf + configure with
   syntax error is rejected;
 - packs files into a Flex archive with `expack -c`, lists it with `-l`,
   extracts it with `-x`, and compares the extracted bytes to the inputs.
+- runs `tests/e2e/tool-regressions.sh`: `expack -i` response files (CRLF, bad `:N` lines),
+  `expack -l/-x` on a missing archive, `textpack -x` on entries without a NUL, and `ipack`
+  (blank script lines, over-long names, `-u` with tiled specs) on synthetic input.
 
 ```sh
 tests/e2e/run.sh                          # configure, build, test

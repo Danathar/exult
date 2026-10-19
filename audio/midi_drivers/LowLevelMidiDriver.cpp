@@ -1269,7 +1269,9 @@ int LowLevelMidiDriver::lockChannel(uint16 sequence_id, int chan, bool lock) {
 					if (phys == -1) {
 						phys = c;
 					}
-					if (phys != -2) {
+					// Negative values (-2 unusable, -3 protected) are not
+					// physical channels, so there is nothing to count.
+					if (phys >= 0) {
 						notes_on[phys] += sequences[s]->countNotesOn(c);
 					}
 				}

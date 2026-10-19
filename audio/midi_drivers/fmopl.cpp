@@ -1229,7 +1229,7 @@ namespace FMOpl_Pentagram {
 	}
 
 	void OPLSetPan(FM_OPL* OPL, int c, int pan) {
-		if (c > 0 && c < OPL->max_ch) {
+		if (c >= 0 && c < OPL->max_ch) {
 			OPL->P_CH[c].PAN = pan;
 		}
 	}
