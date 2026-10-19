@@ -29,9 +29,9 @@
 
 static int Wrap_Delta(int delta) {
 	if (delta >= c_num_tiles / 2) {    // World-wrapping.
-		return c_num_tiles / 2 - delta;
+		return delta - c_num_tiles;
 	} else if (delta <= -c_num_tiles / 2) {
-		return -c_num_tiles / 2 - delta;
+		return delta + c_num_tiles;
 	} else {
 		return delta;
 	}

@@ -2838,6 +2838,8 @@ bool Desk_schedule::walk_to_table() {
 		if (pos.tx != -1 && npc->walk_path_to_tile(pos, gwin->get_std_delay(), 1000 + rand() % 1000)) {
 			return true;
 		}
+		// Unreachable: forget this table so we don't retry it forever.
+		tables.erase(tables.begin() + ind);
 	}
 	table = Game_object_weak();
 	return false;

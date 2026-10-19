@@ -88,7 +88,10 @@ for entry in "${entries[@]}"; do
 	datafiles_am=""
 	datafiles_mingw=""
 	extradist_am=""
-	buildrules=""
+	# Build rules differ: Makefile.am rules write into the build tree, which
+	# can be separate from a read-only source tree; MinGW builds in place.
+	buildrules_am=""
+	buildrules_mingw=""
 	buildexpack="no"
 	builducc="no"
 	targets_mingw="all:"
@@ -171,7 +174,13 @@ EXPACK:=\$(EXPACKDIR)/expack.exe
 		nodist_datafiles_am="$nodist_datafiles_am\\${n}${t}${patchdir}usecode${t}"
 		datafiles_mingw="$datafiles_mingw${t}cp ${patchdir}usecode $destdir_mingw/${patchdir}usecode${n}"
 		targets_mingw="$targets_mingw ${patchdir}usecode"
-		buildrules="$buildrules${n}${patchdir}usecode: \$(UCC) \$(USECODE_OBJECTS)${n}${t}\$(UCC) $include -o \$(srcdir)/${patchdir}usecode \$(srcdir)/${sourcedir}usecode.uc${n}"
+		ucc_outdir="$(dirname "${patchdir}usecode")"
+		buildrules_am="$buildrules_am${n}${patchdir}usecode: \$(UCC) \$(USECODE_OBJECTS)${n}"
+		if [[ "$ucc_outdir" != "." ]]; then
+			buildrules_am="$buildrules_am${t}@\$(MKDIR_P) $ucc_outdir${n}"
+		fi
+		buildrules_am="$buildrules_am${t}\$(UCC) $include -o ${patchdir}usecode \$(srcdir)/${sourcedir}usecode.uc${n}"
+		buildrules_mingw="$buildrules_mingw${n}${patchdir}usecode: \$(UCC) \$(USECODE_OBJECTS)${n}${t}\$(UCC) $include -o \$(srcdir)/${patchdir}usecode \$(srcdir)/${sourcedir}usecode.uc${n}"
 		cleanfiles="$cleanfiles${n}${t}${patchdir}usecode${t}\\"
 		builducc="yes"
 	fi
@@ -205,7 +214,11 @@ EXPACK:=\$(EXPACKDIR)/expack.exe
 			nodist_datafiles_am="$nodist_datafiles_am\\${n}${t}$fnamep${t}"
 			datafiles_mingw="$datafiles_mingw${t}cp $fnamep $destdir_mingw/$fnamep${n}"
 			targets_mingw="$targets_mingw $fnamep"
-			buildrules="$buildrules${n}$fnamep: \$(EXPACK) \$($fnameu)${n}${t}\$(EXPACK) -i \$(srcdir)${f#$moddir}${n}"
+			# expack writes the flex and its header relative to its
+			# second argument, the build-tree copy of the .in file's dir.
+			in_dir="$(dirname "$fname")"
+			buildrules_am="$buildrules_am${n}$fnamep: \$(EXPACK) \$($fnameu)${n}${t}@\$(MKDIR_P) $in_dir $(dirname "$fnamep")${n}${t}\$(EXPACK) -i \$(srcdir)${f#$moddir} $in_dir${n}"
+			buildrules_mingw="$buildrules_mingw${n}$fnamep: \$(EXPACK) \$($fnameu)${n}${t}\$(EXPACK) -i \$(srcdir)${f#$moddir}${n}"
 			cleanfiles="$cleanfiles${n}${t}$fnamep${t}\\${n}${t}${fnamep//./_}.h${t}\\"
 			buildexpack="yes"
 		fi
@@ -350,8 +363,8 @@ $datafiles_mingw"
 	fi
 
 	# Build rules for data files.
-	echo -e "$buildrules" >> "$modmakefile_am"
-	echo -e "$buildrules" >> "$modmakefile_mingw"
+	echo -e "$buildrules_am" >> "$modmakefile_am"
+	echo -e "$buildrules_mingw" >> "$modmakefile_mingw"
 
 	# Rule for MinGW 'make clean'.
 	if [[ -n "$cleanfiles" ]]; then

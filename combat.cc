@@ -96,6 +96,36 @@ bool In_ammo_family(int shnum, int family) {
 }
 
 /*
+ *  Get the music track for a combat song, or -1 if unknown.
+ */
+
+static int Get_combat_track(Combat_song song) {
+	switch (song) {
+	case CSBattle_Over:
+		return Audio::game_music(9);
+	case CSAttacked1:
+		return Audio::game_music(11);
+	case CSAttacked2:
+		return Audio::game_music(12);
+	case CSVictory:
+		return Audio::game_music(15);
+	case CSRun_Away:
+		return Audio::game_music(16);
+	case CSDanger:
+		return Audio::game_music(10);
+	case CSHidden_Danger:
+		return Audio::game_music(18);
+	case CSAvatar_died:
+		// In the original this plays when the Avatar dies in combat and the
+		// game reloads. As we have almost instant load times, this makes no
+		// sense to play.
+		return Audio::game_music(17);
+	default:
+		return -1;
+	}
+}
+
+/*
  *  Start music for combat.
  *  If continuous is true, the music will not be stopped when combat ends.
  */
@@ -108,45 +138,8 @@ void Combat_schedule::start_music_combat(Combat_song song, bool continuous) {
 		return;
 	}
 
-	int num = -1;
-
-	switch (song) {
-	case CSBattle_Over:
-		num = Audio::game_music(9);
-		break;
-
-	case CSAttacked1:
-		num = Audio::game_music(11);
-		break;
-
-	case CSAttacked2:
-		num = Audio::game_music(12);
-		break;
-
-	case CSVictory:
-		num = Audio::game_music(15);
-		break;
-
-	case CSRun_Away:
-		num = Audio::game_music(16);
-		break;
-
-	case CSDanger:
-		num = Audio::game_music(10);
-		break;
-
-	case CSHidden_Danger:
-		num = Audio::game_music(18);
-		break;
-
-	case CSAvatar_died:
-		// In the original this plays when the Avatar dies in combat and the
-		// game reloads. As we have almost instant load times, this makes no
-		// sense to play.
-		num = Audio::game_music(17);
-		break;
-
-	default:
+	const int num = Get_combat_track(song);
+	if (num < 0) {
 		CERR("Error: Unable to Find combat track for song " << song << ".");
 		return;    // Unknown song
 	}
@@ -171,16 +164,21 @@ void Combat_schedule::danger_music() {
 	const bool nearby_hostile = gwin->is_hostile_nearby();
 	const int  current_track  = player->get_current_track();
 
-	// Check if any combat music is currently playing
-	bool is_combat_music_playing
-			= (current_track == CSBattle_Over || current_track == CSDanger || current_track == CSAttacked1
-			   || current_track == CSAttacked2 || current_track == CSVictory || current_track == CSRun_Away
-			   || current_track == CSAvatar_died || current_track == CSHidden_Danger);
+	// Check if any combat music is currently playing.
+	// The current track is a music number, not a Combat_song value.
+	const bool is_combat_music_playing
+			= (current_track == Get_combat_track(CSBattle_Over) || current_track == Get_combat_track(CSDanger)
+			   || current_track == Get_combat_track(CSAttacked1) || current_track == Get_combat_track(CSAttacked2)
+			   || current_track == Get_combat_track(CSVictory) || current_track == Get_combat_track(CSRun_Away)
+			   || current_track == Get_combat_track(CSAvatar_died) || current_track == Get_combat_track(CSHidden_Danger));
 
 	if (nearby_hostile && !is_combat_music_playing) {
 		// Hostiles nearby but not playing danger music
 		start_music_combat(CSDanger, false);
-	} else if (!nearby_hostile && (current_track == CSDanger || current_track == CSAttacked1 || current_track == CSAttacked2)) {
+	} else if (
+			!nearby_hostile
+			&& (current_track == Get_combat_track(CSDanger) || current_track == Get_combat_track(CSAttacked1)
+				|| current_track == Get_combat_track(CSAttacked2))) {
 		// Escaped hostiles - switch to hidden danger
 		start_music_combat(CSHidden_Danger, false);
 	}
@@ -817,7 +815,7 @@ void Combat_schedule::back_off(Actor* npc, Game_object* attacker) {
 	}
 	const Tile_coord npc_tile      = npc->get_tile();
 	const Tile_coord attacker_tile = attacker->get_tile();
-	int              dx            = npc_tile.tx - attacker_tile.ty;
+	int              dx            = npc_tile.tx - attacker_tile.tx;
 	int              dy            = npc_tile.ty - attacker_tile.ty;
 	dx                             = dx < 0 ? -1 : dx > 0 ? 1 : 0;
 	dy                             = dy < 0 ? -1 : dy > 0 ? 1 : 0;
@@ -1373,7 +1371,7 @@ bool Combat_schedule::attack_target(
 		Actor* target_actor = target->as_actor();
 		if (target == gwin->get_main_actor() || (target_actor != nullptr && target_actor->is_in_party())) {
 			MyMidiPlayer* player = Audio::get_ptr()->get_midi();
-			if (player && player->get_current_track() == CSDanger) {
+			if (player && player->get_current_track() == Get_combat_track(CSDanger)) {
 				start_music_combat(CSAttacked1, false);
 			}
 		}
