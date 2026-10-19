@@ -361,8 +361,9 @@ $(srcdir)/.git/config:
 # directory, $(srcdir), before any -I path. A generated header left in the source
 # tree by an earlier in-tree build would then shadow the one this build writes,
 # and the engine would be compiled against stale indices, CRCs or git metadata.
-# Refuse to build while any such copy exists.
-SRCDIR_GENERATED_HEADERS = gitinfo.h \
+# Refuse to build while any such copy exists. (The list must not end in
+# _HEADERS: automake would read that as a primary and demand a matching *dir.)
+srcdir_generated_header_list = gitinfo.h \
 	data/exult_flx.h data/exult_bg_flx.h data/exult_si_flx.h \
 	data/bg/bg_paperdol_vga.h data/bg/bg_mr_faces_vga.h data/bg/introsfx_mt32_flx.h data/bg/introsfx_sb_flx.h \
 	data/fonts_original_vga.h data/fonts_serif_vga.h data/shortcutbar_vga.h
@@ -370,7 +371,7 @@ SRCDIR_GENERATED_HEADERS = gitinfo.h \
 check-srcdir-generated-headers:
 	@if test "`cd $(srcdir) && pwd -P`" != "`pwd -P`"; then \
 		stale=; \
-		for f in $(SRCDIR_GENERATED_HEADERS); do \
+		for f in $(srcdir_generated_header_list); do \
 			if test -f "$(srcdir)/$$f"; then stale="$$stale $(srcdir)/$$f"; fi; \
 		done; \
 		if test -n "$$stale"; then \
