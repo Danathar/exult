@@ -78,3 +78,34 @@ jobs:
 
       - name: Build ucc and expack, then run the end-to-end checks
         run: tests/e2e/run.sh
+
+  out-of-tree:
+    # Regression check for Danathar/exult#75: every generated file must land in
+    # the build tree, so a build from a read-only source tree succeeds.
+    name: Out-of-tree build (read-only source)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: mirror.gcr.io/library/debian:13
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            g++ make autoconf automake libtool autoconf-archive pkg-config bison flex git ca-certificates \
+            zlib1g-dev libsdl3-dev libsdl3-image-dev libpng-dev libogg-dev libvorbis-dev
+
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # The container runs as root, which ignores the read-only bits the check
+      # depends on, so the build runs as an unprivileged user.
+      - name: Build from a read-only copy of the source tree
+        run: |
+          useradd --create-home builder
+          chown -R builder: "$GITHUB_WORKSPACE"
+          runuser -u builder -- env HOME=/home/builder JOBS="$(nproc)" tests/out-of-tree-build.sh

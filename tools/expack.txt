@@ -13,7 +13,7 @@ SYNOPSIS
 expack -a FLEXFILE FILE... 
 expack -c FLEXFILE FILE... 
 expack -x FLEXFILE [INDEX] 
-expack -i MANIFEST 
+expack -i MANIFEST [OUTDIR] 
 expack -l FLEXFILE 
   
 
@@ -50,7 +50,11 @@ Modes of operation
   instead of the command line. 
   MANIFEST must be a list of file names, one per line. The first name is that of 
   the Flex file that is to be created, the rest are the input files used in 
-  building it. 
+  building it. Names are relative to the directory holding MANIFEST. 
+  If OUTDIR is given, the Flex file and its header are written relative to 
+  OUTDIR instead, and each input file is looked for under OUTDIR first and 
+  next to MANIFEST second. This lets a build directory hold everything expack 
+  writes while MANIFEST stays in a read-only source directory. 
 
   -l List 
   This command lists the contents of a FLEXFILE. It gives you the number of 
