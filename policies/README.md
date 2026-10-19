@@ -38,9 +38,29 @@ Stops agent instructions from sending work to the upstream project.
   `edit`, `close`, `reopen`, `merge`, `review`, `delete`, `run`, and the others
   in `writeCommandPattern`) and the `rerun`, `cancel` and `delete` verbs of
   `gh run` must carry `--repo Danathar/exult`, or `-R Danathar/exult`, on the
-  same logical line (an environment variable is not enough in Markdown). A
+  same logical line (an environment variable is not enough in Markdown). The
+  flag may come right after `gh`, before the noun, or between noun and verb.
+  The `create`, `delete`, `edit`, `rename`, `archive`, `unarchive`, `fork` and
+  `sync` verbs of `gh repo`, the `set`, `delete` and `remove` verbs of
+  `gh secret` and `gh variable`, and the `create`, `edit`, `delete` and
+  `rename` verbs of `gh gist` are write commands too. A
   command continued with a trailing backslash is one line. There is no
   exemption for prose: describe an unscoped command in words, or add the flag.
+- Two gh writes name their repository in an argument instead of `--repo`, and
+  are judged on that argument (in Markdown and in workflows):
+  - A `gh api` call that writes (`-X`/`--method` other than GET or HEAD, or a
+    body from `-f`, `-F`, `--field`, `--raw-field` or `--input`, which makes
+    the call a POST) must have the endpoint `repos/Danathar/exult` or a path
+    under it (in a workflow, `repos/${{ github.repository }}` too). Placeholders such
+    as `{owner}/{repo}` and shell variables fail: gh fills placeholders from
+    its default repository, which in a clone of this fork can be the upstream
+    parent, so they are not accepted. Endpoints outside `repos/` (`user/...`,
+    `orgs/...`, `gists`) fail too. A GraphQL call fails when it spells a
+    mutation or its query is not an inline `query=` literal. Reads are not
+    judged. The policy checks only which repository is written; the Bash hook
+    also refuses writes to this repository's settings, merges and rulesets.
+  - An issue transfer must name `Danathar/exult` as its destination (the
+    argument after the issue number); another destination, or none, fails.
 - No scanned line may pass `--repo`/`-R` for another repository to a `gh` write
   command, set `GH_REPO=` to another repository, or run `gh repo set-default`
   for another repository. Read-only links to other repositories are allowed.
@@ -58,9 +78,13 @@ For every fork-added `.github/workflows/*.yml` (see "Scope"):
 - every logical line that runs a `gh` write command passes `--repo`/`-R` with
   `Danathar/exult` or `${{ github.repository }}`. `GH_REPO` (in `env:` or
   before the command) never substitutes for the flag; a `GH_REPO` naming another
-  repository, or any other `--repo` value, fails;
+  repository, or any other `--repo` value, fails. A `gh api` write must use
+  an endpoint under `repos/Danathar/exult/` or `repos/${{ github.repository }}/`,
+  and an issue transfer must have one of those as its destination (see
+  repo-target.json above);
 - `run:` scripts contain no attacker-controlled expression such as
-  `${{ github.event.issue.title }}`, `github.head_ref` or `inputs.*`; pass it
+  `${{ github.event.issue.title }}`, `github.head_ref`, `github.ref`,
+  `toJSON(github)`, `toJSON(github.event)` or `inputs.*`; pass it
   through `env:` and read `"$VAR"`. Numbers, SHAs and
   `github.event.repository.name` are allowed.
 

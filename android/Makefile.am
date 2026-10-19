@@ -16,15 +16,19 @@ SHARED_IMAGE_ASSETS = $(DPAD_CENTER) $(BUTTON)
 
 # All the DATA files that getinstalled by a normal build.
 # TODO: Would be ideal to infer this list rather than hard-coding it here.  
-DATA_FILES = \
+# data/ builds the first three into the build tree; midisfx.flx is a source file.
+BUILT_DATA_FILES = \
 	exult.flx \
 	exult_si.flx \
-	exult_bg.flx \
+	exult_bg.flx
+SOURCE_DATA_FILES = \
 	midisfx.flx
 
 # We'll place the data files in the apk's assets folder so that they get bundled into the package.
 APK_ASSETS_DIR=$(abs_builddir)/app/src/main/assets/data
-APK_ASSETS = $(DATA_FILES:%=$(APK_ASSETS_DIR)/%)
+BUILT_APK_ASSETS = $(BUILT_DATA_FILES:%=$(APK_ASSETS_DIR)/%)
+SOURCE_APK_ASSETS = $(SOURCE_DATA_FILES:%=$(APK_ASSETS_DIR)/%)
+APK_ASSETS = $(BUILT_APK_ASSETS) $(SOURCE_APK_ASSETS)
 
 # We'll use the java sources for Android integration provided in the SDL source tree.
 LIBSDL_JAVA_DIR = \
@@ -95,7 +99,11 @@ $(BUTTON): $(abs_builddir)/app/src/main/res/drawable/%: $(abs_top_srcdir)/ios/Im
 	@$(MKDIR_P) $(@D)
 	$(LN_S) $< $@
 
-$(APK_ASSETS): $(APK_ASSETS_DIR)/%: $(abs_top_srcdir)/data/%
+$(BUILT_APK_ASSETS): $(APK_ASSETS_DIR)/%: $(abs_top_builddir)/data/%
+	@$(MKDIR_P) $(@D)
+	$(INSTALL) $< $@
+
+$(SOURCE_APK_ASSETS): $(APK_ASSETS_DIR)/%: $(abs_top_srcdir)/data/%
 	@$(MKDIR_P) $(@D)
 	$(INSTALL) $< $@
 

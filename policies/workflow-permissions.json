@@ -23,11 +23,11 @@
     ],
     "pinPattern": "^[0-9a-f]{40}$",
     "ghWriteNeedsRepo": true,
-    "ghWriteCommandPattern": "\\bgh\\s+(?:(?:pr|issue|release|workflow|label)\\s+(?:create|comment|edit|close|reopen|merge|review|delete|run|enable|disable|ready|upload|delete-asset|lock|unlock|transfer|pin|unpin|update-branch|revert|clone|develop)|run\\s+(?:rerun|cancel|delete))\\b",
+    "ghWriteCommandPattern": "\\bgh(?:\\s+(?:-R|--repo)(?:\\s+|=)(?:\\$\\{\\{[^}]*\\}\\}|\\S+))*\\s+(?:(?:pr|issue|release|workflow|label)(?:\\s+(?:-R|--repo)(?:\\s+|=)(?:\\$\\{\\{[^}]*\\}\\}|\\S+))*\\s+(?:create|comment|edit|close|reopen|merge|review|delete|run|enable|disable|ready|upload|delete-asset|lock|unlock|transfer|pin|unpin|update-branch|revert|clone|develop)|run(?:\\s+(?:-R|--repo)(?:\\s+|=)(?:\\$\\{\\{[^}]*\\}\\}|\\S+))*\\s+(?:rerun|cancel|delete)|repo(?:\\s+(?:-R|--repo)(?:\\s+|=)(?:\\$\\{\\{[^}]*\\}\\}|\\S+))*\\s+(?:create|delete|edit|rename|archive|unarchive|fork|sync)|(?:secret|variable)(?:\\s+(?:-R|--repo)(?:\\s+|=)(?:\\$\\{\\{[^}]*\\}\\}|\\S+))*\\s+(?:set|delete|remove)|gist(?:\\s+(?:-R|--repo)(?:\\s+|=)(?:\\$\\{\\{[^}]*\\}\\}|\\S+))*\\s+(?:create|edit|delete|rename))\\b",
     "allowedRepoValues": [
         "${{ github.repository }}",
         "Danathar/exult"
     ],
     "forbidTopLevelWrite": true,
-    "forbiddenRunExpressions": "\\bgithub\\.event\\.(?!(?:number|action|issue\\.number|pull_request\\.(?:number|head\\.sha|base\\.sha)|repository\\.(?:name|full_name|default_branch))(?![\\w.]))|\\bgithub\\.head_ref\\b|\\bgithub\\.ref_name\\b|\\binputs\\."
+    "forbiddenRunExpressions": "\\bgithub\\.event\\.(?!(?:number|action|issue\\.number|pull_request\\.(?:number|head\\.sha|base\\.sha)|repository\\.(?:name|full_name|default_branch))(?![\\w.]))|\\bgithub\\.head_ref\\b|\\bgithub\\.ref_name\\b|\\bgithub\\.ref(?!\\w)|\\btoJSON\\s*\\(\\s*github(?:\\.event)?\\s*\\)|\\binputs\\."
 }

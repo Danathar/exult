@@ -54,9 +54,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define U7_SHAPE_SPRITES  4     // sprites.vga
 #define U7_SHAPE_PAPERDOL 5     // paperdol.vga
 
-//	Store/get shapeid.
+//	Store/get shapeid. The Get_u7_* functions return false for malformed text.
 int  Store_u7_shapeid(unsigned char* data, int file, int shape, int frame);
-void Get_u7_shapeid(const unsigned char* data, int& file, int& shape, int& frame);
+bool Get_u7_shapeid(const unsigned char* data, int& file, int& shape, int& frame);
 bool Is_u7_shapeid(const unsigned char* data);
 
 //	Target information for dragging a chunk:
@@ -65,7 +65,7 @@ bool Is_u7_shapeid(const unsigned char* data);
 
 //	Store/get chunk #.
 int  Store_u7_chunkid(unsigned char* data, int cnum);
-void Get_u7_chunkid(const unsigned char* data, int& cnum);
+bool Get_u7_chunkid(const unsigned char* data, int& cnum);
 bool Is_u7_chunkid(const unsigned char* data);
 
 //	Target information for dragging an npc:
@@ -74,7 +74,7 @@ bool Is_u7_chunkid(const unsigned char* data);
 
 //	Store/get npc #.
 int  Store_u7_npcid(unsigned char* data, int npcnum);
-void Get_u7_npcid(const unsigned char* data, int& npcnum);
+bool Get_u7_npcid(const unsigned char* data, int& npcnum);
 bool Is_u7_npcid(const unsigned char* data);
 
 //	Target information for dragging a 'combo' (group of shapes):
@@ -87,7 +87,7 @@ struct U7_combo_data {
 };
 
 int  Store_u7_comboid(unsigned char* data, int xtiles, int ytiles, int tiles_right, int tiles_below, int cnt, U7_combo_data* ents);
-void Get_u7_comboid(
+bool Get_u7_comboid(
 		const unsigned char* data, int& xtiles, int& ytiles, int& tiles_right, int& tiles_below, int& cnt, U7_combo_data*& ents);
 bool Is_u7_comboid(const unsigned char* data);
 

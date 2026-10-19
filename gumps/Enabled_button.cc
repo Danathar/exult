@@ -37,7 +37,7 @@ Enabled_button::Enabled_button(Gump* par, int selectionnum, int px, int py, int 
 }
 
 bool Enabled_button::push(MouseButton button) {
-	if (button == MouseButton::Left || button == MouseButton::Middle) {
+	if (button == MouseButton::Left) {
 		set_pushed(button);
 		paint();
 		gwin->set_painted();
@@ -51,7 +51,7 @@ bool Enabled_button::push(MouseButton button) {
  */
 
 void Enabled_button::unpush(MouseButton button) {
-	if (button == MouseButton::Left || button == MouseButton::Right) {
+	if (button == MouseButton::Left) {
 		set_pushed(false);
 		paint();
 		gwin->set_painted();
@@ -59,7 +59,7 @@ void Enabled_button::unpush(MouseButton button) {
 }
 
 bool Enabled_button::activate(MouseButton button) {
-	if (button != MouseButton::Left && button != MouseButton::Right) {
+	if (button != MouseButton::Left) {
 		return false;
 	}
 

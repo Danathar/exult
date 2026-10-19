@@ -173,23 +173,30 @@ $(UCC):
 
 
 data/usecode: $(UCC) $(USECODE_OBJECTS)
-	$(UCC) -I $(srcdir)/src -o $(srcdir)/data/usecode $(srcdir)/src/usecode.uc
+	@$(MKDIR_P) data
+	$(UCC) -I $(srcdir)/src -o data/usecode $(srcdir)/src/usecode.uc
 
 data/faces.vga: $(EXPACK) $(FACES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/faces.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/faces.in src/graphics
 
 data/gumps.vga: $(EXPACK) $(GUMPS_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/gumps.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/gumps.in src/graphics
 
 data/mainshp.flx: $(EXPACK) $(MAINSHP_FLX_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/mainshp.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/mainshp.in src/graphics
 
 data/paperdol.vga: $(EXPACK) $(PAPERDOL_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/paperdol.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/paperdol.in src/graphics
 
 data/shapes.vga: $(EXPACK) $(SHAPES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/shapes.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/shapes.in src/graphics
 
 data/sprites.vga: $(EXPACK) $(SPRITES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/sprites.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/sprites.in src/graphics
 

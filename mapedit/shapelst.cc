@@ -1032,7 +1032,10 @@ static void Convert_indexed_image(
 		int            oldpalsize,    // Size of old palette.
 		unsigned char* newpal         // Palette (255 bytes) to convert to.
 ) {
-	if (memcmp(oldpal, newpal, oldpalsize) == 0) {
+	if (oldpalsize > 256) {    // New palette only has 256 entries.
+		oldpalsize = 256;
+	}
+	if (memcmp(oldpal, newpal, 3 * oldpalsize) == 0) {
 		return;    // Old palette matches new.
 	}
 	int map[256];    // Set up old->new map.
