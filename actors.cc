@@ -4430,7 +4430,7 @@ void Actor::die(Game_object* attacker) {
 			} else {                              // No body?  Drop on ground.
 				item->set_flag_recursively(Obj_flags::okay_to_take);
 				const Tile_coord pos2 = Map_chunk::find_spot(pos, 5, item->get_shapenum(), item->get_framenum(), 1);
-				if (pos.tx != -1) {
+				if (pos2.tx != -1) {
 					item->move(pos2);
 				} else {    // No room anywhere.
 					tooheavy.push_back(item_keep);
