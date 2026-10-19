@@ -1052,15 +1052,77 @@ const DELETERS = new Set(['rm', 'rmdir', 'unlink', 'shred', 'mv', 'find']);
 const WRAPPER_VALUE_OPTS = {
     timeout: ['-s', '--signal', '-k', '--kill-after'],
     nice: ['-n', '--adjustment'],
-    xargs: ['-n', '-I', '-L', '-P', '-s', '-d', '-E', '-a', '--max-args', '--max-procs', '--delimiter', '--arg-file'],
-    stdbuf: ['-i', '-o', '-e'],
-    ionice: ['-c', '-n', '-p', '-P', '-u'],
+    xargs: ['-n', '-I', '-L', '-P', '-s', '-d', '-E', '-a', '--max-args', '--max-procs', '--max-chars', '--delimiter', '--arg-file', '--process-slot-var'],
+    stdbuf: ['-i', '-o', '-e', '--input', '--output', '--error'],
+    ionice: ['-c', '-n', '-p', '-P', '-u', '--class', '--classdata', '--pid', '--pgid', '--uid'],
     time: ['-f', '--format', '-o', '--output'],
+    exec: ['-a'],
 };
+
+// Each wrapper's options as getopt reads them: the short letters that take a
+// value, the ones whose value is optional (only the rest of the same word,
+// never the next word), and every long name (getopt_long accepts any
+// unambiguous prefix). env has its own parser, envOptions().
+const WRAPPER_GETOPT = {
+    timeout: { value: 'sk', long: ['signal', 'kill-after', 'foreground', 'preserve-status', 'verbose'] },
+    nice: { value: 'n', long: ['adjustment'] },
+    stdbuf: { value: 'ioe', long: ['input', 'output', 'error'] },
+    ionice: { value: 'cnpPu', long: ['class', 'classdata', 'pid', 'pgid', 'uid', 'ignore'] },
+    xargs: { value: 'adEILnPs', optional: 'eil', long: ['arg-file', 'delimiter', 'eof', 'replace', 'max-lines', 'max-args', 'max-procs', 'max-chars', 'process-slot-var', 'null', 'open-tty', 'interactive', 'no-run-if-empty', 'verbose', 'exit', 'show-limits'] },
+    time: { value: 'fo', long: ['format', 'output', 'append', 'verbose', 'portability', 'quiet'] },
+    exec: { value: 'a', long: [] },
+};
+
+/**
+ * Rewrite a wrapper's leading options into the one-option-per-word, full-name
+ * form wrapperTarget() matches: `timeout -vk 5` -> `timeout -v -k 5`,
+ * `nice --adj 5` -> `nice --adjustment 5`. Otherwise the value of a packed or
+ * abbreviated option is taken for the command the wrapper runs.
+ */
+function expandWrapperOptions(cmd, w) {
+    const spec = WRAPPER_GETOPT[cmd];
+    if (!spec) return w;
+    const takesValue = WRAPPER_VALUE_OPTS[cmd] ?? [];
+    const out = [w[0]];
+    let k = 1;
+    for (; k < w.length; k++) {
+        const a = w[k];
+        if (a === '--' || a === '-' || !a.startsWith('-')) break;
+        if (a.startsWith('--')) {
+            const eq = a.indexOf('=');
+            const name = a.slice(2, eq === -1 ? undefined : eq);
+            const hits = spec.long.filter((l) => l.startsWith(name));
+            const full = `--${spec.long.includes(name) || hits.length !== 1 ? name : hits[0]}`;
+            if (eq !== -1) out.push(full + a.slice(eq));
+            else {
+                out.push(full);
+                if (takesValue.includes(full) && k + 1 < w.length) out.push(w[++k]);
+            }
+            continue;
+        }
+        for (let i = 1; i < a.length; i++) {
+            // `xargs -iE cmd`: E is -i's replace string, not a packed -E.
+            if (spec.optional?.includes(a[i])) {
+                out.push(`-${a[i]}${a.slice(i + 1)}`);
+                break;
+            }
+            if (!spec.value.includes(a[i])) {
+                out.push(`-${a[i]}`);
+            } else if (i + 1 < a.length) {
+                out.push(`-${a[i]}${a.slice(i + 1)}`);
+                break;
+            } else {
+                out.push(`-${a[i]}`);
+                if (k + 1 < w.length) out.push(w[++k]);
+            }
+        }
+    }
+    return [...out, ...w.slice(k)];
+}
 
 // GNU env's long options; getopt accepts any unambiguous prefix (`--sp` is --split-string).
 const ENV_LONG = [
-    'ignore-environment', 'null', 'unset', 'chdir', 'split-string', 'block-signal', 'default-signal', 'ignore-signal',
+    'ignore-environment', 'null', 'unset', 'chdir', 'argv0', 'split-string', 'block-signal', 'default-signal', 'ignore-signal',
     'list-signal-handling', 'debug', 'help', 'version',
 ];
 
@@ -1069,7 +1131,7 @@ const ENV_LONG = [
  * { target, script, rest }: `target` is the index of the command env runs (-1 if
  * none), `script` the -S/--split-string command string (null if none) and `rest`
  * the index of the first word after it. Short options cluster (`-iS 'cmd'`,
- * `-iu NAME`), -u/-C/-S take the rest of the word or the next word, and a lone
+ * `-iu NAME`), -u/-C/-S/-a take the rest of the word or the next word, and a lone
  * `-` is the obsolete spelling of -i. The wrapped command's own arguments
  * (`--title -Sx`) are never read as env options.
  */
@@ -1092,7 +1154,7 @@ function envOptions(w) {
             if (opt === 'split-string') {
                 return eq === -1 ? { target: -1, script: w[k + 1] ?? '', rest: k + 2 } : { target: -1, script: a.slice(eq + 1), rest: k + 1 };
             }
-            if ((opt === 'unset' || opt === 'chdir') && eq === -1) k++;
+            if ((opt === 'unset' || opt === 'chdir' || opt === 'argv0') && eq === -1) k++;
             continue;
         }
         for (let j = 1; j < a.length; j++) {
@@ -1101,7 +1163,7 @@ function envOptions(w) {
                     ? { target: -1, script: a.slice(j + 1), rest: k + 1 }
                     : { target: -1, script: w[k + 1] ?? '', rest: k + 2 };
             }
-            if (a[j] === 'u' || a[j] === 'C') {
+            if (a[j] === 'u' || a[j] === 'C' || a[j] === 'a') {
                 if (j + 1 === a.length) k++; // the value is the next word
                 break;
             }
@@ -1172,6 +1234,7 @@ function checkSegment(words, state) {
                 return checkSegment([...head, ...w.slice(rest)], state);
             }
         }
+        w = expandWrapperOptions(cmd, w);
         // Look through the wrapper to the command it runs: skip its own options
         // (and their values), NAME=value words, and timeout's duration.
         const idx = wrapperTarget(w);
