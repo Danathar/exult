@@ -28,22 +28,49 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "endianio.h"
 #include "servemsg.h"
 
+#include <cstddef>
 #include <string>
 
+/*
+ *  Encode.  If an end is given, nothing is written past it; a write that
+ *  would not fit is dropped and marks the stream as failed.
+ */
 class Serial_out {
-	unsigned char*& buf;
+	unsigned char*&      buf;
+	const unsigned char* end;
+	bool                 bad = false;
+
+	bool room(size_t n) {
+		if (bad || (end != nullptr && (end < buf || static_cast<size_t>(end - buf) < n))) {
+			bad = true;
+			return false;
+		}
+		return true;
+	}
 
 public:
-	Serial_out(unsigned char*& b) : buf(b) {}
+	Serial_out(unsigned char*& b, const unsigned char* e = nullptr) : buf(b), end(e) {}
+
+	bool failed() const {
+		return bad;
+	}
+
+	void fail() {
+		bad = true;
+	}
 
 	template <typename T>
 	Serial_out& operator<<(T v) {
-		little_endian::WriteN(buf, v);
+		if (room(sizeof(T))) {
+			little_endian::WriteN(buf, v);
+		}
 		return *this;
 	}
 
 	Serial_out& operator<<(bool v) {
-		Write1(buf, (v ? 1 : 0));
+		if (room(1)) {
+			Write1(buf, (v ? 1 : 0));
+		}
 		return *this;
 	}
 
@@ -57,22 +84,45 @@ public:
 };
 
 /*
- *  Decode.
+ *  Decode.  If an end is given, nothing is read past it; a read that
+ *  would run off the end yields a zero value and marks the stream as failed.
  */
 class Serial_in {
 	const unsigned char*& buf;
+	const unsigned char*  end;
+	bool                  bad = false;
+
+	bool room(size_t n) {
+		if (bad || (end != nullptr && (end < buf || static_cast<size_t>(end - buf) < n))) {
+			bad = true;
+			return false;
+		}
+		return true;
+	}
 
 public:
-	Serial_in(const unsigned char*& b) : buf(b) {}
+	Serial_in(const unsigned char*& b, const unsigned char* e = nullptr) : buf(b), end(e) {}
+
+	bool failed() const {
+		return bad;
+	}
+
+	void fail() {
+		bad = true;
+	}
 
 	template <typename T>
 	Serial_in& operator<<(T& v) {
-		v = little_endian::ReadN<T>(buf);
+		if (room(sizeof(T))) {
+			v = little_endian::ReadN<T>(buf);
+		} else {
+			v = T();
+		}
 		return *this;
 	}
 
 	Serial_in& operator<<(bool& v) {
-		v = Read1(buf) != 0;
+		v = room(1) && Read1(buf) != 0;
 		return *this;
 	}
 
@@ -152,6 +202,10 @@ struct Serial_schedule {    // For passing a schedule change.
 	int   tx, ty, tz;       // Tile to go to.
 };
 
+// Most schedule changes an npc message carries.  Every schedules array
+//   passed to Npc_actor_out/Npc_actor_in must have room for this many.
+constexpr int max_serial_schedules = 8;
+
 class Actor;
 
 int Npc_actor_out(
@@ -179,7 +233,7 @@ bool Npc_actor_in(
 		unsigned long&   xflags,           // Extra object flags.
 		unsigned long&   type_flags,       // Movement flags.
 		short&           num_schedules,    // # of schedule changes.
-		Serial_schedule* schedules         // Schedule changes.  Room for 8.
+		Serial_schedule* schedules         // Schedule changes.  Room for max_serial_schedules.
 );
 
 extern int Game_info_out(

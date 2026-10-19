@@ -33,6 +33,7 @@ private:
 	int                      gumps_pause;
 	bool                     alternate_drop;
 	int                      frames;
+	int                      custom_fps = -1;    // non-preset fps from the config, -1 if none
 	std::vector<std::string> frametext;
 	int                      difficulty;
 	int                      show_hits;
