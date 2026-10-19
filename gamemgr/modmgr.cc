@@ -249,6 +249,12 @@ bool ModInfo::is_mod_compatible(const std::string& modversion) {
 		return false;
 	}
 
+	// Skip the '.' separating version components, but never step past the
+	// terminating null of a short version string such as "1" or "1.2".
+	auto skip_separator = [](char* ptr) {
+		return *ptr != 0 ? ptr + 1 : ptr;
+	};
+
 	const char* ptrmod = modversion.c_str();
 	const char* ptrver = VERSION;
 	char*       eptrmod;
@@ -260,14 +266,14 @@ bool ModInfo::is_mod_compatible(const std::string& modversion) {
 	if (modver > exver) {
 		return false;
 	} else if (modver == exver) {
-		modver = strtol(eptrmod + 1, &eptrmod, 0);
-		exver  = strtol(eptrver + 1, &eptrver, 0);
+		modver = strtol(skip_separator(eptrmod), &eptrmod, 0);
+		exver  = strtol(skip_separator(eptrver), &eptrver, 0);
 		// Comparing minor version number:
 		if (modver > exver) {
 			return false;
 		} else if (modver == exver) {
-			modver = strtol(eptrmod + 1, &eptrmod, 0);
-			exver  = strtol(eptrver + 1, &eptrver, 0);
+			modver = strtol(skip_separator(eptrmod), &eptrmod, 0);
+			exver  = strtol(skip_separator(eptrver), &eptrver, 0);
 			// Comparing revision number:
 			if (modver > exver) {
 				return false;
@@ -349,7 +355,7 @@ string get_game_identity(const char* savename, IDataSource* ds, const string& ti
 	}
 	// Truncate identity
 	char* ptr = game_identity.get();
-	for (; (*ptr != 0x1a && *ptr != 0x0d); ptr++)
+	for (; (*ptr != 0 && *ptr != 0x1a && *ptr != 0x0d); ptr++)
 		;
 	*ptr      = 0;
 	string id = game_identity.get();
