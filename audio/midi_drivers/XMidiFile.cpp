@@ -1965,6 +1965,11 @@ int XMidiFile::ExtractTracksFromXMIDIMT(IDataSource* source) {
 }
 
 void XMidiFile::InsertDisplayEvents() {
+	// Extraction may have failed, leaving no tracks to add the display to.
+	if (!events || num_tracks <= 0 || !events[0] || !events[0]->events) {
+		return;
+	}
+
 	// Change the display
 	current = list = events[0]->events;
 	while (current->next) {
