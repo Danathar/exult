@@ -107,6 +107,11 @@ using std::strchr;
 using std::string;
 using std::vector;
 
+namespace {
+	constexpr int usecode_stack_size     = 1024;    // Entries in Usecode_internal::stack.
+	constexpr int max_usecode_call_depth = 4096;    // Deepest nested usecode call.
+}    // namespace
+
 // External globals..
 
 extern bool intrinsic_trace;
@@ -223,6 +228,12 @@ bool Usecode_internal::call_function(int funcid, int eventid, Game_object* calle
 
 		// find new depth
 		depth = parent->call_depth + 1;
+		if (depth > max_usecode_call_depth) {
+			// Runaway recursion in (mod) usecode.
+			cerr << "Usecode call depth exceeds " << max_usecode_call_depth << " calling function " << hex << setw(4)
+				 << setfill('0') << funcid << dec << setfill(' ') << endl;
+			return false;
+		}
 
 		// find number of elements available to pop from stack (as arguments)
 		oldstack = sp - parent->save_sp;
@@ -440,6 +451,22 @@ void Usecode_internal::append_string(const char* str) {
 
 // Push/pop stack.
 inline void Usecode_internal::push(const Usecode_value& val) {
+	if (sp >= stack + usecode_stack_size) {
+		// Do not write past the end; run() aborts the function.
+		if (!stack_overflow) {
+			cerr << "Stack overflow on function ";
+			if (!call_stack.empty() && call_stack.front()) {
+				print_usecode_function(symtbl, call_stack.front()->function->id);
+			}
+			if (frame && !call_stack.empty() && frame == call_stack.front()) {
+				cerr << " at IP ";
+				cout << hex << setw(4) << setfill('0') << (frame->ins_ip - frame->code) << dec << setfill(' ');
+			}
+			cout << std::endl;
+		}
+		stack_overflow = true;
+		return;
+	}
 	*sp++ = val;
 }
 
@@ -1614,7 +1641,7 @@ Usecode_value Usecode_internal::call_intrinsic(
 	} else {
 		table = intrinsics_bg;
 	}
-	if (static_cast<size_t>(intrinsic) <= table.size()) {
+	if (static_cast<size_t>(intrinsic) < table.size()) {
 		auto&                    table_entry = table[intrinsic];
 		const UsecodeIntrinsicFn func        = table_entry.func;
 		const char*              name        = table_entry.name;
@@ -1732,7 +1759,7 @@ Usecode_machine* Usecode_machine::create() {
  *  Create machine from a 'usecode' file.
  */
 
-Usecode_internal::Usecode_internal() : stack(new Usecode_value[1024]) {
+Usecode_internal::Usecode_internal() : stack(new Usecode_value[usecode_stack_size]) {
 	sp = stack;
 	read_usecode();
 	//  set_breakpoint();
@@ -1897,6 +1924,15 @@ int Usecode_internal::run() {
 		 *  Main loop.
 		 */
 		while (!frame_changed) {
+			if (stack_overflow) {
+				// The last instruction pushed more than the stack holds.
+				stack_overflow = false;
+				Usecode_value msg("Usecode stack overflow!");
+				abort_function(msg);
+				frame_changed = true;
+				aborted       = true;
+				continue;
+			}
 			if ((frame->ip >= frame->endp) || (frame->ip < frame->code)) {
 				cerr << "Usecode: jumped outside of code segment of "
 					 << "function " << hex << setw(4) << setfill('0') << frame->function->id << dec << setfill(' ')
@@ -2981,6 +3017,7 @@ int Usecode_internal::run() {
 		}
 	}
 
+	stack_overflow = false;
 	if (call_stack.front() == nullptr) {
 		// pop the nullptr frame from the stack
 		call_stack.pop_front();
