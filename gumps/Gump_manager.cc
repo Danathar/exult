@@ -54,6 +54,7 @@
 #include "ucmachine.h"
 
 #include <iostream>
+#include <vector>
 
 #ifdef __GNUC__
 #	pragma GCC diagnostic push
@@ -707,7 +708,7 @@ void Gump_manager::close_all_gumps(bool pers) {
 
 		// Don't delete if persistant or modal.
 		if ((!gump->gump->is_persistent() || pers) && !gump->gump->is_modal()) {
-			if (!gump->gump->is_persistent()) {
+			if (!gump->gump->is_persistent() && !dont_pause_game) {
 				gwin->get_tqueue()->resume(Game::get_ticks());
 			}
 			if (prev) {
@@ -820,8 +821,19 @@ bool Gump_manager::handle_mouse_wheel(float y, float x, int mx, int my) {
  *  Update the gumps
  */
 void Gump_manager::update_gumps() {
+	// A gump's update may close gumps (usecode callbacks), freeing list nodes
+	// and gumps, so iterate over a snapshot and only update gumps still open.
+	std::vector<Gump*> snapshot;
 	for (Gump_list* gmp = open_gumps; gmp; gmp = gmp->next) {
-		gmp->gump->update_gump();
+		snapshot.push_back(gmp->gump);
+	}
+	for (Gump* gump : snapshot) {
+		for (Gump_list* gmp = open_gumps; gmp; gmp = gmp->next) {
+			if (gmp->gump == gump) {
+				gump->update_gump();
+				break;
+			}
+		}
 	}
 }
 

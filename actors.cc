@@ -2286,17 +2286,25 @@ bool Actor::edit() {
 		cheat.in_map_editor()) {
 		editing.reset();
 		const Tile_coord t = get_tile();
-		Serial_schedule  schedules[8]{};
+		Serial_schedule  schedules[max_serial_schedules]{};
 		const auto*      changes       = get_schedules();
 		int              num_schedules = 0;
 		if (changes != nullptr) {
-			std::transform(changes->cbegin(), changes->cend(), std::begin(schedules), [](const Schedule_change& sched) {
-				const Tile_coord p = sched.get_pos();
+			// The message (and ExultStudio's schedule page) only has room
+			//   for max_serial_schedules entries.
+			num_schedules = std::min(static_cast<int>(changes->size()), max_serial_schedules);
+			if (static_cast<int>(changes->size()) > num_schedules) {
+				cout << "Npc has " << changes->size() << " schedule changes; only " << num_schedules
+					 << " are sent to ExultStudio" << endl;
+			}
+			std::transform(
+					changes->cbegin(), changes->cbegin() + num_schedules, std::begin(schedules), [](const Schedule_change& sched) {
+						const Tile_coord p = sched.get_pos();
 
-				Serial_schedule ss{static_cast<short>(sched.get_time()), static_cast<short>(sched.get_type()), p.tx, p.ty, p.tz};
-				return ss;
-			});
-			num_schedules = changes->size();
+						Serial_schedule ss{
+								static_cast<short>(sched.get_time()), static_cast<short>(sched.get_type()), p.tx, p.ty, p.tz};
+						return ss;
+					});
 		}
 		if (Npc_actor_out(
 					client_socket, this, t.tx, t.ty, t.tz, get_shapenum(), get_framenum(), get_face_shapenum(), name, npc_num,
@@ -2345,7 +2353,7 @@ void Actor::update_from_studio(unsigned char* data, int datalen) {
 	unsigned long   xflags;        // Extra object flags.
 	unsigned long   type_flags;    // Movement flags.
 	short           num_schedules;
-	Serial_schedule schedules[8];
+	Serial_schedule schedules[max_serial_schedules];
 	if (!Npc_actor_in(
 				data, datalen, npc, tx, ty, tz, shape, frame, face, name, npc_num, ident, usecode, usecodefun, properties,
 				attack_mode, alignment, oflags, xflags, type_flags, num_schedules, schedules)) {

@@ -598,7 +598,7 @@ void ExultStudio::setup_groups() {
 		delsig = g_signal_connect(G_OBJECT(model), "row-deleted", G_CALLBACK(on_group_list_row_deleted), this);
 		g_object_set_data_full(G_OBJECT(model), "row-deleted", new gulong(delsig), gulong_deleter);
 		chgsig = g_signal_connect(G_OBJECT(model), "row-changed", G_CALLBACK(on_group_list_row_changed), this);
-		g_object_set_data_full(G_OBJECT(model), "row-changed", new gulong(delsig), gulong_deleter);
+		g_object_set_data_full(G_OBJECT(model), "row-changed", new gulong(chgsig), gulong_deleter);
 	} else {
 		model  = GTK_TREE_STORE(oldmod);
 		addsig = *static_cast<gulong*>(g_object_get_data(G_OBJECT(model), "row-inserted"));
@@ -1041,17 +1041,31 @@ C_EXPORT gboolean on_group_window_delete_event(GtkWidget* widget, GdkEvent* even
 	return true;
 }
 
+/*
+ *  After the group was rearranged and the chooser rebuilt, select the entry
+ *  showing the given group member again.
+ */
+static void reselect_group_item(Object_browser* chooser, int id) {
+	const int index = chooser->find_id_index(id);
+	if (index >= 0) {
+		chooser->select(index);
+		chooser->render();
+	}
+}
+
 C_EXPORT void on_group_up_clicked(GtkToggleButton* button, gpointer user_data) {
 	ignore_unused_variable_warning(user_data, button);
 	auto* chooser
 			= static_cast<Object_browser*>(g_object_get_data(G_OBJECT(gtk_widget_get_toplevel(GTK_WIDGET(button))), "browser"));
 	Shape_group* grp = chooser->get_group();
-	const int    i   = chooser->get_selected();
+	const int    i   = chooser->get_selected_group_index();
 	if (grp && i > 0) {    // Moving item up.
+		const int id = (*grp)[i];
 		grp->swap(i - 1);
-		// Move selection up with the shape
-		chooser->select(i - 1);
+		chooser->reset_selected();
 		ExultStudio::get_instance()->update_group_windows(grp);
+		// Move selection up with the shape
+		reselect_group_item(chooser, id);
 	}
 }
 
@@ -1060,12 +1074,14 @@ C_EXPORT void on_group_down_clicked(GtkToggleButton* button, gpointer user_data)
 	auto* chooser
 			= static_cast<Object_browser*>(g_object_get_data(G_OBJECT(gtk_widget_get_toplevel(GTK_WIDGET(button))), "browser"));
 	Shape_group* grp = chooser->get_group();
-	const int    i   = chooser->get_selected();
+	const int    i   = chooser->get_selected_group_index();
 	if (grp && i >= 0 && i < grp->size() - 1) {    // Moving down.
+		const int id = (*grp)[i];
 		grp->swap(i);
-		// Move selection down with the shape
-		chooser->select(i + 1);
+		chooser->reset_selected();
 		ExultStudio::get_instance()->update_group_windows(grp);
+		// Move selection down with the shape
+		reselect_group_item(chooser, id);
 	}
 }
 
@@ -1074,7 +1090,7 @@ C_EXPORT void on_group_shape_remove_clicked(GtkToggleButton* button, gpointer us
 	auto* chooser
 			= static_cast<Object_browser*>(g_object_get_data(G_OBJECT(gtk_widget_get_toplevel(GTK_WIDGET(button))), "browser"));
 	Shape_group* grp = chooser->get_group();
-	const int    i   = chooser->get_selected();
+	const int    i   = chooser->get_selected_group_index();
 	if (grp && i >= 0) {
 		chooser->reset_selected();
 		grp->del(i);

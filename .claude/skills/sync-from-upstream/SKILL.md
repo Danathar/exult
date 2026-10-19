@@ -18,11 +18,18 @@ this skill has not been exercised by an agent):
 2. Locally fetch upstream with a temporary remote and merge it on a branch,
    then open a PR to `Danathar/exult`. Avoid GitHub's "Sync fork" button: it
    updates `master` directly and bypasses the PR and its checks.
-3. Expect conflicts mainly where this fork added files: `.claude/`, `.cursor/`,
+3. Expect conflicts where this fork added files: `.claude/`, `.cursor/`,
    `AGENTS.md`, `CLAUDE.md`, `.editorconfig`, `tests/`, `scripts/`,
    `policies/`. Upstream also has `.github/` and `docs/`, so check those too.
+   Conflicts can also land in engine sources the fork has changed. Resolve each
+   against its row in `docs/fork-delta.md`: if upstream fixed the same bug,
+   take upstream's version and drop the row; if upstream changed something
+   nearby, combine both; if upstream never fixed it, keep ours. Take extra care
+   in savegame and file-format code (`files/`, `gamedat.cc`, parts of `objs/`).
 4. Run `tests/run-unit-tests.sh` and `tests/e2e/run.sh`, and let the `ci-*`
    workflows run, before merging the sync PR.
-5. Any `gh` write command passes `--repo Danathar/exult`.
-6. Remove the temporary remote afterwards; the clones are expected to have only
+5. Update `docs/fork-delta.md` in the sync PR: drop the rows upstream now
+   fixes, and refresh the files listed on rows whose code moved.
+6. Any `gh` write command passes `--repo Danathar/exult`.
+7. Remove the temporary remote afterwards; the clones are expected to have only
    `origin`.

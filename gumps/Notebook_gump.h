@@ -110,7 +110,7 @@ public:
 	}
 
 	bool        word_exceeds_line_length(const std::string& text, int offset, int curpage);
-	void        add_new_with_line_breaks(const std::string& text, int gflag);
+	static void add_new_with_line_breaks(const std::string& text, int gflag);
 	std::string get_next_line(const std::string& text);
 	static void initialize();
 	static void write();    // Write it out to gamedat.
