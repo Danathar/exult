@@ -693,10 +693,11 @@ void Npc_chooser::drag_data_received(
 		&& Is_u7_npcid(gtk_selection_data_get_data(seldata)) && gtk_selection_data_get_format(seldata) == 8
 		&& gtk_selection_data_get_length(seldata) > 0) {
 		int npcnum;
-		Get_u7_npcid(gtk_selection_data_get_data(seldata), npcnum);
-		chooser->group->add(npcnum);
-		chooser->setup_info(true);
-		chooser->render();
+		if (Get_u7_npcid(gtk_selection_data_get_data(seldata), npcnum)) {
+			chooser->group->add(npcnum);
+			chooser->setup_info(true);
+			chooser->render();
+		}
 	}
 }
 
