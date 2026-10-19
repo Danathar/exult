@@ -464,8 +464,10 @@ Uc_function_symbol* Uc_function_symbol::create(
 		auto get_param_type = [](const Uc_var_symbol* var) {
 			std::string type;
 			if (var->get_sym_type() == Uc_symbol::Class) {
-				type = "class<";
-				type += var->get_cls()->get_name();
+				// The class is null if its lookup failed; that was already reported.
+				const auto* cls = var->get_cls();
+				type            = "class<";
+				type += cls != nullptr ? cls->get_name() : "?";
 				type += ">";
 			} else if (const auto* str = var->get_struct(); str != nullptr) {
 				type = "struct<";

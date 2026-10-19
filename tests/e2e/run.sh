@@ -3,7 +3,8 @@
 # (no Ultima VII game data is needed or used):
 #
 #   1. ucc compiles a small usecode script; a script with a syntax error must be
-#      rejected (non-zero exit, no output file).
+#      rejected (non-zero exit, no output file). Regression inputs that used to
+#      crash ucc or exit 0 must fail cleanly or compile.
 #   2. expack builds a Flex archive from known files, lists it, extracts it, and
 #      the extracted bytes must equal the inputs. A truncated archive must not
 #      round-trip.
@@ -107,6 +108,93 @@ elif [ -e "$work/broken.uco" ] && [ -s "$work/broken.uco" ]; then
 else
 	ok "ucc rejects a script with a syntax error"
 fi
+
+# ucc_rejects NAME DESC: $work/NAME.uc must fail cleanly: a non-zero exit below 128 (not a
+# signal), no output file and no sanitizer report.
+ucc_rejects() {
+	local name=$1 desc=$2 rc=0
+	(cd "$work" && "$ucc" -o "$name.uco" "$name.uc" >"ucc-$name.log" 2>&1) || rc=$?
+	if [ "$rc" -eq 0 ]; then
+		bad "ucc accepted $desc"
+	elif [ "$rc" -ge 128 ]; then
+		bad "ucc crashed (exit $rc) on $desc"; cat "$work/ucc-$name.log" >&2 || true
+	elif grep -Eq 'AddressSanitizer|runtime error' "$work/ucc-$name.log"; then
+		bad "ucc hit a sanitizer error on $desc"; cat "$work/ucc-$name.log" >&2 || true
+	elif [ -s "$work/$name.uco" ]; then
+		bad "ucc wrote output for $desc"
+	else
+		ok "ucc rejects $desc cleanly"
+	fi
+}
+
+# ucc_accepts NAME DESC: $work/NAME.uc must compile (exit 0, output written) with no sanitizer report.
+ucc_accepts() {
+	local name=$1 desc=$2 rc=0
+	(cd "$work" && "$ucc" -o "$name.uco" "$name.uc" >"ucc-$name.log" 2>&1) || rc=$?
+	if [ "$rc" -ne 0 ] || [ ! -s "$work/$name.uco" ]; then
+		bad "ucc failed (exit $rc) on $desc"; cat "$work/ucc-$name.log" >&2 || true
+	elif grep -Eq 'AddressSanitizer|runtime error' "$work/ucc-$name.log"; then
+		bad "ucc hit a sanitizer error on $desc"; cat "$work/ucc-$name.log" >&2 || true
+	else
+		ok "ucc compiles $desc"
+	fi
+}
+
+# Exactly 256 errors: the exit status must not wrap around to 0.
+{
+	printf 'void f() {'
+	for i in $(seq 0 255); do printf ' x%d = 1;' "$i"; done
+	printf ' }\n'
+} > "$work/errs256.uc"
+ucc_rejects errs256 "a script with exactly 256 errors"
+
+printf 'void f() { var a = 1; var a = 2; }\n' > "$work/redecl.uc"
+ucc_rejects redecl "a redeclared local variable with an initializer"
+
+printf 'struct S { var x; }\nvoid f() { struct<S> a; struct<S> a = [1]; }\n' > "$work/redecl_struct.uc"
+ucc_rejects redecl_struct "a redeclared struct variable with an initializer"
+
+printf 'struct S { var a; struct<Missing>; }\n' > "$work/struct_missing.uc"
+ucc_rejects struct_missing "an undefined struct merged into a struct"
+
+printf 'struct S { var a; struct<Missing> b; }\n' > "$work/struct_missing_named.uc"
+ucc_rejects struct_missing_named "an undefined named struct member"
+
+printf 'extern void bar(var a);\nextern void bar(class<Missing> a);\n' > "$work/redecl_class_param.uc"
+ucc_rejects redecl_class_param "a function redeclared with an undefined class parameter"
+
+printf 'enum e { a = &foo }\n' > "$work/addressof_enum.uc"
+ucc_rejects addressof_enum "'&' of an undeclared function in an enum"
+
+cat > "$work/addressof_const.uc" <<'UC'
+#game "blackgate"
+#autonumber 0xC00
+
+var foo (var a)
+{
+	return a;
+}
+
+const int FOO_ID = &foo;
+UC
+ucc_accepts addressof_const "'&function' in a file-scope const"
+
+# Constant folding wraps around at 32 bits (only a UBSan build can see the old undefined behaviour).
+cat > "$work/fold_wrap.uc" <<'UC'
+#game "blackgate"
+#autonumber 0xC00
+
+const int a = -2147483648;
+const int b = 2147483647 + 1;
+const int c = 0 - (-2147483647 - 1);
+const int d = (-2147483647 - 1) / -1;
+
+var wrap ()
+{
+	return 2147483647 + 1;
+}
+UC
+ucc_accepts fold_wrap "constant expressions that overflow 32 bits"
 
 # --- expack ------------------------------------------------------------
 mkdir "$work/in" "$work/out"
