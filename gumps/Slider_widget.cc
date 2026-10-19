@@ -283,7 +283,7 @@ bool Slider_widget::mouse_up(
 	}
 	if (button != MouseButton::Left || !is_dragging()) {
 		// pass to buttons
-		if (left->mouse_down(mx, my, button) || right->mouse_down(mx, my, button)) {
+		if (left->mouse_up(mx, my, button) || right->mouse_up(mx, my, button)) {
 			return true;
 		}
 
