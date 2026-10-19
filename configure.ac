@@ -446,9 +446,9 @@ fi
 # Statically link libraries?
 # ---------------------------------------------------------------------
 
-AC_ARG_ENABLE(static-libraries, AS_HELP_STRING([--enable-static-libraries], [Enable static linking of libraries]),,enable_static_libs=no)
+AC_ARG_ENABLE(static-libraries, AS_HELP_STRING([--enable-static-libraries], [Enable static linking of libraries]),,enable_static_libraries=no)
 AC_MSG_CHECKING([if we want to statically compile libraries])
-if test x$enable_static_libs != xno; then
+if test x$enable_static_libraries != xno; then
 	if test x$ARCH != xmacosx; then
 		# Assuming GCC. This is probably not portable.
 		STATIC_LD="-static"
@@ -683,7 +683,7 @@ if test x$enable_zip_support = xyes ; then
 	# if test x$GCC = xyes ; then
 	#	ZLIB_LIBS="-Wl,-Bstatic -lz -Wl,-Bdynamic"
 	# else
-	if test x$enable_static_libs = xno -o x$ARCH != xmacosx; then
+	if test x$enable_static_libraries = xno -o x$ARCH != xmacosx; then
 		PKG_CHECK_MODULES(ZLIB, zlib, have_zlib=yes, have_zlib=no)
 	else
 		have_zlib=yes
@@ -704,16 +704,16 @@ fi
 AC_ARG_ENABLE(all_hq_scalers, AS_HELP_STRING([--enable-all-hq-scalers], [Enable hq2x, hq3x, hq4x scaler support @<:@default yes@:>@]),,enable_all_hq_scalers=yes)
 AC_MSG_CHECKING([if we should build all hq scalers])
 if test x$enable_all_hq_scalers = xyes; then
-	enable_hq2x=yes
-	enable_hq3x=yes
-	enable_hq4x=yes
+	test "${enable_hq2x+set}" = set || enable_hq2x=yes
+	test "${enable_hq3x+set}" = set || enable_hq3x=yes
+	test "${enable_hq4x+set}" = set || enable_hq4x=yes
 	AC_MSG_RESULT(yes)
 else
 	AC_MSG_RESULT(no)
 fi
 
 # HQ2X scaler
-AC_ARG_ENABLE(hq2x, AS_HELP_STRING([--enable-hq2x],[Enable hq2x scaler support @<:@default no@:>@]),,enable_hq2x=no)
+AC_ARG_ENABLE(hq2x, AS_HELP_STRING([--enable-hq2x],[Enable hq2x scaler support @<:@default: same as --enable-all-hq-scalers@:>@]),,enable_hq2x=no)
 AC_MSG_CHECKING(if we should build the hq2x scaler)
 if test x$enable_hq2x = xyes; then
 	AC_MSG_RESULT(yes)
@@ -723,7 +723,7 @@ else
 fi
 
 # HQ3X scaler
-AC_ARG_ENABLE(hq3x, AS_HELP_STRING([--enable-hq3x],[Enable hq3x scaler support @<:@default no@:>@]),,enable_hq3x=no)
+AC_ARG_ENABLE(hq3x, AS_HELP_STRING([--enable-hq3x],[Enable hq3x scaler support @<:@default: same as --enable-all-hq-scalers@:>@]),,enable_hq3x=no)
 AC_MSG_CHECKING(if we should build the hq3x scaler)
 if test x$enable_hq3x = xyes; then
 	AC_MSG_RESULT(yes)
@@ -733,7 +733,7 @@ else
 fi
 
 # HQ4X scaler
-AC_ARG_ENABLE(hq4x, AS_HELP_STRING([--enable-hq4x],[Enable hq4x scaler support @<:@default no@:>@]),,enable_hq4x=no)
+AC_ARG_ENABLE(hq4x, AS_HELP_STRING([--enable-hq4x],[Enable hq4x scaler support @<:@default: same as --enable-all-hq-scalers@:>@]),,enable_hq4x=no)
 AC_MSG_CHECKING(if we should build the hq4x scaler)
 if test x$enable_hq4x = xyes; then
 	AC_MSG_RESULT(yes)
@@ -1502,7 +1502,7 @@ fi
 
 if test x$enable_exult = xyes; then
 	echo Scalers :
-	if test x$enable_all_hq_scalers = xyes; then
+	if test x$enable_all_hq_scalers = xyes -a x$enable_hq2x = xyes -a x$enable_hq3x = xyes -a x$enable_hq4x = xyes; then
 		echo Build all HQ scalers....... : $enable_all_hq_scalers
 		else
 		echo Build HQ2X scaler.......... : $enable_hq2x
@@ -1541,11 +1541,11 @@ echo Build Usecode debugger..... : $enable_usecode_debugger
 echo
 echo Compilation :
 echo Enable compiler sanitizers. : $enable_sanitizers
-echo Build with static libraries : $enable_static_libs
+echo Build with static libraries : $enable_static_libraries
 echo Turn all warnings to errors : $enable_warning_errors
 echo Turn pedantics to errors... : $enable_pedantic_errors
 if test x$ARCH = xmacosx; then
-	if test x$enable_static_libs != xno; then
+	if test x$enable_static_libraries != xno; then
 		echo macOS static libs....... : $with_macosx_static_lib_path
 	fi
 fi
