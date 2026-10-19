@@ -1085,9 +1085,9 @@ const WRAPPER_VALUE_OPTS = {
     chrt: ['-T', '--sched-runtime', '-P', '--sched-period', '-D', '--sched-deadline'],
     unshare: [
         '-S', '--setuid', '-G', '--setgid', '-R', '--root', '-w', '--wd', '--propagation', '--setgroups', '--monotonic',
-        '--boottime', '--map-user', '--map-group', '--map-users', '--map-groups',
+        '--boottime', '--map-user', '--map-group', '--map-users', '--map-groups', '-l', '--load-interp',
     ],
-    nsenter: ['-t', '--target', '-S', '--setuid', '-G', '--setgid', '-W', '--wdns', '-N', '--net-socket'],
+    nsenter: ['-t', '--target', '-S', '--setuid', '-G', '--setgid', '--wdns', '-N', '--net-socket'],
     setpriv: [
         '--ambient-caps', '--inh-caps', '--bounding-set', '--ruid', '--euid', '--rgid', '--egid', '--reuid', '--regid',
         '--groups', '--securebits', '--pdeathsig', '--selinux-label', '--apparmor-profile', '--landlock-access',
@@ -1095,6 +1095,24 @@ const WRAPPER_VALUE_OPTS = {
     ],
     chroot: ['--userspec', '--groups'],
 };
+// Short options whose value is optional: it can only be attached (`xargs -iE`,
+// `nsenter -nFILE`), so the rest of the word is the value and the next word is
+// never consumed (`nsenter -W CMD` runs CMD).
+const WRAPPER_OPTIONAL_ARG = { xargs: 'eil', watch: 'd', nsenter: 'muinpCUTrwW' };
+
+/**
+ * Whether a short-option cluster (`-vk`, `-tc`, `-la`) ends in an option that
+ * takes its value from the next word. getopt reads letters left to right; the
+ * first one that takes a value, required or optional, owns the rest of the word.
+ */
+function clusterTakesNextWord(a, valueOpts, optional) {
+    for (let j = 1; j < a.length; j++) {
+        if (optional.includes(a[j])) return false;
+        if (valueOpts.includes(`-${a[j]}`)) return j === a.length - 1;
+    }
+    return false;
+}
+
 // Operand words a wrapper takes before the command: timeout's duration,
 // taskset's CPU mask, flock's lock file, chroot's new root.
 const WRAPPER_OPERANDS = { timeout: 1, taskset: 1, flock: 1, chroot: 1 };
@@ -1108,7 +1126,7 @@ const NO_COMMAND_OPTS = {
 // GNU env's long options; getopt accepts any unambiguous prefix (`--sp` is --split-string).
 const ENV_LONG = [
     'ignore-environment', 'null', 'unset', 'chdir', 'split-string', 'block-signal', 'default-signal', 'ignore-signal',
-    'list-signal-handling', 'debug', 'help', 'version',
+    'list-signal-handling', 'debug', 'help', 'version', 'argv0',
 ];
 
 /**
@@ -1116,7 +1134,7 @@ const ENV_LONG = [
  * { target, script, rest }: `target` is the index of the command env runs (-1 if
  * none), `script` the -S/--split-string command string (null if none) and `rest`
  * the index of the first word after it. Short options cluster (`-iS 'cmd'`,
- * `-iu NAME`), -u/-C/-S take the rest of the word or the next word, and a lone
+ * `-iu NAME`), -u/-C/-S/-a take the rest of the word or the next word, and a lone
  * `-` is the obsolete spelling of -i. The wrapped command's own arguments
  * (`--title -Sx`) are never read as env options.
  */
@@ -1139,7 +1157,7 @@ function envOptions(w) {
             if (opt === 'split-string') {
                 return eq === -1 ? { target: -1, script: w[k + 1] ?? '', rest: k + 2 } : { target: -1, script: a.slice(eq + 1), rest: k + 1 };
             }
-            if ((opt === 'unset' || opt === 'chdir') && eq === -1) k++;
+            if ((opt === 'unset' || opt === 'chdir' || opt === 'argv0') && eq === -1) k++;
             continue;
         }
         for (let j = 1; j < a.length; j++) {
@@ -1148,7 +1166,7 @@ function envOptions(w) {
                     ? { target: -1, script: a.slice(j + 1), rest: k + 1 }
                     : { target: -1, script: w[k + 1] ?? '', rest: k + 2 };
             }
-            if (a[j] === 'u' || a[j] === 'C') {
+            if (a[j] === 'u' || a[j] === 'C' || a[j] === 'a') {
                 if (j + 1 === a.length) k++; // the value is the next word
                 break;
             }
@@ -1222,6 +1240,7 @@ function wrapperTarget(w) {
         if (options && a.startsWith('-') && a.length > 1) {
             if (NO_COMMAND_OPTS[cmd]?.test(a)) return -1;
             if (valueOpts.includes(a)) k++;
+            else if (!a.startsWith('--') && clusterTakesNextWord(a, valueOpts, WRAPPER_OPTIONAL_ARG[cmd] ?? '')) k++;
             continue;
         }
         if (operands > 0) {
