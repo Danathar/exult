@@ -35,6 +35,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -68,7 +69,10 @@ static void Read_flex(
 		size_t len;
 		auto   ptr = in.retrieve(i, len);
 		if (len) {    // Not empty?
-			strings[i] = reinterpret_cast<char*>(ptr.get());
+			// Entries need not be NUL-terminated: stop at the first NUL or at 'len' bytes.
+			const char* text = reinterpret_cast<const char*>(ptr.get());
+			const char* end  = static_cast<const char*>(memchr(text, 0, len));
+			strings[i].assign(text, end ? static_cast<size_t>(end - text) : len);
 		}
 	}
 }

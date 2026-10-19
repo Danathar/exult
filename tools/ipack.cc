@@ -37,10 +37,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <vector>
 
 using std::cerr;
@@ -233,17 +235,19 @@ static void Read_script(
 	imagename = nullptr;
 	specs.resize(0);    // Initialize.
 	specs.reserve(1200);
-	char buf[1024];
-	int  linenum = 0;
-	while (!in.eof()) {
+	char        buf[1024];
+	int         linenum = 0;
+	std::string line;
+	while (std::getline(in, line)) {
 		++linenum;
-		in.get(buf, sizeof(buf));
-		char delim;    // Check for end-of-line.
-		in.get(delim);
-		if (delim != '\n' && !in.eof()) {
+		if (!line.empty() && line.back() == '\r') {
+			line.pop_back();    // Accept Windows line endings.
+		}
+		if (line.size() >= sizeof(buf)) {
 			cerr << "Line #" << linenum << " is too long" << endl;
 			exit(1);
 		}
+		memcpy(buf, line.c_str(), line.size() + 1);
 		if (!buf[0]) {
 			continue;    // Empty line.
 		}
@@ -305,7 +309,12 @@ static void Read_script(
 		char fname[300];
 		char dir[300];
 		int  dim0_cnt;    // See if it's a tiles spec.
-		if (sscanf(ptr, "%[^(](%d %s)", &fname[0], &dim0_cnt, &dir[0]) == 3) {
+		if (strlen(ptr) >= sizeof(fname)) {
+			cerr << "Line #" << linenum << ":  Filename is too long (maximum " << sizeof(fname) - 1 << " characters)" << endl;
+			exit(1);
+		}
+		// Field widths match the size of fname and dir.
+		if (sscanf(ptr, "%299[^(](%d %299s)", &fname[0], &dim0_cnt, &dir[0]) == 3) {
 			if (!specs[shnum].flat) {
 				cerr << "Line #" << linenum << ":  Tiled file not specified 'flat'" << endl;
 				exit(1);
@@ -654,6 +663,22 @@ static void Write_exult(
 }
 
 /*
+ *  Write one shape spec (tiled or plain) to an Exult image file.
+ */
+
+static void Write_spec(
+		Flex_writer&      writer,    // What to write to.
+		const Shape_spec& spec,      // What to write; spec.filename must be set.
+		char*             palname    // Store palette here if !0.
+) {
+	if (spec.dim0_tiles > 0) {
+		Write_exult_from_tiles(writer, spec.filename, spec.nframes, spec.bycol, spec.dim0_tiles, palname);
+	} else {
+		Write_exult(writer, spec.filename, spec.nframes, spec.flat, palname);
+	}
+}
+
+/*
  *  Create an archive from a set of image files.  May throw an exception.
  */
 
@@ -670,14 +695,8 @@ static void Create(
 	OFileDataSource out(imagename);    // May throw exception.
 	Flex_writer     writer(out, title, specs.size());
 	for (auto& spec : specs) {
-		char* basename = spec.filename;
-		if (basename) {    // Not empty?
-			const int dim0_cnt = spec.dim0_tiles;
-			if (dim0_cnt > 0) {
-				Write_exult_from_tiles(writer, basename, spec.nframes, spec.bycol, spec.dim0_tiles, palname);
-			} else {
-				Write_exult(writer, basename, spec.nframes, spec.flat, palname);
-			}
+		if (spec.filename) {    // Not empty?
+			Write_spec(writer, spec, palname);
 			palname = nullptr;    // Only write 1st palette.
 		} else {
 			writer.empty_object();
@@ -720,7 +739,7 @@ static void Update(
 	for (i = 0; i < newcnt; i++) {    // Write out new entries.
 		// New entry for this shape?
 		if (i < specs.size() && specs[i].filename != nullptr) {
-			Write_exult(writer, specs[i].filename, specs[i].nframes, specs[i].flat, palname);
+			Write_spec(writer, specs[i], palname);
 			palname = nullptr;    // Only write 1st palette.
 		}
 		// Write old entry.

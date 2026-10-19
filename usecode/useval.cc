@@ -46,6 +46,14 @@ using std::setw;
 using std::string;
 using std::strlen;
 
+namespace {
+	// Set on the saved type byte of an undefined value.  Defined values are
+	// saved without it, so older builds can still read them.
+	constexpr int undefined_type_flag = 0x80;
+	// Lengths and element counts are saved in 2 bytes.
+	constexpr size_t max_saved_length = 0xffff;
+}    // namespace
+
 /*
  *  Destructor
  *
@@ -395,7 +403,7 @@ Usecode_value& Usecode_value::operator%=(const Usecode_value& v2) {
  */
 
 bool Usecode_value::save(ODataSource* out) {
-	out->write1(static_cast<int>(type));
+	out->write1(static_cast<int>(type) | (undefined ? undefined_type_flag : 0));
 	switch (type) {
 	case int_type:
 		out->write4(intval);
@@ -405,18 +413,27 @@ bool Usecode_value::save(ODataSource* out) {
 		out->write4(0);
 		break;
 	case class_sym_type: {
-		const char* classname = clssym->get_name();
-		const int   len       = std::strlen(classname);
+		const char*  classname = clssym->get_name();
+		const size_t len       = std::strlen(classname);
+		if (len > max_saved_length) {
+			return false;
+		}
 		out->write2(len);
 		out->write(classname, len);
 		break;
 	}
 	case string_type: {
+		if (strval.size() > max_saved_length) {
+			return false;
+		}
 		out->write2(strval.size());
 		out->write(strval);
 		break;
 	}
 	case array_type:
+		if (arrayval.size() > max_saved_length) {
+			return false;
+		}
 		out->write2(arrayval.size());    // first length, then length Usecode_values
 		for (auto& elem : arrayval) {
 			if (!elem.save(out)) {
@@ -429,6 +446,9 @@ bool Usecode_value::save(ODataSource* out) {
 		// instance points to the same array.
 		// Need to serialize this properly.
 		const int len = clsrefval.cnt;
+		if (static_cast<size_t>(len) > max_saved_length) {
+			return false;
+		}
 		out->write2(len);    // first length, then length Usecode_values
 		for (int i = 0; i < len; i++) {
 			if (!clsrefval.elems[i].save(out)) {
@@ -450,8 +470,10 @@ bool Usecode_value::save(ODataSource* out) {
  */
 
 bool Usecode_value::restore(IDataSource* in) {
-	undefined = false;
-	type      = static_cast<Val_type>(in->read1());
+	const int typebyte = in->read1();
+	// Saves made before the flag existed never set it: defined, as before.
+	undefined = (typebyte & undefined_type_flag) != 0;
+	type      = static_cast<Val_type>(typebyte & ~undefined_type_flag);
 	switch (type) {
 	case int_type:
 		construct(intval, in->read4());
@@ -501,6 +523,9 @@ bool Usecode_value::restore(IDataSource* in) {
 		return true;
 	}
 	default:
+		// Unknown type: leave a valid (undefined int) value behind.
+		type      = int_type;
+		undefined = true;
 		return false;
 	}
 }
