@@ -638,6 +638,11 @@ namespace NS_TIMIDITY {
 		if (newlen < 0 || (newlen >> FRACTION_BITS) > MAX_SAMPLE_SIZE) {
 			return;
 		}
+		/* The interpolation loop below needs a few output samples; a
+		 shorter result would divide by zero or never terminate. */
+		if ((newlen >> FRACTION_BITS) < 4) {
+			return;
+		}
 		auto*   newdata = safe_Malloc<sint16>(newlen >> FRACTION_BITS);
 		sint16* dest    = newdata;
 

@@ -231,6 +231,12 @@ int fast_decay = 0;
 			return nullptr;
 		}
 
+		if (tmp[198] == 0) {
+			ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: instrument has no samples", name);
+			close_file(fp);
+			return nullptr;
+		}
+
 		ip          = safe_Malloc<Instrument>();
 		ip->samples = tmp[198];
 		ip->sample  = safe_Malloc<Sample>(ip->samples);
@@ -375,9 +381,41 @@ int fast_decay = 0;
 				sp->envelope_offset[j] = convert_envelope_offset(tmp[6 + j]);
 			}
 
-			/* Then read the sample data */
-			sp->data = safe_Malloc<sample_t>(sp->data_length);
+			/* The header fields come straight from the file, so check them
+			 before they are used as sizes and indexes. data_length is in
+			 bytes; the sample count must still fit in the fixed-point
+			 position counter once shifted up by FRACTION_BITS. */
+			{
+				sint32 max_bytes = (MAX_SAMPLE_SIZE / 2 - 1) * ((sp->modes & MODES_16BIT) ? 2 : 1);
+				if (sp->data_length <= 0 || sp->data_length > max_bytes || ((sp->modes & MODES_16BIT) && (sp->data_length & 1))
+					|| sp->sample_rate <= 0 || sp->root_freq <= 0) {
+					ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: invalid sample header", name);
+					goto fail;
+				}
+				/* Loop points must lie inside the data. A loop that cannot
+				 be made sense of is dropped instead of rejecting the patch. */
+				if (sp->loop_end > sp->data_length) {
+					sp->loop_end = sp->data_length;
+				}
+				if (sp->loop_start < 0 || sp->loop_start > sp->loop_end) {
+					sp->loop_start = 0;
+				}
+				if (sp->loop_end < 0) {
+					sp->loop_end = 0;
+				}
+				if (sp->loop_start >= sp->loop_end) {
+					sp->loop_start = sp->loop_end = 0;
+					sp->modes &= ~(MODES_LOOPING | MODES_PINGPONG | MODES_REVERSE);
+				}
+			}
+
+			/* Then read the sample data. The resamplers look up to two
+			 samples past the end, so keep that padding zeroed. */
+			sp->data = safe_Malloc<sample_t>(sp->data_length + 4);
+			memset(sp->data, 0, (sp->data_length + 4) * sizeof(sample_t));
 			if (1 != fread(sp->data, sp->data_length, 1, fp)) {
+				free(sp->data);
+				sp->data = nullptr;
 				goto fail;
 			}
 
@@ -387,7 +425,10 @@ int fast_decay = 0;
 				auto*   cp = reinterpret_cast<uint8*>(sp->data);
 				uint16* tmp;
 				uint16* new_dat;
-				tmp = new_dat = safe_Malloc<uint16>(sp->data_length);
+				/* Two extra zeroed samples: the resamplers read one or two
+				 samples past the end of the data. */
+				tmp = new_dat = safe_Malloc<uint16>(sp->data_length + 2);
+				memset(new_dat + sp->data_length, 0, 2 * sizeof(uint16));
 				while (i--) {
 					*tmp++ = static_cast<uint16>(*cp++) << 8;
 				}
