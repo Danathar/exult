@@ -12,6 +12,10 @@
 #include <sstream>
 #include <string>
 
+#ifndef _WIN32
+#	include <unistd.h>
+#endif
+
 namespace {
 	const char* const scratch = "unit_scratch_dir";
 
@@ -65,6 +69,45 @@ TEST(file_helpers_roundtrip) {
 	CHECK_EQ(U7rmdir(scratch, false), 0);
 	CHECK(!U7exists(scratch));
 }
+
+TEST(rmdir_recursive_removes_tree) {
+	const std::string root = "unit_rmdir_tree";
+	U7rmdir(root.c_str(), true);
+	CHECK_EQ(U7mkdir((root + "/sub/deeper").c_str(), 0755, true), 0);
+	const char* const files[] = {"/a.txt", "/b.txt", "/.hidden", "/sub/c.txt", "/sub/.hidden", "/sub/deeper/d.txt"};
+	for (const char* name : files) {
+		auto out = U7open_out((root + name).c_str(), true);
+		*out << name;
+	}
+	CHECK_EQ(U7rmdir(root.c_str(), true), 0);
+	CHECK(!U7exists(root));
+	// Nothing left to remove: report failure.
+	CHECK(U7rmdir(root.c_str(), true) != 0);
+}
+
+#ifndef _WIN32
+TEST(rmdir_recursive_does_not_follow_symlinks) {
+	const std::string root    = "unit_rmdir_links";
+	const std::string outside = "unit_rmdir_outside";
+	U7rmdir(root.c_str(), true);
+	U7rmdir(outside.c_str(), true);
+	CHECK_EQ(U7mkdir(root.c_str()), 0);
+	CHECK_EQ(U7mkdir(outside.c_str()), 0);
+	{
+		auto out = U7open_out((outside + "/keep.txt").c_str(), true);
+		*out << "keep";
+	}
+	// One link to the directory, one to the file inside it.
+	CHECK_EQ(symlink(("../" + outside).c_str(), (root + "/dirlink").c_str()), 0);
+	CHECK_EQ(symlink(("../" + outside + "/keep.txt").c_str(), (root + "/filelink").c_str()), 0);
+	CHECK_EQ(U7rmdir(root.c_str(), true), 0);
+	CHECK(!U7exists(root));
+	// The links went, what they pointed to did not.
+	CHECK(U7exists(outside + "/keep.txt"));
+	U7remove((outside + "/keep.txt").c_str());
+	CHECK_EQ(U7rmdir(outside.c_str(), false), 0);
+}
+#endif
 
 TEST(open_missing_file_throws) {
 	bool threw = false;

@@ -526,6 +526,10 @@ int U7rmdir(const char* dirname, bool recursive) {
 		// Get contents if recrusive
 		FileList files;
 		U7ListFiles(name + "/*", files, true);
+#ifndef _WIN32
+		// glob() leaves out names starting with '.'; FindFirstFile does not.
+		U7ListFiles(name + "/.*", files, true);
+#endif
 
 		for (const auto& filename : files) {
 			// Get filename
@@ -537,16 +541,23 @@ int U7rmdir(const char* dirname, bool recursive) {
 			}
 
 			// is it a directory? if so rmdir it recursively
-			auto* dir = U7opendir(filename.c_str());
+#ifdef _WIN32
+			auto*      dir    = U7opendir(filename.c_str());
+			const bool is_dir = dir != nullptr;
 			if (dir) {
 				closedir(dir);
+			}
+#else
+			// lstat() so that a symbolic link is removed, never followed.
+			struct stat st;
+			const bool  is_dir = lstat(filename.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+			if (is_dir) {
 				if (U7rmdir(filename.c_str(), true)) {
 					return -1;
 				}
-			} else {
-				if (!std::remove(filename.c_str())) {
-					return -1;
-				}
+			} else if (std::remove(filename.c_str()) != 0) {
+				return -1;
 			}
 		}
 	}
