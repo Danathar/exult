@@ -181,8 +181,21 @@ int XMidiSequence::playEvent() {
 	}    // XMidi Next/Break
 	else if (event->getStatusType() == MidiStatus::Controller && MidiController(event->data[0]) == MidiController::XNextBreak) {
 		if (loop_num != -1) {
-			if (event->data[1] < 64) {
+			// Break (< 64), the last pass of a finite loop, or a loop whose
+			// body takes no time (repeating it would spin forever without the
+			// clock advancing): leave the loop and carry on with the events
+			// after this one
+			if (event->data[1] < 64 || loop_count[loop_num] == 1 || event->time == loop_event[loop_num]->time) {
 				loop_num--;
+			}
+			// Otherwise jump back to the start of the loop. A count of 0
+			// loops forever
+			else {
+				if (loop_count[loop_num]) {
+					loop_count[loop_num]--;
+				}
+				event     = loop_event[loop_num];
+				last_tick = event->time;
 			}
 		} else {
 			// See if we can find the branch index
@@ -194,8 +207,8 @@ int XMidiSequence::playEvent() {
 				loop_count[loop_num] = 1;
 				loop_event[loop_num] = branch;
 			}
+			event = nullptr;
 		}
-		event = nullptr;
 	}    // XMidi Callback Trigger
 	else if (
 			event->getStatusType() == MidiStatus::Controller
@@ -217,6 +230,12 @@ int XMidiSequence::playEvent() {
 
 	// Now, handle what to do when we are at the end
 	if (!event) {
+		// Drop loops that take no time to play, following them would spin
+		// forever without the clock advancing
+		while (loop_num != -1 && loop_event[loop_num]->time == static_cast<int>(last_tick)) {
+			loop_num--;
+		}
+
 		// If we have for loop events, follow them
 		if (loop_num != -1) {
 			event     = loop_event[loop_num]->next;
