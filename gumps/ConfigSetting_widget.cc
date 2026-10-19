@@ -283,7 +283,7 @@ void ConfigSetting_widget::save_to_config(bool write_file) {
 		int sel = child->getselection();
 
 		// do not update config for missing choice
-		if (sel != missingchoice) {
+		if (sel != missingchoice && sel >= 0 && size_t(sel) < setting.choices.size()) {
 			std::string config_key;
 			if (i == -1) {
 				config_key = setting.config_setting;
@@ -346,8 +346,10 @@ std::string ConfigSetting_widget::Validate() {
 
 			// ignore missing choice whendetecting collisions
 			if (sel != missingchoice) {
-				collision = used[sel];
-				used[sel] = true;
+				if (sel >= 0 && size_t(sel) < used.size()) {
+					collision = collision || used[sel];
+					used[sel] = true;
+				}
 			}
 		}
 	}

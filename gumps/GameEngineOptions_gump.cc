@@ -295,6 +295,14 @@ void GameEngineOptions_gump::load_settings() {
 			frames = i;
 		}
 	}
+	// A configured framerate that is not one of the presets is kept as an extra
+	// per-instance entry after the presets (the static array is shared).
+	custom_fps = -1;
+	if (frames < 0) {
+		custom_fps = fps;
+		frames     = int(num_default_rates);
+		frametext.emplace_back(framestring(custom_fps));
+	}
 	feeding = int(cheat.GetFoodUse(true));
 }
 
@@ -332,9 +340,11 @@ void GameEngineOptions_gump::save_settings() {
 	config->set("config/gameplay/allow_autonotes", allow_autonotes ? "yes" : "no", false);
 	gwin->set_allow_enhancements(enhancements);
 	config->set("config/gameplay/enhancements", enhancements ? "yes" : "no", false);
-	const int fps = framerates[frames];
-	gwin->set_std_delay(1000 / fps);
-	config->set("config/video/fps", fps, false);
+	const int fps = (frames >= 0 && size_t(frames) < num_default_rates) ? framerates[frames] : custom_fps;
+	if (fps > 0) {
+		gwin->set_std_delay(1000 / fps);
+		config->set("config/video/fps", fps, false);
+	}
 	cheat.set_enabled(cheats != 0);
 	cheat.SetFoodUse(Cheat::FoodUse(feeding), false);
 	gumpman->set_gumps_dont_pause_game(!gumps_pause);
