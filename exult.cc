@@ -2126,8 +2126,8 @@ static void Handle_event(SDL_Event& event) {
 		const unsigned char* data = reinterpret_cast<const unsigned char*>(event.drop.data);
 		if (Is_u7_shapeid(data) == true) {
 			// Get shape info.
-			int file, shape, frame;
-			Get_u7_shapeid(data, file, shape, frame);
+			int file = -1, shape = -1, frame = -1;
+			Get_u7_shapeid(data, file, shape, frame);    // Malformed text leaves shape at -1.
 			cout << "(EXULT) SDL_EVENT_DROP_" << (event.type == SDL_EVENT_DROP_TEXT ? "TEXT" : "FILE")
 				 << " Event, Shape: file = " << data << ", shape = " << shape << ", frame = " << frame << ", at x = " << x
 				 << ", y = " << y << endl;
@@ -2140,8 +2140,8 @@ static void Handle_event(SDL_Event& event) {
 			drag_shpnum = -1;
 		} else if (Is_u7_chunkid(data) == true) {
 			// A whole chunk.
-			int chunknum;
-			Get_u7_chunkid(data, chunknum);
+			int chunknum = -1;
+			Get_u7_chunkid(data, chunknum);    // Malformed text leaves chunknum at -1.
 			cout << "(EXULT) SDL_EVENT_DROP_" << (event.type == SDL_EVENT_DROP_TEXT ? "TEXT" : "FILE")
 				 << " Event, Chunk: num = " << chunknum << ", at x = " << x << ", y = " << y << endl;
 			if (chunknum >= 0) {    // A whole chunk.
@@ -2149,8 +2149,8 @@ static void Handle_event(SDL_Event& event) {
 			}
 			drag_cnknum = -1;
 		} else if (Is_u7_npcid(data) == true) {
-			int npcnum;
-			Get_u7_npcid(data, npcnum);
+			int npcnum = -1;
+			Get_u7_npcid(data, npcnum);    // Malformed text leaves npcnum at -1.
 			cout << "(EXULT) SDL_EVENT_DROP_" << (event.type == SDL_EVENT_DROP_TEXT ? "TEXT" : "FILE")
 				 << " Event, Npc: num = " << npcnum << ", at x = " << x << ", y = " << y << endl;
 			if (npcnum >= 0) {    // An NPC.
@@ -2158,8 +2158,9 @@ static void Handle_event(SDL_Event& event) {
 			}
 			drag_npcnum = -1;
 		} else if (Is_u7_comboid(data) == true) {
-			int            combo_xtiles, combo_ytiles, combo_tiles_right, combo_tiles_below, combo_cnt;
-			U7_combo_data* combo;
+			int            combo_xtiles = 0, combo_ytiles = 0, combo_tiles_right = 0, combo_tiles_below = 0, combo_cnt = -1;
+			U7_combo_data* combo = nullptr;
+			// Malformed text gives combo_cnt = 0 and combo = nullptr, so nothing is dropped.
 			Get_u7_comboid(data, combo_xtiles, combo_ytiles, combo_tiles_right, combo_tiles_below, combo_cnt, combo);
 			std::unique_ptr<U7_combo_data[]> combo_owner(combo);
 			cout << "(EXULT) SDL_EVENT_DROP_" << (event.type == SDL_EVENT_DROP_TEXT ? "TEXT" : "FILE")

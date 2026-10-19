@@ -34,5 +34,5 @@ $(UCC):
 
 
 usecode: $(UCC) $(USECODE_OBJECTS)
-	$(UCC) -I $(srcdir)/. -o $(srcdir)/usecode $(srcdir)/./usecode.uc
+	$(UCC) -I $(srcdir)/. -o usecode $(srcdir)/./usecode.uc
 
