@@ -130,14 +130,21 @@ void Configuration::remove(const string& key, bool write_out) {
 bool Configuration::read_config_string(const string& s) {
 	const string& sbuf(s);
 	size_t        nn = 0;
-	while (isspace(static_cast<char>(s[nn]))) {
+	while (nn < s.length() && isspace(static_cast<unsigned char>(s[nn]))) {
 		++nn;
 	}
 
-	assert(s[nn] == '<');
+	// Not XML (or only whitespace): leave the tree alone.
+	if (nn >= s.length() || s[nn] != '<') {
+		return false;
+	}
 	++nn;
 
-	xmltree->xmlparse(sbuf, nn);
+	if (!xmltree->xmlparse(sbuf, nn)) {
+		// Malformed XML: drop the partial tree.
+		clear();
+		return false;
+	}
 	is_file = false;
 	return true;
 }
@@ -232,11 +239,10 @@ bool Configuration::read_abs_config_file(const string& input_filename, const str
 
 	string sbuf;
 	string line;
-	// copies the entire contents of the input file into sbuf
-	getline(ifile, line);
-	while (ifile.good()) {
+	// copies the entire contents of the input file into sbuf, including a
+	// last line that has no trailing newline
+	while (getline(ifile, line)) {
 		sbuf += line + "\n";
-		getline(ifile, line);
 	}
 	// empty file just do nothing
 	if (sbuf.empty()) {
@@ -244,7 +250,10 @@ bool Configuration::read_abs_config_file(const string& input_filename, const str
 		return false;
 	}
 	CTRACE("Configuration::read_config_file - file read");
-	read_config_string(sbuf);
+	if (!read_config_string(sbuf)) {
+		CTRACE("Configuration::read_config_file - parse error");
+		return false;
+	}
 
 	is_file = true;
 	return true;

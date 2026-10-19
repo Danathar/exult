@@ -97,7 +97,7 @@ string XMLnode::dump(int depth) {
 	s += "<";
 	s += id;
 	s += ">";
-	if (id[id.length() - 1] != '/') {
+	if (id.empty() || id.back() != '/') {
 		for (auto* node : nodelist) {
 			s += "\n";
 			s += node->dump(depth + 2);
@@ -136,7 +136,7 @@ void XMLnode::dump(ostream& o, const string& indentstr, const unsigned int depth
 	o << '<' << id << '>';
 
 	// if this tag has a closing tag...
-	if (id[id.length() - 1] != '/') {
+	if (id.empty() || id.back() != '/') {
 		// if we've got some subnodes, terminate this line...
 		if (!nodelist.empty()) {
 			o << endl;
@@ -272,12 +272,17 @@ string encode_entity(const string& s) {
 }
 
 static string decode_entity(const string& s, std::size_t& pos) {
-	const std::size_t       old_pos         = pos;
-	const string::size_type entity_name_len = s.find_first_of("; \t\r\n", pos) - pos - 1;
+	const std::size_t       old_pos = pos;
+	const string::size_type end     = s.find_first_of("; \t\r\n", pos);
 
 	/* Call me paranoid... but I don't think having an end-of-line or similar
-		inside a &...; expression is 'good', valid though it may be. */
-	assert(s[pos + entity_name_len + 1] == ';');
+		inside a &...; expression is 'good', valid though it may be.
+		Without a terminating ';' the '&' is kept as literal text. */
+	if (end == string::npos || s[end] != ';') {
+		++pos;
+		return string("&");
+	}
+	const string::size_type entity_name_len = end - pos - 1;
 
 	const string entity_name = s.substr(pos + 1, entity_name_len);
 
@@ -319,7 +324,7 @@ static void trim(string& s) {
 	}
 }
 
-void XMLnode::xmlparse(const string& s, std::size_t& pos) {
+bool XMLnode::xmlparse(const string& s, std::size_t& pos) {
 	bool intag = true;
 
 	id = "";
@@ -327,40 +332,46 @@ void XMLnode::xmlparse(const string& s, std::size_t& pos) {
 		switch (s[pos]) {
 		case '<': {
 			// New tag?
-			if (s[pos + 1] == '/') {
+			if (pos + 1 < s.length() && s[pos + 1] == '/') {
 				// No. Close tag.
-				while (s[pos] != '>') {
+				while (pos < s.length() && s[pos] != '>') {
 					pos++;
+				}
+				if (pos >= s.length()) {
+					return false;    // Unterminated close tag
 				}
 				++pos;
 				trim(content);
-				return;
+				return true;
 			}
 			auto* t = new XMLnode;
 			++pos;
-			t->xmlparse(s, pos);
+			const bool ok = t->xmlparse(s, pos);
 			nodelist.push_back(t);
+			if (!ok) {
+				return false;
+			}
 			break;
 		}
 		case '>':
 			// End of tag
-			if (s[pos - 1] == '/') {
-				if (s[pos - 2] == '<') {
+			if (pos >= 1 && s[pos - 1] == '/') {
+				if (pos >= 2 && s[pos - 2] == '<') {
 					++pos;
-					return;    // An empty tag
+					return true;    // An empty tag
 				} else {
 					++pos;
 					no_close = true;
-					return;
+					return true;
 				}
-			} else if ((id[0] == '!') && (id[1] == '-') && (id[2] == '-')) {
+			} else if (id.compare(0, 3, "!--") == 0) {
 				++pos;
 				no_close = true;
-				return;
+				return true;
 			}
 			++pos;
 			intag = false;
-			if (s[pos] < 32) {
+			if (pos < s.length() && s[pos] < 32) {
 				++pos;
 			}
 			break;
@@ -376,6 +387,7 @@ void XMLnode::xmlparse(const string& s, std::size_t& pos) {
 		}
 	}
 	trim(content);
+	return true;
 }
 
 /* Returns a list of key->value pairs that are found under the provided

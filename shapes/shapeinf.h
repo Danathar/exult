@@ -981,7 +981,7 @@ public:
 
 	// Sets x to 255 if there is no weapon offset
 	void get_weapon_offset(int frame, unsigned char& x, unsigned char& y) const {
-		if (!weapon_offsets) {
+		if (!weapon_offsets || frame < 0 || frame > 31) {
 			x = 255;
 			y = 255;
 		} else {
