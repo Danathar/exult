@@ -195,10 +195,11 @@ void WindowsMidiDriver::send_sysex(uint8 status, const uint8* msg, uint16 length
 		}
 	}
 
-	if (_streamBufferSize < length) {
+	// One extra byte is needed for the status byte.
+	if (_streamBufferSize < length + 1) {
 		delete[] _streamBuffer;
 		_streamBuffer     = nullptr;
-		_streamBufferSize = length * 2;
+		_streamBufferSize = (length + 1) * 2;
 	}
 
 	// Ensure allocation succeeded before writing into buffer.
