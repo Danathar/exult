@@ -289,11 +289,13 @@ unique_ptr<unsigned char[]> Shape_frame::encode_rle(
 
 	auto* out = buf.data();
 	assume(out != nullptr);
-	int newx;                        // Gets new x at end of a scan line.
-	for (int y = 0; y < h; y++) {    // Go through rows.
+	// Every run covers at least one pixel, so a scan line has at most w runs,
+	// plus the 0 terminator (and Find_runs always sets runs[1]).
+	std::vector<unsigned short> runs(std::max(w, 0) + 2);
+	int                         newx;    // Gets new x at end of a scan line.
+	for (int y = 0; y < h; y++) {        // Go through rows.
 		for (int x = 0; (x = Skip_transparent(pixels, x, w)) < w; x = newx) {
-			unsigned short runs[200];    // Get runs.
-			newx = Find_runs(runs, pixels, x, w);
+			newx = Find_runs(runs.data(), pixels, x, w);
 			// Just 1 non-repeated run?
 			if (!runs[1] && !(runs[0] & 1)) {
 				const int len = runs[0] >> 1;
@@ -414,29 +416,48 @@ unsigned int Shape_frame::read(
 	// aligned and dlen equals filesize-1
 	if (dlen == shapelen || (shapelen && !(shapelen & 1) && dlen == shapelen - 1)) {
 		rle = true;    // It's run-length-encoded.
+		// The header holds the total length plus one offset per frame, and
+		// must fit in the shape.
+		if (hdrlen < 8 || hdrlen > dlen) {
+			cerr << "Shape_frame::read: bad shape header length " << hdrlen << endl;
+			return 0;
+		}
 		// Figure # frames.
 		const int nframes = (hdrlen - 4) / 4;
 		if (framenum >= nframes) {    // Bug out if bad frame #.
 			return nframes;
 		}
-		// Get frame offset, lengeth.
+		// Get frame offset, and offset of the frame's end.
 		uint32 frameoff;
-		uint32 framelen;
+		uint32 frameend;
 		if (framenum == 0) {
 			frameoff = hdrlen;
-			framelen = nframes > 1 ? shapes->read4() - frameoff : dlen - frameoff;
+			frameend = nframes > 1 ? shapes->read4() : dlen;
 		} else {
 			shapes->skip((framenum - 1) * 4);
 			frameoff = shapes->read4();
 			// Last frame?
 			if (framenum == nframes - 1) {
-				framelen = dlen - frameoff;
+				frameend = dlen;
 			} else {
-				framelen = shapes->read4() - frameoff;
+				frameend = shapes->read4();
 			}
 		}
+		// The frame must lie within the shape, after the header, and hold
+		// at least its 8 bytes of extents.
+		if (frameoff < hdrlen || frameend > dlen || frameend < frameoff || frameend - frameoff < 8) {
+			cerr << "Shape_frame::read: bad offsets for frame " << framenum << endl;
+			// Leave an empty frame.
+			xleft = xright = yabove = ybelow = 0;
+
+			datalen = 2;
+			data    = make_unique<unsigned char[]>(2);
+			data[0] = 0;    // 0-delimit.
+			data[1] = 0;
+			return nframes;
+		}
 		// Get compressed data.
-		get_rle_shape(shapes, shapeoff + frameoff, framelen);
+		get_rle_shape(shapes, shapeoff + frameoff, frameend - frameoff);
 		// Return # frames.
 		return nframes;
 	}
@@ -464,10 +485,11 @@ void Shape_frame::get_rle_shape(
 	yabove = shapes->read2();
 	ybelow = shapes->read2();
 	len -= 8;    // Subtract what we just read.
-	if (len == 0) {
-		datalen       = 2;
-		data[len]     = 0;    // 0-delimit.
-		data[len + 1] = 0;
+	if (len <= 0) {
+		datalen = 2;
+		data    = make_unique<unsigned char[]>(2);
+		data[0] = 0;    // 0-delimit.
+		data[1] = 0;
 	} else {
 		datalen = len;
 		data    = make_unique<unsigned char[]>(datalen);
