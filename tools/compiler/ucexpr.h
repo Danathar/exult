@@ -43,6 +43,32 @@ class Basic_block;
 class Uc_array_expression;
 
 /*
+ *  Constant folding: wrap around on overflow like the 32-bit usecode VM
+ *  instead of relying on signed overflow, which is undefined behaviour.
+ */
+inline int Uc_wrapping_add(int a, int b) {
+	return static_cast<int>(static_cast<unsigned>(a) + static_cast<unsigned>(b));
+}
+
+inline int Uc_wrapping_sub(int a, int b) {
+	return static_cast<int>(static_cast<unsigned>(a) - static_cast<unsigned>(b));
+}
+
+inline int Uc_wrapping_mul(int a, int b) {
+	return static_cast<int>(static_cast<unsigned>(a) * static_cast<unsigned>(b));
+}
+
+// Callers must reject b == 0 first.
+inline int Uc_wrapping_div(int a, int b) {
+	return b == -1 ? Uc_wrapping_sub(0, a) : a / b;
+}
+
+// Callers must reject b == 0 first.
+inline int Uc_wrapping_mod(int a, int b) {
+	return b == -1 ? 0 : a % b;
+}
+
+/*
  *  Base class for expressions.
  */
 class Uc_expression : public Uc_location {
