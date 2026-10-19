@@ -82,7 +82,7 @@ EXULT_FONTS_SERIF_VGA_OBJECTS = \
 	fonts/navfonton.shp
 
 EXULT_SHORTCUTBAR_VGA_OBJECTS = \
-	shortcutbar.in
+	shortcutbar.in \
 	sb_combat.shp \
 	sb_disk.shp \
 	sb_jawbone.shp \
@@ -281,7 +281,7 @@ EXTRA_DIST = flx.in $(EXULT_FLX_OBJECTS) $(EXULT_BG_FLX_OBJECTS) \
 	exultmsg.txt bginclude.uc marketpl.mid myusecode.uc \
 	$(EXULT_BG_PAPERDOL_VGA_OBJECTS) $(EXULT_BG_MR_FACES_VGA_OBJECTS) \
 	$(EXULT_FONTS_ORIGINAL_VGA_OBJECTS) $(EXULT_FONTS_SERIF_VGA_OBJECTS) \
-	$(EXULT_SHORTCUTBAR_VGA)
+	$(EXULT_SHORTCUTBAR_VGA_OBJECTS)
 
 if CROSS_COMPILING
 expack = $(EXPACK_PROG)

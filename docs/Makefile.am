@@ -52,7 +52,6 @@ EXTRA_DIST =		\
 	xml/HowTo	\
 	xml/html.xsl	\
 	xml/Makefile	\
-	xml/Makefile.win32	\
 	xml/php.xsl	\
 	xml/text.xsl	\
 	$(man_MANS)	\
