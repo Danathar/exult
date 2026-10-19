@@ -546,7 +546,10 @@ int fast_decay = 0;
 				uint8 * gulp, *ulp;
 				sint16* swp;
 				int     l = sp->data_length >> FRACTION_BITS;
-				gulp = ulp = safe_Malloc<uint8>(l + 1);
+				/* The resamplers look up to two samples past the end, so
+				 keep that padding zeroed. */
+				gulp = ulp = safe_Malloc<uint8>(l + 2);
+				memset(gulp, 0, l + 2);
 				swp        = (sint16*)sp->data;
 				while (l--) {
 					*ulp++ = (*swp++ >> 8) & 0xFF;
