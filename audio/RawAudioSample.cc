@@ -54,12 +54,12 @@ namespace Pentagram {
 	uint32 RawAudioSample::decompressFrame(void* DecompData, void* samples) const {
 		auto* decomp = static_cast<RawDecompData*>(DecompData);
 
-		if (decomp->pos == buffer_limit) {
+		if (decomp->pos >= buffer_limit) {
 			return 0;
 		}
 
 		uint32 count = frame_size;
-		if (decomp->pos + count > buffer_limit) {
+		if (count > buffer_limit - decomp->pos) {
 			count = buffer_limit - decomp->pos;
 		}
 
