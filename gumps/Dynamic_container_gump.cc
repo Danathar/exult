@@ -575,12 +575,20 @@ bool Dynamic_container_gump::mousewheel_down(int mx, int my) {
  *  Called from Gump_manager::update_gumps().
  */
 void Dynamic_container_gump::update_gump() {
-	Game_window* gwin = Game_window::get_instance();
+	Game_window* gwin      = Game_window::get_instance();
+	bool         destroyed = false;
+	destroyed_flag         = &destroyed;
 	for (auto* w : elems) {
 		if (w && w->run()) {
 			if (gwin) {
 				gwin->set_all_dirty();
 			}
+			if (destroyed) {
+				// A widget callback (e.g. slider usecode) closed this gump, so
+				// 'this' and 'elems' are gone: touch nothing else.
+				return;
+			}
 		}
 	}
+	destroyed_flag = nullptr;
 }

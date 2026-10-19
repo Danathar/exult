@@ -49,7 +49,7 @@ namespace Pentagram {
 		frame_size  = 0;
 		length      = 0;
 		while (!last_chunk && data_offset < size_) {
-			int chunk_length;
+			size_t chunk_length;
 			switch (buffer[data_offset++]) {
 			case 0:
 				COUT("Terminator");
@@ -58,6 +58,11 @@ namespace Pentagram {
 
 			case 1:
 				COUT("Sound data");
+				// Block header does not fit in the file
+				if (size_ - data_offset < 5) {
+					last_chunk = true;
+					continue;
+				}
 				l = (buffer[2 + data_offset]) << 16;
 				l |= (buffer[1 + data_offset]) << 8;
 				l |= (buffer[0 + data_offset]);
@@ -80,22 +85,38 @@ namespace Pentagram {
 					adpcm_reference = -1;
 				}
 
+				// The length includes the rate and compression bytes
+				if (l < 2) {
+					last_chunk = true;
+					continue;
+				}
 				l -= 2;
-				chunk_length = l;
 				data_offset += 2;
+				// Only use the data that is really in the file
+				l            = min(l, size_ - data_offset);
+				chunk_length = l;
 
 				break;
 			case 2:
 				COUT("Sound continues");
+				if (size_ - data_offset < 3) {
+					last_chunk = true;
+					continue;
+				}
 				l = (buffer[2 + data_offset]) << 16;
 				l |= (buffer[1 + data_offset]) << 8;
 				l |= (buffer[0 + data_offset]);
 				data_offset += 3;
 				COUT("Chunk length appears to be " << l);
+				l            = min(l, size_ - data_offset);
 				chunk_length = l;
 				break;
 			case 3:
 				COUT("Silence");
+				if (size_ - data_offset < 3) {
+					last_chunk = true;
+					continue;
+				}
 				l = (buffer[1 + data_offset]) << 8;
 				l |= (buffer[0 + data_offset]);
 				l++;
@@ -111,17 +132,25 @@ namespace Pentagram {
 					COUT("Sample rate (" << sample_rate << ") = _real_rate");
 				}
 				data_offset += 3;
-				chunk_length = 0;
-				break;
+				// Silence plays l samples and does not end the sample
+				if (l > static_cast<size_t>(frame_size)) {
+					frame_size = l;
+				}
+				length += l;
+				continue;
 
 			default:
 				COUT("Other chunk type");
+				if (size_ - data_offset < 3) {
+					last_chunk = true;
+					continue;
+				}
 				l = (buffer[2 + data_offset]) << 16;
 				l |= (buffer[1 + data_offset]) << 8;
 				l |= (buffer[0 + data_offset]);
 				data_offset += 3;
 				COUT("Chunk length appears to be " << l);
-				chunk_length = l;
+				chunk_length = min(l, size_ - data_offset);
 				l            = 0;
 				break;
 			}
@@ -225,57 +254,88 @@ namespace Pentagram {
 	bool VocAudioSample::advanceChunk(void* DecompData) const {
 		auto* decomp = static_cast<VocDecompData*>(DecompData);
 
-		if (decomp->pos == buffer_limit) {
-			return false;
-		}
-
 		size_t l            = 0;
 		size_t chunk_length = 0;
+		bool   found        = false;
 
-		// Look at the chunk type
-		switch (buffer[decomp->pos++]) {
-		case 0:
-			return false;
-
-		case 1:    // Sound data
-			l = (buffer[2 + decomp->pos]) << 16;
-			l |= (buffer[1 + decomp->pos]) << 8;
-			l |= (buffer[0 + decomp->pos]);
-			decomp->pos += 3;
-			decomp->compression = buffer[1 + decomp->pos];
-
-			if (decomp->compression) {
-				decomp->adpcm_reference = -1;
+		while (!found) {
+			if (decomp->pos >= buffer_limit) {
+				return false;
 			}
 
-			l -= 2;
-			chunk_length = l;
-			decomp->pos += 2;
-			break;
+			// Bytes left after the chunk type
+			const size_t avail = buffer_limit - decomp->pos - 1;
 
-		case 2:    // Sound continue
-			l = (buffer[2 + decomp->pos]) << 16;
-			l |= (buffer[1 + decomp->pos]) << 8;
-			l |= (buffer[0 + decomp->pos]);
-			decomp->pos += 3;
-			chunk_length = l;
-			break;
+			// Look at the chunk type
+			switch (buffer[decomp->pos++]) {
+			case 0:
+				return false;
 
-		case 3:    // Silence
-			l = (buffer[1 + decomp->pos]) << 8;
-			l |= (buffer[0 + decomp->pos]);
-			l++;
-			decomp->pos += 3;
-			chunk_length = 0;
-			break;
+			case 1:    // Sound data
+				if (avail < 5) {
+					return false;
+				}
+				l = (buffer[2 + decomp->pos]) << 16;
+				l |= (buffer[1 + decomp->pos]) << 8;
+				l |= (buffer[0 + decomp->pos]);
+				decomp->pos += 3;
+				decomp->compression = buffer[1 + decomp->pos];
 
-			// Skip all other chunk types
-		default:
-			l = (buffer[2 + decomp->pos]) << 16;
-			l |= (buffer[1 + decomp->pos]) << 8;
-			l |= (buffer[0 + decomp->pos]);
-			decomp->pos += 3 + l;
-			return advanceChunk(decomp);
+				if (decomp->compression) {
+					decomp->adpcm_reference = -1;
+				}
+
+				// The length includes the rate and compression bytes
+				if (l < 2) {
+					return false;
+				}
+				l -= 2;
+				decomp->pos += 2;
+				l            = min(l, static_cast<size_t>(buffer_limit - decomp->pos));
+				chunk_length = l;
+				found        = true;
+				break;
+
+			case 2:    // Sound continue
+				if (avail < 3) {
+					return false;
+				}
+				l = (buffer[2 + decomp->pos]) << 16;
+				l |= (buffer[1 + decomp->pos]) << 8;
+				l |= (buffer[0 + decomp->pos]);
+				decomp->pos += 3;
+				l            = min(l, static_cast<size_t>(buffer_limit - decomp->pos));
+				chunk_length = l;
+				found        = true;
+				break;
+
+			case 3:    // Silence
+				if (avail < 3) {
+					return false;
+				}
+				l = (buffer[1 + decomp->pos]) << 8;
+				l |= (buffer[0 + decomp->pos]);
+				l++;
+				decomp->pos += 3;
+				chunk_length = 0;
+				found        = true;
+				break;
+
+				// Skip all other chunk types
+			default:
+				if (avail < 3) {
+					return false;
+				}
+				l = (buffer[2 + decomp->pos]) << 16;
+				l |= (buffer[1 + decomp->pos]) << 8;
+				l |= (buffer[0 + decomp->pos]);
+				decomp->pos += 3;
+				if (l > buffer_limit - decomp->pos) {
+					return false;
+				}
+				decomp->pos += l;
+				break;
+			}
 		}
 
 		if (!chunk_length) {
@@ -318,6 +378,8 @@ namespace Pentagram {
 		if (decomp->cur_type == 1) {
 			bytes_used = 0;
 			std::memset(samples, 0, num_samples);
+			// Silence uses no data but still has to be consumed
+			decomp->chunk_remain -= num_samples;
 		} else if (decomp->compression == 0) {
 			bytes_used = num_samples;
 			std::memcpy(samples, buffer.get() + decomp->pos, num_samples);

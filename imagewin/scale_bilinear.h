@@ -104,7 +104,7 @@ void Scale_2xBilinear(
 		Source_pixel* from_orig = from;
 		Dest_pixel*   to_orig   = to;
 
-		if (y + 1 < sheight) {
+		if (srcy + y + 1 < sheight) {
 			fill_rgb_row(from + sline_pixels, from_width, rgb_row_next, srcw + 1, manip);
 		} else {
 			fill_rgb_row(from, from_width, rgb_row_next, srcw + 1, manip);
@@ -210,7 +210,7 @@ void Scale_2xBilinearPlus(
 		Source_pixel* from_orig = from;
 		Dest_pixel*   to_orig   = to;
 
-		if (y + 1 < sheight) {
+		if (srcy + y + 1 < sheight) {
 			fill_rgb_row(from + sline_pixels, from_width, rgb_row_next, srcw + 1, manip);
 		} else {
 			fill_rgb_row(from, from_width, rgb_row_next, srcw + 1, manip);

@@ -75,11 +75,14 @@ $(UCC):
 
 
 patch/usecode: $(UCC) $(USECODE_OBJECTS)
-	$(UCC) -I $(srcdir)/src -o $(srcdir)/patch/usecode $(srcdir)/src/usecode.uc
+	@$(MKDIR_P) patch
+	$(UCC) -I $(srcdir)/src -o patch/usecode $(srcdir)/src/usecode.uc
 
 patch/faces.vga: $(EXPACK) $(FACES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/faces.in
+	@$(MKDIR_P) src/graphics patch
+	$(EXPACK) -i $(srcdir)/src/graphics/faces.in src/graphics
 
 patch/shapes.vga: $(EXPACK) $(SHAPES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/shapes.in
+	@$(MKDIR_P) src/graphics patch
+	$(EXPACK) -i $(srcdir)/src/graphics/shapes.in src/graphics
 

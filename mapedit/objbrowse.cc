@@ -91,6 +91,20 @@ GtkWidget* Object_browser::get_widget() {
 	return widget;
 }
 
+int Object_browser::get_selected_group_index() {
+	const int id = get_selected_id();
+	if (!group || id < 0) {
+		return -1;
+	}
+	const int cnt = group->size();
+	for (int i = 0; i < cnt; ++i) {
+		if ((*group)[i] == id) {
+			return i;
+		}
+	}
+	return -1;
+}
+
 void Object_browser::on_browser_group_add(GtkMenuItem* item, gpointer udata) {
 	auto*     chooser = static_cast<Object_browser*>(udata);
 	auto*     grp     = static_cast<Shape_group*>(g_object_get_data(G_OBJECT(item), "user_data"));

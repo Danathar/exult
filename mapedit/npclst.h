@@ -103,7 +103,11 @@ class Npc_chooser : public Object_browser, public Shape_draw {
 	void goto_index(unsigned index);    // Get desired index in view.
 
 	int get_selected_id() override {
-		return selected;
+		return selected < 0 ? -1 : info[selected].npcnum;
+	}
+
+	int find_id_index(int id) override {
+		return find_npc(id);
 	}
 
 	void       scroll_row_vertical(unsigned newrow);

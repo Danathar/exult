@@ -398,32 +398,42 @@ $(UCC):
 
 
 static/usecode: $(UCC) $(USECODE_OBJECTS)
-	$(UCC) -I $(srcdir)/src/usecode -o $(srcdir)/static/usecode $(srcdir)/src/usecode/usecode.uc
+	@$(MKDIR_P) static
+	$(UCC) -I $(srcdir)/src/usecode -o static/usecode $(srcdir)/src/usecode/usecode.uc
 
 static/faces.vga: $(EXPACK) $(FACES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/faces.in
+	@$(MKDIR_P) src/graphics static
+	$(EXPACK) -i $(srcdir)/src/graphics/faces.in src/graphics
 
 static/fonts.vga: $(EXPACK) $(FONTS_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/fonts.in
+	@$(MKDIR_P) src/graphics static
+	$(EXPACK) -i $(srcdir)/src/graphics/fonts.in src/graphics
 
 static/gumps.vga: $(EXPACK) $(GUMPS_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/gumps.in
+	@$(MKDIR_P) src/graphics static
+	$(EXPACK) -i $(srcdir)/src/graphics/gumps.in src/graphics
 
 static/mainshp.flx: $(EXPACK) $(MAINSHP_FLX_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/mainshp.in
+	@$(MKDIR_P) src/graphics static
+	$(EXPACK) -i $(srcdir)/src/graphics/mainshp.in src/graphics
 
 static/palettes.flx: $(EXPACK) $(PALETTES_FLX_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/palettes.in
+	@$(MKDIR_P) src/graphics static
+	$(EXPACK) -i $(srcdir)/src/graphics/palettes.in src/graphics
 
 static/paperdol.vga: $(EXPACK) $(PAPERDOL_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/paperdol.in
+	@$(MKDIR_P) src/graphics static
+	$(EXPACK) -i $(srcdir)/src/graphics/paperdol.in src/graphics
 
 static/shapes.vga: $(EXPACK) $(SHAPES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/shapes.in
+	@$(MKDIR_P) src/graphics static
+	$(EXPACK) -i $(srcdir)/src/graphics/shapes.in src/graphics
 
 static/sprites.vga: $(EXPACK) $(SPRITES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/sprites.in
+	@$(MKDIR_P) src/graphics static
+	$(EXPACK) -i $(srcdir)/src/graphics/sprites.in src/graphics
 
 static/intro.flx: $(EXPACK) $(INTRO_FLX_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/playscene/intro.in
+	@$(MKDIR_P) src/playscene static
+	$(EXPACK) -i $(srcdir)/src/playscene/intro.in src/playscene
 
