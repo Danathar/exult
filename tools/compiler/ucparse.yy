@@ -535,9 +535,17 @@ struct_item:
 	VAR IDENTIFIER ';'
 		{ cur_struct->add($2); }
 	| STRUCT '<' defined_struct '>' ';'
-		{ cur_struct->merge_struct($3); }
+		{
+		if ($3) {    // Null if not found; error was reported.
+			cur_struct->merge_struct($3);
+		}
+		}
 	| STRUCT '<' defined_struct '>' IDENTIFIER ';'
-		{ cur_struct->merge_struct($3); }
+		{
+		if ($3) {    // Null if not found; error was reported.
+			cur_struct->merge_struct($3);
+		}
+		}
 	;
 
 function:
@@ -645,18 +653,18 @@ opt_const_int_expr:
 const_int_expr:
 	const_int_val
 	| const_int_expr '+' const_int_expr
-		{ $$ = $1 + $3; }
+		{ $$ = Uc_wrapping_add($1, $3); }
 	| const_int_expr '-' const_int_expr
-		{ $$ = $1 - $3; }
+		{ $$ = Uc_wrapping_sub($1, $3); }
 	| const_int_expr '*' const_int_expr
-		{ $$ = $1 * $3; }
+		{ $$ = Uc_wrapping_mul($1, $3); }
 	| const_int_expr '/' const_int_expr
 		{
 		if ($3 == 0) {
 			Uc_location::yyerror("Division by 0");
 			$$ = -1;
 		} else {
-			$$ = $1 / $3;
+			$$ = Uc_wrapping_div($1, $3);
 		}
 		}
 	| const_int_expr '%' const_int_expr
@@ -665,7 +673,7 @@ const_int_expr:
 			Uc_location::yyerror("Division by 0");
 			$$ = -1;
 		} else {
-			$$ = $1 % $3;
+			$$ = Uc_wrapping_mod($1, $3);
 		}
 		}
 	| const_int_expr EQUALS const_int_expr
@@ -972,7 +980,7 @@ enum_item:
 	const_int
 	| IDENTIFIER
 		{			/* Increment last value.	*/
-		++enum_val;
+		enum_val = Uc_wrapping_add(enum_val, 1);
 		int op = const_opcode.back();
 		if (cur_fun) {
 			cur_fun->add_int_const_symbol($1, enum_val, op);
@@ -1037,8 +1045,13 @@ var_decl:
 		} else {
 			auto* var = cur_fun ? cur_fun->add_symbol($1, true)
 								: cur_class->add_symbol($1);
-			var->set_is_obj_fun($3->is_object_function(false));
-			$$ = new Uc_assignment_statement(new Uc_var_expression(var), $3);
+			if (!var) {    // Already declared; error was reported.
+				delete $3;
+				$$ = nullptr;
+			} else {
+				var->set_is_obj_fun($3->is_object_function(false));
+				$$ = new Uc_assignment_statement(new Uc_var_expression(var), $3);
+			}
 		}
 		}
 	| IDENTIFIER '=' script_expr
@@ -1052,7 +1065,12 @@ var_decl:
 		} else {
 			auto* var = cur_fun ? cur_fun->add_symbol($1, true)
 								: cur_class->add_symbol($1);
-			$$ = new Uc_assignment_statement(new Uc_var_expression(var), $3);
+			if (!var) {    // Already declared; error was reported.
+				delete $3;
+				$$ = nullptr;
+			} else {
+				$$ = new Uc_assignment_statement(new Uc_var_expression(var), $3);
+			}
 		}
 		}
 	;
@@ -1099,8 +1117,12 @@ class_decl:
 				$$ = nullptr;
 			} else {
 				auto* v = cur_fun->add_symbol($1, class_type, true);
-				$$      = new Uc_assignment_statement(
-				                        new Uc_class_expression(v), $3);
+				if (!v) {    // Already declared; error was reported.
+					delete $3;
+					$$ = nullptr;
+				} else {
+					$$ = new Uc_assignment_statement(new Uc_class_expression(v), $3);
+				}
 			}
 		}
 		}
@@ -1149,8 +1171,13 @@ struct_decl:
 		} else {
 			auto* var = cur_fun ? cur_fun->add_symbol($1, struct_type, true)
 								: cur_class->add_symbol($1, struct_type);
-			var->set_is_obj_fun($3->is_object_function(false));
-			$$ = new Uc_assignment_statement(new Uc_var_expression(var), $3);
+			if (!var) {    // Already declared; error was reported.
+				delete $3;
+				$$ = nullptr;
+			} else {
+				var->set_is_obj_fun($3->is_object_function(false));
+				$$ = new Uc_assignment_statement(new Uc_var_expression(var), $3);
+			}
 		}
 		}
 	;
@@ -2467,14 +2494,15 @@ addressof:
 		{
 		// A way to retrieve the function's assigned
 		// usecode number
-		Uc_symbol* sym = cur_fun->search_up($2);
+		// cur_fun is null in file-scope initializers (const, enum).
+		Uc_symbol* sym = cur_fun ? cur_fun->search_up($2)
+								: Uc_function::search_globals($2);
+		auto* fun = dynamic_cast<Uc_function_symbol*>(sym);
 		if (!sym) {
 			/* See if the symbol is defined */
 			Uc_location::yyerror("'%s' not declared", $2);
 			$$ = -1;
-		}
-		auto* fun = dynamic_cast<Uc_function_symbol*>(sym);
-		if (!fun) {
+		} else if (!fun) {
 			/* See if the symbol is a function */
 			Uc_location::yyerror("'%s' is not a function", $2);
 			$$ = -1;
@@ -2730,7 +2758,7 @@ param:
 sign_int_literal:
 	INT_LITERAL
 	| '-' INT_LITERAL %prec UMINUS
-		{ $$ = -$2; }
+		{ $$ = Uc_wrapping_sub(0, $2); }
 	| '+' INT_LITERAL %prec UPLUS
 		{ $$ = $2; }
 	;

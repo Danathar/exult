@@ -442,8 +442,9 @@ void Shape_draw::drag_data_received(
 		int file;
 		int shape;
 		int frame;
-		Get_u7_shapeid(gtk_selection_data_get_data(seldata), file, shape, frame);
-		(*draw->drop_callback)(file, shape, frame, draw->drop_user_data);
+		if (Get_u7_shapeid(gtk_selection_data_get_data(seldata), file, shape, frame)) {
+			(*draw->drop_callback)(file, shape, frame, draw->drop_user_data);
+		}
 	}
 }
 
