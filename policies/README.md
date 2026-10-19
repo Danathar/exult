@@ -38,7 +38,12 @@ Stops agent instructions from sending work to the upstream project.
   `edit`, `close`, `reopen`, `merge`, `review`, `delete`, `run`, and the others
   in `writeCommandPattern`) and the `rerun`, `cancel` and `delete` verbs of
   `gh run` must carry `--repo Danathar/exult`, or `-R Danathar/exult`, on the
-  same logical line (an environment variable is not enough in Markdown). A
+  same logical line (an environment variable is not enough in Markdown). The
+  flag may come before the noun (`gh -R x issue create`) or between noun and
+  verb. `gh repo create|delete|edit|rename|archive|unarchive|fork|sync`,
+  `gh secret|variable set|delete|remove` and `gh gist create|edit|delete|rename`
+  are write commands too. `gh api` and the destination argument of
+  `gh issue transfer` are not checked. A
   command continued with a trailing backslash is one line. There is no
   exemption for prose: describe an unscoped command in words, or add the flag.
 - No scanned line may pass `--repo`/`-R` for another repository to a `gh` write
@@ -60,7 +65,8 @@ For every fork-added `.github/workflows/*.yml` (see "Scope"):
   before the command) never substitutes for the flag; a `GH_REPO` naming another
   repository, or any other `--repo` value, fails;
 - `run:` scripts contain no attacker-controlled expression such as
-  `${{ github.event.issue.title }}`, `github.head_ref` or `inputs.*`; pass it
+  `${{ github.event.issue.title }}`, `github.head_ref`, `github.ref`,
+  `toJSON(github)`, `toJSON(github.event)` or `inputs.*`; pass it
   through `env:` and read `"$VAR"`. Numbers, SHAs and
   `github.event.repository.name` are allowed.
 

@@ -85,7 +85,12 @@ export function listFiles(root) {
     if (fs.existsSync(path.join(root, '.git'))) {
         const r = spawnSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8', maxBuffer: 1 << 28 });
         if (r.status === 0) {
-            return [...new Set(r.stdout.split('\0').filter(Boolean))].filter((f) => fs.existsSync(path.join(root, f))).sort();
+            // Regular files only: a tracked symlink to a directory or a
+            // submodule path exists but cannot be read as a file. A symlink to
+            // a file is followed (statSync), so its target text is checked.
+            return [...new Set(r.stdout.split('\0').filter(Boolean))]
+                .filter((f) => fs.statSync(path.join(root, f), { throwIfNoEntry: false })?.isFile())
+                .sort();
         }
     }
     return walk(root);
@@ -432,6 +437,8 @@ export function checkTopLevelPermissions(f, code, policy) {
 const REPO_FLAG =
     /(?:--repo|-R)(?:\s+|=)["']?(\$\{?GH_REPO\}?|\$\{\{\s*github\.repository\s*\}\}|[\w.-]+\/[\w.-]+|[^\s"',:)]+)/;
 
+const REPO_FLAG_ALL = new RegExp(REPO_FLAG.source, 'g');
+
 export function checkGhScope(f, code, policy) {
     const v = [];
     const allowed = policy.allowedRepoValues;
@@ -465,12 +472,18 @@ export function checkGhScope(f, code, policy) {
                 );
                 return;
             }
-            const flag = seg.match(REPO_FLAG);
-            if (!flag) {
+            // Every --repo/-R in the segment must name an allowed repository,
+            // wherever it sits (`gh -R x issue create`, `gh issue create -R x`).
+            const flags = [...seg.matchAll(REPO_FLAG_ALL)];
+            if (flags.length === 0) {
                 // GH_REPO never satisfies the rule: every gh write passes --repo explicitly.
                 v.push(`${f}:${line}: "${cmd}" has no --repo (GH_REPO does not count; pass --repo Danathar/exult)`);
-            } else if (!okLiteral(flag[1])) {
-                v.push(`${f}:${line}: "${cmd}" targets "${flag[1]}", expected ${allowed[0]} or Danathar/exult`);
+            }
+            for (const flag of flags) {
+                if (!okLiteral(flag[1])) {
+                    v.push(`${f}:${line}: "${cmd}" targets "${flag[1]}", expected ${allowed[0]} or Danathar/exult`);
+                    break;
+                }
             }
         });
     }
