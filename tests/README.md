@@ -52,7 +52,10 @@ then configures with `--enable-data --enable-mods --enable-compiler` in a
 separate directory and builds everything. Any rule that writes into the source
 tree fails the build. It then checks that the generated Flex files, headers,
 mod usecode and `gitinfo.h` are in the build tree, that `make install` finds
-them, and that `make maintainer-clean` removes every file the build created.
+them, that `make` refuses to build while stale generated headers from an
+in-tree build sit in the source tree (quoted includes would pick them up before
+the build tree's copies), and that `make maintainer-clean` removes every file
+the build created.
 
 ```sh
 tests/out-of-tree-build.sh                # source copy with git metadata

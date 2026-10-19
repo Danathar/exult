@@ -6,7 +6,8 @@
 # the copy read-only, then configures and builds in a separate directory with
 # the data files, mods and usecode compiler enabled. A rule that writes into
 # $(srcdir) fails the build. Afterwards it checks that the generated files are
-# in the build tree, that `make install` finds them there, and that
+# in the build tree, that `make install` finds them there, that `make` refuses
+# to build while stale generated headers sit in the source tree, and that
 # `make maintainer-clean` removes every file the build created. (maintainer-clean
 # rather than distclean: from a git checkout the build also generates the ucc
 # parser sources, which a release tarball ships and only maintainer-clean removes.)
@@ -104,6 +105,25 @@ else
 	tail -40 "$work/install.log" >&2
 	bad "make install failed"
 fi
+
+echo "== stale generated headers in the source tree"
+# A header left in the source tree by an earlier in-tree build would be found by
+# quoted includes before this build's copy; make must refuse rather than use it.
+chmod u+w "$src" "$src/data"
+: >"$src/gitinfo.h"
+: >"$src/data/exult_flx.h"
+chmod a-w "$src" "$src/data"
+if make -C "$build" >"$work/stale.log" 2>&1; then
+	bad "make builds although stale generated headers sit in the source tree"
+elif grep -qF "$src/gitinfo.h" "$work/stale.log" && grep -qF "$src/data/exult_flx.h" "$work/stale.log"; then
+	ok "make refuses to build while stale generated headers sit in the source tree"
+else
+	tail -20 "$work/stale.log" >&2
+	bad "make failed without naming the stale generated headers"
+fi
+chmod u+w "$src" "$src/data"
+rm -f "$src/gitinfo.h" "$src/data/exult_flx.h"
+chmod a-w "$src" "$src/data"
 
 echo "== make maintainer-clean"
 if make -C "$build" maintainer-clean >"$work/clean.log" 2>&1; then
