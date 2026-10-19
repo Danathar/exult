@@ -140,7 +140,7 @@ namespace Pentagram {
 		frame_evenodd = 0;
 		position      = 0;
 		fp_pos        = 0;
-		fp_speed      = (pitch_shift * sample->getRate()) / sample_rate;
+		fp_speed      = static_cast<int>((uint64(pitch_shift) * sample->getRate()) / sample_rate);
 
 		// Decompress frame 0
 		frame0_size = sample->decompressFrame(decomp, frames[0]);
@@ -154,9 +154,9 @@ namespace Pentagram {
 			int    a   = *(src + 0);
 			a          = (a | (a << 8)) - 32768;
 			int b      = *(src + 1);
-			b          = (a | (b << 8)) - 32768;
+			b          = (b | (b << 8)) - 32768;
 			int c      = *(src + 2);
-			c          = (a | (c << 8)) - 32768;
+			c          = (c | (c << 8)) - 32768;
 
 			interp_l.init(RANGE_REDUX(a), RANGE_REDUX(b), RANGE_REDUX(c));
 		}
@@ -168,7 +168,7 @@ namespace Pentagram {
 		}
 
 		// Update fp_speed
-		fp_speed = (pitch_shift * sample->getRate()) / sample_rate;
+		fp_speed = static_cast<int>((uint64(pitch_shift) * sample->getRate()) / sample_rate);
 		// Get and Mix data
 		do {
 			int startpos = position;
