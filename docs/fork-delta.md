@@ -34,3 +34,4 @@ It exists for two jobs:
 | -- | ----- | ------ | --------------- |
 | [#190](https://github.com/Danathar/exult/pull/190) | `conf/Configuration.cc`, `conf/XMLEntity.cc`, `conf/XMLEntity.h`, `files/utils.cc` | Reject malformed config files with an error instead of asserting; make `U7copy` accept an empty source file | not reported |
 | [#227](https://github.com/Danathar/exult/pull/227) | `usecode/ucinternal.cc` | Drop surplus indirect-call arguments instead of writing past the callee's locals | not reported |
+| [#229](https://github.com/Danathar/exult/pull/229) | `audio/midi_drivers/timidity/timidity_resample.cpp`, `audio/midi_drivers/timidity/timidity_instrum.cpp` | Pad pre-resampled TiMidity drum buffers with two zeroed samples so the resamplers do not read past the end | not reported |
