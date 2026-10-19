@@ -28,6 +28,8 @@ sources=(
 	"$root/files/listfiles.cc"
 	"$root/files/crc.cc"
 	"$root/files/sha1/sha1.cpp"
+	"$root/conf/Configuration.cc"
+	"$root/conf/XMLEntity.cc"
 )
 tests=("$root"/tests/unit/*.cc)
 

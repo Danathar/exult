@@ -59,7 +59,8 @@ public:
 	void        dump(std::ostream& o, const std::string& indentstr, const unsigned int depth = 0) const;
 
 	void xmlassign(const std::string& key, const std::string& value);
-	void xmlparse(const std::string& s, std::size_t& pos);
+	// Returns false on malformed input (e.g. an unterminated close tag).
+	bool xmlparse(const std::string& s, std::size_t& pos);
 
 	void listkeys(const std::string&, std::vector<std::string>&, bool longformat = true) const;
 

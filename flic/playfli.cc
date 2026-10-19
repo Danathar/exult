@@ -143,7 +143,10 @@ int playfli::play(Image_window* win, int first_frame, int last_frame, unsigned l
 		streampos = streamstart;
 	}
 
-	std::vector<uint8> pixbuf(fli_width);
+	// LC and SS2 packets decode up to 256 bytes at the start of pixbuf, so
+	// keep it at least that large even for narrow flics. BRUN and COPY use
+	// fli_width bytes.
+	std::vector<uint8> pixbuf(std::max(fli_width, 256));
 
 	if (brightness != palette->get_brightness()) {
 		palette->set_brightness(brightness);
@@ -155,18 +158,27 @@ int playfli::play(Image_window* win, int first_frame, int last_frame, unsigned l
 
 		std::array<unsigned char, 768> colors{};
 
-		auto* current = colors.data();
+		// Index of the next palette entry; skip and change count colours
+		// (3 bytes each), not bytes.
+		size_t index = 0;
 
 		for (size_t p_count = 0; p_count < packets; p_count++) {
 			const size_t skip = fli_data.read1();
 
-			current += skip;
+			index += skip;
 			size_t change = fli_data.read1();
 
 			if (change == 0) {
 				change = 256;
 			}
-			fli_data.read(current, change * 3);
+			// Ignore colours past the end of the palette.
+			const size_t room  = index < 256 ? 256 - index : 0;
+			const size_t count = std::min(change, room);
+			if (count > 0) {
+				fli_data.read(colors.data() + index * 3, count * 3);
+			}
+			fli_data.skip((change - count) * 3);
+			index += change;
 		}
 		return colors;
 	};
@@ -241,16 +253,21 @@ int playfli::play(Image_window* win, int first_frame, int last_frame, unsigned l
 			case FLI_BRUN: {
 				for (int line = 0; line < fli_height; line++) {
 					const int packets = fli_data.read1();
-					auto*     pix_pos = pixbuf.data();
+					auto*       pix_pos  = pixbuf.data();
+					auto* const line_end = pixbuf.data() + fli_width;
 					for (int p_count = 0; p_count < packets; p_count++) {
 						const int size_count = static_cast<sint8>(fli_data.read1());
+						// Clamp packets that run past the end of the line.
+						const size_t room = line_end - pix_pos;
 						if (size_count > 0) {
 							const auto data = static_cast<uint8>(fli_data.read1());
-							pix_pos         = std::fill_n(pix_pos, size_count, data);
+							pix_pos         = std::fill_n(pix_pos, std::min<size_t>(size_count, room), data);
 						} else {
-							const int pix_count = std::abs(size_count);
-							fli_data.read(pix_pos, pix_count);
-							pix_pos += pix_count;
+							const size_t pix_count = std::abs(size_count);
+							const size_t count     = std::min(pix_count, room);
+							fli_data.read(pix_pos, count);
+							fli_data.skip(pix_count - count);
+							pix_pos += count;
 						}
 					}
 					fli_buf->copy_hline8(pixbuf.data(), fli_width, 0, line);
@@ -310,8 +327,12 @@ int playfli::play(Image_window* win, int first_frame, int last_frame, unsigned l
 				std::cerr << "FLIC ERROR: Postage Stamp Image not supported "
 							 "(chunk type FLI_PSTAMP == 18)"
 						  << endl;
-				size_t skip = fli_data.read4();
-				fli_data.skip(skip - 4);
+				const size_t skip = fli_data.read4();
+				// The size includes its own 4 bytes; never skip backwards or
+				// past the end of the data.
+				if (skip >= 4) {
+					fli_data.skip(std::min(skip - 4, fli_data.getAvail()));
+				}
 				break;
 			}
 
