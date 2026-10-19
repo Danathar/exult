@@ -192,7 +192,7 @@ EXTRA_DIST = 	\
 	win32/exultstudio.ico \
 	win32/exultstudioico.rc \
 	win32/exconfig.cc \
-	win32/exconfig.def \
+	win32/exconfig.exe.manifest \
 	win32/exconfig.h \
 	win32/exconfig.rc \
 	win32/exult.exe.manifest \
@@ -206,20 +206,15 @@ EXTRA_DIST = 	\
 	macosx/exult.icns \
 	macosx/exult_studio_info.plist.in \
 	macosx/diskback.png \
-	macosx/DS_Store \
 	macosx/exult_studio.bundle \
-	macosx/exult_studio_entitlements.plist \
 	macosx/exult_studio.icns \
-	macosx/exult_studio_launcher.sh \
 	msvcstuff/vs2019/.gitignore \
 	msvcstuff/vs2019/Exult.sln \
 	msvcstuff/vs2019/Exult.vcxproj \
 	msvcstuff/vs2019/Exult.vcxproj.filters \
-	msvcstuff/vs2019/dirent.h \
 	msvcstuff/vs2019/expack/expack.vcxproj \
 	msvcstuff/vs2019/expack/expack.vcxproj.filters \
 	msvcstuff/vs2019/msvc_include.h \
-	msvcstuff/vs2019/packages.config \
 	msvcstuff/vs2019/unistd.h \
 	ios/Exult.xcodeproj \
 	ios/Exult.xcodeproj/project.pbxproj \
@@ -250,40 +245,18 @@ EXTRA_DIST = 	\
 	ios/Info.plist \
 	ios/Media.xcassets/Contents.json \
 	ios/Media.xcassets/AppIcon.appiconset/Contents.json \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-20x20@1x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-20x20@2x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-20x20@3x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-29x29@1x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-29x29@2x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-29x29@3x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-40x40@1x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-40x40@2x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-40x40@3x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-57x57@1x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-57x57@2x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-60x60@2x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-60x60@3x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-72x72@1x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-72x72@2x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-76x76@1x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-76x76@2x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-App-83.5x83.5@2x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-AppStore.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-Small-50x50@1x.png \
-	ios/Media.xcassets/AppIcon.appiconset/Icon-Small-50x50@2x.png \
-	ios/SDL2/dummy \
+	ios/Media.xcassets/AppIcon.appiconset/dark.png \
+	ios/Media.xcassets/AppIcon.appiconset/normal.png \
+	ios/Media.xcassets/AppIcon.appiconset/tinted.png \
 	ios/data/dummy \
 	ios/include/config.h \
 	ios/include/ios_utils.h \
 	ios/ios_utils.mm \
-	ios/libmt32emu/dummy \
 	ios/libmt32emu.xcodeproj/project.pbxproj \
-	ios/libogg/dummy \
 	ios/libogg.xcodeproj/project.pbxproj \
-	ios/libvorbis/dummy \
 	ios/libvorbis.xcodeproj/project.pbxproj \
 	tools/mockup/LICENCE \
-	tools/mockup/Makefile \
+	tools/mockup/Makefile.am \
 	tools/mockup/README \
 	tools/mockup/defs.h \
 	tools/mockup/main.h \

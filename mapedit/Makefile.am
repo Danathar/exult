@@ -76,8 +76,7 @@ mapedit_DATA =
 endif
 
 EXTRA_DIST=	\
-	exult_studio.glade \
-	logo.xpm
+	exult_studio.glade
 
 CLEANFILES = *~
 
