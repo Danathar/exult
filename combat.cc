@@ -815,7 +815,7 @@ void Combat_schedule::back_off(Actor* npc, Game_object* attacker) {
 	}
 	const Tile_coord npc_tile      = npc->get_tile();
 	const Tile_coord attacker_tile = attacker->get_tile();
-	int              dx            = npc_tile.tx - attacker_tile.ty;
+	int              dx            = npc_tile.tx - attacker_tile.tx;
 	int              dy            = npc_tile.ty - attacker_tile.ty;
 	dx                             = dx < 0 ? -1 : dx > 0 ? 1 : 0;
 	dy                             = dy < 0 ? -1 : dy > 0 ? 1 : 0;
