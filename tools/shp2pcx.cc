@@ -183,7 +183,13 @@ u7shape* load_shape(char* filename) {
 		}
 	} else {
 		const int hdr_size = read4(fp);
-		shape->num_frames  = (hdr_size - 4) / 4;
+		if (feof(fp) || ferror(fp) || hdr_size < 8 || hdr_size > file_size) {
+			cerr << "Invalid shape header in " << filename << endl;
+			fclose(fp);
+			delete shape;
+			return nullptr;
+		}
+		shape->num_frames = (hdr_size - 4) / 4;
 
 		cout << "num_frames = " << shape->num_frames << endl;
 		shape->frames = new u7frame[shape->num_frames];
@@ -194,11 +200,21 @@ u7shape* load_shape(char* filename) {
 			// Go to where frame offset is stored
 			fseek(fp, (i + 1) * 4, SEEK_SET);
 			const int frame_offset = read4(fp);
+			if (feof(fp) || ferror(fp) || frame_offset < hdr_size || frame_offset >= file_size) {
+				cerr << "Invalid frame offset in " << filename << endl;
+				fclose(fp);
+				return nullptr;
+			}
 			fseek(fp, frame_offset, SEEK_SET);
 			frame->rightX = read2(fp);
 			frame->leftX  = read2(fp);
 			frame->leftY  = read2(fp);
 			frame->rightY = read2(fp);
+			if (feof(fp) || ferror(fp) || frame->rightX < 0 || frame->leftX < 0 || frame->leftY < 0 || frame->rightY < 0) {
+				cerr << "Invalid frame header in " << filename << endl;
+				fclose(fp);
+				return nullptr;
+			}
 
 			if (frame->leftX > max_leftX) {
 				max_leftX = frame->leftX;
@@ -219,9 +235,14 @@ u7shape* load_shape(char* filename) {
 			frame->pixels = new uint8[frame->width * frame->height];
 			memset(frame->pixels, 0, frame->width * frame->height);
 
-			// eod = frame->pixels+frame->width*frame->height;
-			int slice;
+			uint8* const eod = frame->pixels + frame->width * frame->height;
+			int          slice;
 			while ((slice = read2(fp)) != 0) {
+				if (feof(fp) || ferror(fp)) {
+					cerr << "Truncated shape file " << filename << endl;
+					fclose(fp);
+					return nullptr;
+				}
 				const int slice_type   = slice & 0x1;
 				int       slice_length = slice >> 1;
 
@@ -236,11 +257,21 @@ u7shape* load_shape(char* filename) {
 				if (pixptr < frame->pixels) {
 					pixptr = frame->pixels;
 				}
+				if (pixptr > eod || slice_length > eod - pixptr) {
+					cerr << "Slice exceeds frame bounds in " << filename << endl;
+					fclose(fp);
+					return nullptr;
+				}
 				if (slice_type) {    // Compressed
 					while (slice_length > 0) {
 						const uint8 block        = read1(fp);
 						const int   block_type   = block & 0x1;
 						const int   block_length = block >> 1;
+						if (feof(fp) || ferror(fp) || block_length > eod - pixptr) {
+							cerr << "Invalid or truncated slice in " << filename << endl;
+							fclose(fp);
+							return nullptr;
+						}
 						if (block_type) {
 							const uint8 pix = read1(fp);
 							for (int j = 0; j < block_length; j++) {
@@ -260,7 +291,17 @@ u7shape* load_shape(char* filename) {
 						const uint8 pix = read1(fp);
 						*pixptr++       = pix;
 					}
+					if (feof(fp) || ferror(fp)) {
+						cerr << "Truncated shape file " << filename << endl;
+						fclose(fp);
+						return nullptr;
+					}
 				}
+			}
+			if (feof(fp) || ferror(fp)) {
+				cerr << "Truncated shape file " << filename << endl;
+				fclose(fp);
+				return nullptr;
 			}
 		}
 	}
