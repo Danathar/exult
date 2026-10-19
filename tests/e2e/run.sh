@@ -247,6 +247,39 @@ else
 	ok "truncated archive does not reproduce entry 1"
 fi
 
+# expack -i MANIFEST OUTDIR: the manifest and one input sit in a read-only
+# "source" dir, another input exists only in OUTDIR (as a generated file does
+# in a build tree). The archive and header must land in OUTDIR, nothing may be
+# written next to the manifest, and both inputs must be packed.
+mkdir -p "$work/msrc/sub" "$work/mbuild/sub" "$work/mout"
+cp "$work/in/a.bin" "$work/msrc/sub/a.bin"
+cp "$work/in/b.bin" "$work/mbuild/sub/gen.bin"
+printf '../pack.flx\na.bin\ngen.bin\n' > "$work/msrc/sub/list.in"
+chmod a-w "$work/msrc/sub"
+if (cd "$work" && "$expack" -i msrc/sub/list.in mbuild/sub >manifest.log 2>&1) \
+	&& [ -s "$work/mbuild/pack.flx" ] && [ -s "$work/mbuild/pack_flx.h" ]; then
+	ok "expack -i MANIFEST OUTDIR writes the archive and header under OUTDIR"
+else
+	bad "expack -i MANIFEST OUTDIR did not write mbuild/pack.flx and mbuild/pack_flx.h"; cat "$work/manifest.log" >&2
+fi
+if [ "$(ls "$work/msrc/sub")" = "$(printf 'a.bin\nlist.in')" ] && [ ! -e "$work/msrc/pack.flx" ]; then
+	ok "expack -i MANIFEST OUTDIR writes nothing next to the manifest"
+else
+	bad "expack -i MANIFEST OUTDIR wrote into the manifest's directory"
+fi
+chmod u+w "$work/msrc/sub"
+(cd "$work/mout" && "$expack" -x ../mbuild/pack.flx >/dev/null 2>&1) || true
+if cmp -s "$work/mout/00000.u7o" "$work/in/a.bin" && cmp -s "$work/mout/00001.u7o" "$work/in/b.bin"; then
+	ok "expack -i MANIFEST OUTDIR packs inputs from next to the manifest and from OUTDIR"
+else
+	bad "expack -i MANIFEST OUTDIR packed the wrong inputs"
+fi
+if grep -Eq '^#define[[:space:]]+PACK_FLX_GEN_BIN[[:space:]]+1$' "$work/mbuild/pack_flx.h" 2>/dev/null; then
+	ok "expack -i MANIFEST OUTDIR names the OUTDIR input in the header"
+else
+	bad "expack -i MANIFEST OUTDIR header lacks the OUTDIR input"
+fi
+
 # --- regressions in expack -i, textpack and ipack ------------------------------
 if EXULT_EXPACK="$expack" EXULT_TEXTPACK="$textpack" EXULT_IPACK="$ipack" "$root/tests/e2e/tool-regressions.sh"; then
 	ok "tool regression checks"

@@ -31,9 +31,25 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #	include <png.h>
 
+#	include <climits>
 #	include <csetjmp>
+#	include <cstddef>
 #	include <cstdio>
 #	include <cstring>
+
+// Largest pixel buffer we are willing to allocate for an imported image.
+static const size_t MAX_IMPORT_BYTES = 256U * 1024U * 1024U;
+
+/*
+ *  Are the dimensions of an image to be read sane?  The size is computed
+ *  in size_t so that a hostile header can't make it wrap.
+ */
+static bool Png_size_ok(png_uint_32 w, png_uint_32 h, size_t rowbytes) {
+	if (w == 0 || h == 0 || w > INT_MAX || h > INT_MAX || rowbytes == 0 || rowbytes > INT_MAX) {
+		return false;
+	}
+	return static_cast<size_t>(h) <= MAX_IMPORT_BYTES / rowbytes;
+}
 
 /*
  *  Read in an 8-bit .png file.  Each pixel returned is one byte,
@@ -80,6 +96,11 @@ int Import_png8(
 	if (setjmp(png_jmpbuf(png))) {    // Handle errors.
 		png_destroy_read_struct(&png, &info, nullptr);
 		fclose(fp);
+		delete[] pixels;
+		delete[] palette;
+		pixels   = nullptr;
+		palette  = nullptr;
+		pal_size = 0;
 		return 0;
 	}
 	png_init_io(png, fp);    // Init. for reading.
@@ -92,13 +113,13 @@ int Import_png8(
 	int         color;
 	int         interlace;
 	png_get_IHDR(png, info, &w, &h, &depth, &color, &interlace, nullptr, nullptr);
-	width  = static_cast<int>(w);
-	height = static_cast<int>(h);
-	if (color != PNG_COLOR_TYPE_PALETTE) {
+	if (color != PNG_COLOR_TYPE_PALETTE || w == 0 || h == 0 || w > INT_MAX || h > INT_MAX) {
 		png_destroy_read_struct(&png, &info, nullptr);
 		fclose(fp);
 		return 0;
 	}
+	width  = static_cast<int>(w);
+	height = static_cast<int>(h);
 	if (depth < 8) {
 		png_set_packing(png);
 	}
@@ -124,44 +145,62 @@ int Import_png8(
 	} else {
 		xoff = yoff = 0;
 	}
-	png_bytep     trans;    // Get transparency info.
+	png_bytep     trans = nullptr;    // Get transparency info.
 	int           num_trans;
 	png_color_16p trans_values;
 	if (transp_index < 0 || transp_index > 255 || pal_size == 0 || !png_get_tRNS(png, info, &trans, &num_trans, &trans_values)) {
 		num_trans = 0;
 	}
+	// Read interlaced images one pass at a time.
+	const int passes = png_set_interlace_handling(png);
 	// Get updated info.
 	png_read_update_info(png, info);
 	// Allocate pixel buffer.
-	rowbytes    = png_get_rowbytes(png, info);
-	auto* image = new png_byte[height * rowbytes];
+	const size_t rowsize = png_get_rowbytes(png, info);
+	if (!Png_size_ok(w, h, rowsize)) {
+		png_destroy_read_struct(&png, &info, nullptr);
+		fclose(fp);
+		delete[] palette;
+		palette  = nullptr;
+		pal_size = 0;
+		return 0;
+	}
+	rowbytes    = static_cast<int>(rowsize);
+	auto* image = new png_byte[static_cast<size_t>(height) * rowsize];
 	pixels      = image;    // Return ->.
-	png_bytep rowptr;       // Read in rows.
-	int       r;
-	for (r = 0, rowptr = image; r < height; r++, rowptr += rowbytes) {
-		png_read_rows(png, &rowptr, nullptr, 1);
+	for (int pass = 0; pass < passes; pass++) {
+		png_bytep rowptr = image;    // Read in rows.
+		for (int r = 0; r < height; r++, rowptr += rowsize) {
+			png_read_row(png, rowptr, nullptr);
+		}
 	}
 	png_read_end(png, info);    // Get the rest.
-	// Point past end of data.
-	unsigned char* endptr = pixels + height * rowbytes;
-	for (i = 0; i < num_trans; i++) {    // Convert transparent pixels.
-		if (trans[i] != 0) {             // Only accept fully transparent ones.
-			continue;
-		}
-		// Update data.
-		for (unsigned char* ptr = pixels; ptr != endptr; ptr++) {
-			if (*ptr == i) {
-				*ptr = transp_index;
+	if (num_trans > pal_size) {
+		num_trans = pal_size;
+	}
+	// Build a map from old to new indices in one pass: fully transparent
+	// entries become transp_index and are removed from the palette; the
+	// rest are compacted.
+	int map[256];
+	int newsize = 0;
+	for (i = 0; i < 256; i++) {
+		if (i < pal_size) {
+			if (i < num_trans && trans[i] == 0) {    // Only accept fully transparent ones.
+				map[i] = transp_index;
+			} else {
+				memmove(palette + 3 * newsize, palette + 3 * i, 3);
+				map[i] = newsize++;
 			}
-			// We'll remove i from the palette.
-			else if (*ptr > i) {
-				*ptr = *ptr - 1;
-			}
+		} else {    // Not in palette; just shift down.
+			map[i] = i - (pal_size - newsize);
 		}
-		if (i < pal_size - 1) {    // Remove trans. color from palette.
-			memmove(palette + 3 * i, palette + 3 * (i + 1), 3 * pal_size - 3 * (i + 1));
+	}
+	if (newsize != pal_size) {
+		const size_t count = static_cast<size_t>(height) * rowsize;
+		for (unsigned char *ptr = pixels, *endptr = pixels + count; ptr != endptr; ptr++) {
+			*ptr = static_cast<unsigned char>(map[*ptr]);
 		}
-		pal_size--;
+		pal_size = newsize;
 	}
 	// Clean up.
 	png_destroy_read_struct(&png, &info, nullptr);
@@ -297,6 +336,8 @@ int Import_png32(
 	if (setjmp(png_jmpbuf(png))) {    // Handle errors.
 		png_destroy_read_struct(&png, &info, nullptr);
 		fclose(fp);
+		delete[] pixels;
+		pixels = nullptr;
 		return 0;
 	}
 	png_init_io(png, fp);    // Init. for reading.
@@ -309,6 +350,11 @@ int Import_png32(
 	int         color;
 	int         interlace;
 	png_get_IHDR(png, info, &w, &h, &depth, &color, &interlace, nullptr, nullptr);
+	if (w == 0 || h == 0 || w > INT_MAX || h > INT_MAX) {
+		png_destroy_read_struct(&png, &info, nullptr);
+		fclose(fp);
+		return 0;
+	}
 	width  = static_cast<int>(w);
 	height = static_cast<int>(h);
 	png_int_32 pngxoff;
@@ -329,22 +375,32 @@ int Import_png32(
 	} else if (depth == 8 && color == PNG_COLOR_TYPE_RGB) {
 		png_set_filler(png, 0xff, PNG_FILLER_AFTER);
 	}
+	// Read interlaced images one pass at a time.
+	const int passes = png_set_interlace_handling(png);
 	// Get updated info.
 	png_read_update_info(png, info);
 	// Allocate pixel buffer.
-	rowbytes         = png_get_rowbytes(png, info);
-	auto* image      = new png_byte[height * rowbytes];
-	pixels           = image;    // Return ->.
-	png_bytep rowptr = image;    // Read in rows.
-	int       stride;            // Distance to next row.
-	if (bottom_first) {
-		stride = -rowbytes;
-		rowptr += (height - 1) * rowbytes;
-	} else {
-		stride = rowbytes;
+	const size_t rowsize = png_get_rowbytes(png, info);
+	if (!Png_size_ok(w, h, rowsize)) {
+		png_destroy_read_struct(&png, &info, nullptr);
+		fclose(fp);
+		return 0;
 	}
-	for (int r = 0; r < height; r++, rowptr += stride) {
-		png_read_row(png, rowptr, nullptr);
+	rowbytes         = static_cast<int>(rowsize);
+	auto* image      = new png_byte[static_cast<size_t>(height) * rowsize];
+	pixels           = image;    // Return ->.
+	for (int pass = 0; pass < passes; pass++) {
+		png_bytep rowptr = image;    // Read in rows.
+		ptrdiff_t stride;            // Distance to next row.
+		if (bottom_first) {
+			stride = -static_cast<ptrdiff_t>(rowsize);
+			rowptr += static_cast<size_t>(height - 1) * rowsize;
+		} else {
+			stride = static_cast<ptrdiff_t>(rowsize);
+		}
+		for (int r = 0; r < height; r++, rowptr += stride) {
+			png_read_row(png, rowptr, nullptr);
+		}
 	}
 	png_read_end(png, info);    // Get the rest.
 	// Clean up.

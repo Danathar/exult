@@ -806,8 +806,8 @@ bool Shapes_vga_file::read_info(
 
 	// Load data about drawing the weapon in an actor's hand
 	if (IExultDataSource wihh(WIHH, PATCH_WIHH, 0); wihh.good()) {
-		const size_t   cnt = shapes.size();
-		unsigned short offsets[c_max_shapes];
+		const size_t                cnt = shapes.size();
+		std::vector<unsigned short> offsets(cnt);
 		for (size_t i = 0; i < cnt; i++) {
 			offsets[i] = wihh.read2();
 		}
@@ -842,8 +842,10 @@ bool Shapes_vga_file::read_info(
 		unsigned char occbits[c_occsize];    // c_max_shapes bit flags.
 		// Ensure sensible defaults.
 		std::fill(std::begin(occbits), std::end(occbits), 0);
-		occ.read(occbits, occ.getSize());
-		for (size_t i = 0; i < occ.getSize(); i++) {
+		// Ignore anything past the c_max_shapes flags that fit in occbits.
+		const size_t occlen = std::min<size_t>(occ.getSize(), sizeof(occbits));
+		occ.read(occbits, occlen);
+		for (size_t i = 0; i < occlen; i++) {
 			unsigned char bits  = occbits[i];
 			const int     shnum = i * 8;    // Check each bit.
 			for (int b = 0; bits != 0u; b++, bits = bits >> 1) {

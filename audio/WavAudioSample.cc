@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "databuf.h"
 
+#include <algorithm>
 #include <cstring>
 
 #ifdef __GNUC__
@@ -114,6 +115,13 @@ WavAudioSample::WavAudioSample(std::unique_ptr<uint8[]> buffer_, uint32 size)
 	if (bits_per_sample != 16 && bits_per_sample != 8) {
 		return;
 	}
+
+	// The data chunk must start inside the file, and only the bytes that
+	// are really there can be played
+	if (pos_data > size) {
+		return;
+	}
+	size_data = std::min(size_data, size - pos_data);
 
 	stereo = channels == 2;
 	bits   = bits_per_sample;

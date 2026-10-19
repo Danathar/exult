@@ -36,5 +36,5 @@ EXTRA_DIST = \
 	test1.uc \
 	ucdefs.h
 
-CLEANFILES = *~
+CLEANFILES = *~ ucparse.output
 MAINTAINERCLEANFILES = uclex.cc ucparse.cc ucparse.h ucparse.hh

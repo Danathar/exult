@@ -30,7 +30,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #	include <pthread.h>
 #	include <sched.h>
 
+#	include <algorithm>
 #	include <iostream>
+#	include <vector>
 
 class CoreAudioException : public exult_exception {
 	OSStatus      _err;
@@ -144,7 +146,7 @@ int CoreAudioMidiDriver::open() {
 						// after trying and failing to load a soundfont it's
 						// better to fail initializing the CoreAudio driver or
 						// it might crash
-						return 1;
+						throw CoreAudioException(kAudio_ParamError, __LINE__);
 					}
 					if (err == noErr) {
 						std::cout << "Loaded!" << std::endl;
@@ -153,7 +155,7 @@ int CoreAudioMidiDriver::open() {
 						// after trying and failing to load a soundfont it's
 						// better to fail initializing the CoreAudio driver or
 						// it might crash
-						return 1;
+						throw CoreAudioException(err, __LINE__);
 					}
 				} else {
 					std::cout << "Path to SoundFont '" << soundfont << "' not found. Continuing without." << std::endl;
@@ -173,6 +175,7 @@ int CoreAudioMidiDriver::open() {
 			DisposeAUGraph(_auGraph);
 			_auGraph = nullptr;
 		}
+		return 1;
 	}
 	return 0;
 }
@@ -234,18 +237,18 @@ void CoreAudioMidiDriver::send(uint32 message) {
 }
 
 void CoreAudioMidiDriver::send_sysex(uint8 status, const uint8* msg, uint16 length) {
-	uint8 buf[384];
-
-	assert(sizeof(buf) >= static_cast<size_t>(length) + 2);
 	assert(_auGraph != nullptr);
 
+	// Sized to the message so that long SysEx cannot overflow the buffer.
+	std::vector<uint8> buf(static_cast<size_t>(length) + 2);
+
 	// Add SysEx frame
-	uint8* out = buf;
+	uint8* out = buf.data();
 	Write1(out, status);
 	out = std::copy_n(msg, length, out);
 	Write1(out, 0xF7);
 
-	MusicDeviceSysEx(_synth, buf, length + 2);
+	MusicDeviceSysEx(_synth, buf.data(), static_cast<UInt32>(buf.size()));
 }
 
 void CoreAudioMidiDriver::increaseThreadPriority() {
