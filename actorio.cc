@@ -606,7 +606,8 @@ void Actor::write(ODataSource* nfile    // Generally 'npc.dat'.
 	// Lift is in high 4 bits.
 	usefun |= ((get_lift() & 15) << 12);
 	nfile->write2(usefun);
-	nfile->write1(get_property(Actor::health));
+	// Health is read back as a signed byte, so keep it in that range.
+	nfile->write1(std::clamp(get_property(Actor::health), -128, 127));
 	nfile->write1(0);    // Unknown 3 bytes.
 	nfile->write2(0);
 	nfile->write2(unused ? 0 : 1);    // Write 0 if unused.
@@ -652,7 +653,9 @@ void Actor::write(ODataSource* nfile    // Generally 'npc.dat'.
 	nfile->write2(iout);
 
 	// Write char. attributes.
-	iout = get_property(Actor::strength);
+	// Strength has 6 bits in BG and 5 bits in SI; don't spill into the
+	// skin colour/freeze bits.
+	iout = std::clamp(get_property(Actor::strength), 0, Game::get_game_type() == BLACK_GATE ? 0x3F : 0x1F);
 	if (Game::get_game_type() != BLACK_GATE && npc_num == 0) {
 		iout |= (get_skin_color() & 3) << 5;
 	} else if (npc_num == 0) {
@@ -666,7 +669,8 @@ void Actor::write(ODataSource* nfile    // Generally 'npc.dat'.
 
 	nfile->write1(get_property(Actor::dexterity));
 
-	iout = get_property(Actor::intelligence);
+	// Intelligence has 5 bits; the rest are flags.
+	iout = std::clamp(get_property(Actor::intelligence), 0, 0x1F);
 	if (get_flag(Obj_flags::read)) {
 		iout |= 1 << 5;
 	}
