@@ -1051,6 +1051,9 @@ int XMidiFile::ConvertEvent(const int time, const unsigned char status, IDataSou
 
 	// Handling for patch change mt32 conversion, probably should go elsewhere
 	if ((status >> 4) == 0xC && (status & 0xF) != 9 && convert_type != XMIDIFILE_CONVERT_NOCONVERSION) {
+		// MIDI data bytes are 7 bit. Mask so a corrupt byte can't index past
+		// the end of the 128 entry conversion tables
+		data &= 0x7F;
 		if (convert_type == XMIDIFILE_CONVERT_MT32_TO_GM) {
 			data = mt32asgm[data];
 		} else if (convert_type == XMIDIFILE_CONVERT_GM_TO_MT32) {
@@ -1145,7 +1148,7 @@ int XMidiFile::ConvertEvent(const int time, const unsigned char status, IDataSou
 
 	// Volume modify the volume controller, only if converting
 	if (convert_type && current->getStatusType() == MidiStatus::Controller && current->data[0] == 7) {
-		current->data[1] = VolumeCurve[current->data[1]];
+		current->data[1] = VolumeCurve[current->data[1] & 0x7F];
 	}
 
 	return 2;
@@ -1165,7 +1168,7 @@ int XMidiFile::ConvertNote(const int time, const unsigned char status, IDataSour
 
 	// Volume modify the note on's, only if converting
 	if (convert_type && current->getStatusType() == MidiStatus::NoteOn && current->data[1]) {
-		current->data[1] = VolumeCurve[current->data[1]];
+		current->data[1] = VolumeCurve[current->data[1] & 0x7F];
 	}
 
 	// Perc track note on
@@ -1730,9 +1733,17 @@ int XMidiFile::ExtractTracks(IDataSource* source, std::string_view drivername) {
 			num_tracks = 1;
 		}
 
+		const uint32 ppqn = source->read2high();
+
+		// A division of 0 would divide by zero in AdjustTimings
+		if (ppqn == 0) {
+			perr << "Not a valid MIDI (division is 0)" << endl;
+			num_tracks = 0;
+			return 0;
+		}
+
 		CreateEventList();
-		const uint32 ppqn  = source->read2high();
-		const int    count = ExtractTracksFromMid(source, ppqn, actual_num, type == 1);
+		const int count = ExtractTracksFromMid(source, ppqn, actual_num, type == 1);
 
 		if (count != num_tracks) {
 			perr << "Error: unable to extract all (" << num_tracks << ") tracks specified from MIDI. Only (" << count << ")"
@@ -2004,4 +2015,8 @@ void XMidiFile::DestroyEventList() {
 		event->decrementCounter();
 	}
 	delete[] events;
+	// Error paths call this before the destructor does, so don't leave a
+	// dangling pointer behind for it (or GetEventList) to use
+	events     = nullptr;
+	num_tracks = 0;
 }
