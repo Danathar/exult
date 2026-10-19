@@ -33,17 +33,19 @@
 //     skipped by conditional flow or unset; one naming another repo blocks) (this includes
 //     `gh pr create` and `gh issue create` without --repo); a write whose
 //     arguments name a github.com URL of another repository.
-//   - gh pr merge (Hive merges; agents never do), `gh repo` writes, and
-//     `gh secret|variable|ruleset` writes (owner administration).
+//   - gh pr merge (Hive merges; agents never do), `gh issue transfer`, `gh repo`
+//     writes, and `gh secret|variable|ruleset` writes (owner administration).
 //   - gh api with a mutating method (or -f/-F/--input body) against anything
 //     outside repos/Danathar/exult; GraphQL mutations.
 //   - gh pr create without an explicit `--base master` and `--head <branch>`.
 //   - git push with force, --mirror, --delete, a remote other than `origin`, a
-//     URL remote, no explicit remote, or master as the destination.
+//     URL remote, no explicit remote, or master as the destination (`master`,
+//     `heads/master`, `refs/heads/master`).
 //   - git remote add (the only remote is `origin`, and there is no upstream
 //     remote), and anything that removes or re-points `origin`.
 //   - git config / git remote changes that re-point `origin` or push URLs.
-//   - git clean with -x/-X (it would delete the ignored `gamedat` directory).
+//   - git clean with -x/-X or an -e/--exclude pattern starting with `!` (it
+//     would delete the ignored `gamedat` directory).
 //   - git options that write a file, read outside the repository or run a
 //     program on the pre-approved read commands: --output[=FILE], --no-index,
 //     --ext-diff, git grep -O/--open-files-in-pager, --exec-path=DIR, and
@@ -63,21 +65,29 @@
 //   - sudo / doas / pkexec / run0 / su / runuser in any position of a wrapper
 //     chain, including behind systemd-run, flatpak-spawn and `find -exec`.
 //   - `make install`, `uninstall`, `install-*` goals (also gmake, `cmake
-//     --install`, `ninja install`, `meson install`), whatever DESTDIR says:
+//     --install`, cmake install targets and `cmake -P cmake_install.cmake`,
+//     `ninja install`, `meson install`), whatever DESTDIR says:
 //     Exult's install hooks (update-mime-database, ...) also act on the host.
 //   - package managers that change the system: apt, dnf, yum, zypper, pacman,
 //     rpm-ostree, apk, brew, snap, flatpak, dpkg, rpm and similar, with an
-//     install/remove/upgrade style subcommand; `npm|pnpm install -g`,
-//     `yarn global`, `cargo install`, `pip install --user|--break-system-packages`.
-//   - piping a download into a shell (`curl ... | bash`), and sourcing a
-//     process substitution (`source <(curl ...)`).
+//     install/remove/upgrade style subcommand or option (abbreviations such as
+//     `dnf in`, `zypper up`, `rpm -ivh`, `dpkg -r`), and installers that install
+//     with no subcommand (yay, paru, emerge, xbps-install); `npm|pnpm install -g`
+//     (also --location=global), `yarn global`, `cargo [+toolchain] install`,
+//     `pip install --user|--break-system-packages`.
+//   - piping a download into a shell (`curl ... | bash`, also `bash -s ARGS`
+//     and `bash -euo pipefail`), `bash -c "$(curl ...)"`, `eval "$(curl ...)"`,
+//     `$(curl ...)` as a command, and running or sourcing a process
+//     substitution (`bash <(curl ...)`, `source <(curl ...)`).
 //   Game data
 //   - rm, rmdir, unlink, shred, mv and `find -delete|-exec` naming Ultima VII
 //     game data, savegames or the user's Exult configuration (gamedat/,
 //     the repository-root static/, *.sav, savegame paths, ~/.exult,
 //     ~/.config/exult, ~/.local/share/exult, ultima7 / serpent isle / black
-//     gate / forge of virtue directories, /usr/share/**/exult), and a
-//     recursive rm of /, ~ or $HOME.
+//     gate / forge of virtue directories, /usr/share/**/exult), also through a
+//     glob that can match them (`gam*`, `mv ./* /tmp`), and a recursive rm of
+//     /, ~, $HOME, the current directory or its parents (`*`, `./*`, `../..`,
+//     `~/.*`).
 //
 // Parsing notes: redirections (`>log`, `2>&1`, `&>f`, `<file`) end the word and
 // are not arguments. Quoted heredoc bodies are data. Wrappers (env, timeout,
@@ -301,13 +311,17 @@ export function tokenize(input) {
             i++;
         } else if (c === '`') {
             // Substitution contents are analysed separately; the enclosing
-            // command line carries on after the closing backtick.
-            append('$()');
+            // command line carries on after the closing backtick. The text stays
+            // in the word, as inside double quotes, so a `bash -c` / `eval` string
+            // built from a substitution can be checked for what it runs.
             const end = input.indexOf('`', i + 1);
-            i = end === -1 ? input.length : end + 1;
+            const stop = end === -1 ? input.length : end + 1;
+            append(input.slice(i, stop));
+            i = stop;
         } else if (c === '$' && input[i + 1] === '(') {
-            append('$()');
-            i = closeParen(input, i + 2);
+            const end = closeParen(input, i + 2);
+            append(input.slice(i, end));
+            i = end;
         } else {
             append(c);
             i++;
@@ -571,6 +585,11 @@ function checkGh(args, envRepo) {
     if (group === 'pr' && action === 'merge') {
         return block('Blocked: `gh pr merge`. Agents never merge; Hive merges after the required checks pass, and the owner reviews owner-review paths.');
     }
+    // The destination of a transfer is a positional OWNER/REPO (`gh issue transfer 5
+    // exult/exult -R Danathar/exult`), which --repo does not cover; agents never move issues.
+    if (group === 'issue' && action === 'transfer') {
+        return block('Blocked: `gh issue transfer` moves an issue to another repository; agents never transfer issues.');
+    }
     if (['secret', 'variable', 'ruleset'].includes(group) || (group === 'repo' && action !== 'set-default')) {
         return block(`Blocked: \`gh ${group} ${action}\` is repository administration; only the owner does that.`);
     }
@@ -717,8 +736,33 @@ function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
     if (sub === 'clean' && rest.some((a) => /^-[a-zA-Z]*[xX]/.test(a))) {
         return block('Blocked: `git clean -x/-X` deletes ignored files, including a gitignored `gamedat` directory with saves.');
     }
+    if (sub === 'clean' && cleanExcludes(rest).some((p) => p.startsWith('!'))) {
+        return block('Blocked: `git clean -e \'!pattern\'` un-ignores files for this run, so it deletes ignored ones such as a `gamedat` directory with saves.');
+    }
     if (sub === 'config') return checkGitConfig(rest);
     return null;
+}
+
+/**
+ * The -e/--exclude patterns of `git clean` arguments, in every spelling: `-e PAT`,
+ * `-ePAT`, bundled `-fde PAT` / `-fdePAT`, `--exclude PAT`, `--exclude=PAT` and
+ * the abbreviations git accepts (`--excl=PAT`).
+ */
+function cleanExcludes(rest) {
+    const found = [];
+    for (let k = 0; k < rest.length; k++) {
+        const a = rest[k];
+        if (a === '--') break; // pathspecs follow
+        if (a.startsWith('--')) {
+            const eq = a.indexOf('=');
+            const name = a.slice(2, eq === -1 ? undefined : eq);
+            if (name.length && 'exclude'.startsWith(name)) found.push(eq === -1 ? (rest[++k] ?? '') : a.slice(eq + 1));
+        } else if (a.startsWith('-')) {
+            const e = a.indexOf('e');
+            if (e !== -1) found.push(e + 1 < a.length ? a.slice(e + 1) : (rest[++k] ?? ''));
+        }
+    }
+    return found;
 }
 
 /** Writes to push-redirecting config keys (`git config remote.origin.url ...`). */
@@ -823,7 +867,9 @@ function checkGitPush(rest, cwd) {
     if (refspecs.some((r) => r.startsWith('+'))) {
         return block('Blocked: force push via "+" refspec.');
     }
-    const toMaster = (r) => /^(?:refs\/heads\/)?master$/.test(r.includes(':') ? r.slice(r.lastIndexOf(':') + 1) : r);
+    // git resolves a destination that is a trailing part of `refs/heads/master`
+    // (`master`, `heads/master`, `refs/heads/master`) to the master branch.
+    const toMaster = (r) => /^(?:(?:refs\/)?heads\/)?master$/.test(r.includes(':') ? r.slice(r.lastIndexOf(':') + 1) : r);
     if (refspecs.some(toMaster)) {
         return block('Blocked: pushing to master. Push a branch and open a PR; Hive merges.');
     }
@@ -966,16 +1012,75 @@ const XARGS_SAFE = new Set([
 ]);
 const XARGS_OPAQUE = (cmd) => !XARGS_SAFE.has(cmd);
 
-/** The text a literal `echo`/`printf` writes, or undefined for any other command. */
-function literalPayload(f) {
+/**
+ * The texts a literal `echo`/`printf` writes, to be analysed one by one ([] for
+ * any other command). printf writes its format string too: in the common
+ * one-operand form (`printf 'sudo id' | bash`) it is the whole payload. Its
+ * backslash escapes \n, \t and \\ are expanded so `printf 'make install\n'`
+ * reads as a command line; `%` directives are not emulated, the remaining
+ * operands are analysed on their own instead.
+ */
+function literalPayloads(f) {
     const name = basename(f[0] ?? '');
-    if (name !== 'echo' && name !== 'printf') return undefined;
+    if (name !== 'echo' && name !== 'printf') return [];
     const rest = f.slice(1).filter((a) => !a.startsWith('-'));
-    if (name === 'printf') rest.shift(); // the format string
-    return rest.join(' ');
+    if (name === 'echo') return [rest.join(' ')];
+    const [format = '', ...operands] = rest;
+    const escapes = { n: '\n', t: '\t', '\\': '\\' };
+    return [format.replace(/\\([nt\\])/g, (_, e) => escapes[e]), operands.join(' ')];
+}
+
+/** True if a command line has a $(...) or `...` substitution that runs a download client (curl, wget, ...). */
+function substitutesDownload(text) {
+    return extractSubstitutions(text).some(
+        (body) =>
+            tokenize(body).some((seg) => NET_CLIENTS.has(basename(seg.find((x) => !isAssignment(x)) ?? ''))) ||
+            substitutesDownload(body)
+    );
+}
+
+/**
+ * Where a shell invocation (without -c) gets its program: { stdin, operand }.
+ * `operand` is the script-file word, if any. The shell reads stdin with -s
+ * (`curl URL | bash -s stable`) or when no operand is left once options and
+ * their values (-o NAME, +O NAME, --rcfile FILE) are skipped (`bash -euo pipefail`).
+ */
+function shellInput(args) {
+    let stdin = false;
+    for (let k = 0; k < args.length; k++) {
+        const a = args[k];
+        if (a === '--' || a === '-') {
+            const next = args[k + 1];
+            return stdin || next === undefined ? { stdin: true, operand: undefined } : { stdin: false, operand: next };
+        }
+        if (a === '--rcfile' || a === '--init-file') {
+            k++;
+            continue;
+        }
+        if (a.startsWith('--')) continue;
+        if (/^[-+][a-zA-Z]+$/.test(a)) {
+            if (a[0] === '-' && a.includes('s')) stdin = true;
+            if (/[oO]/.test(a)) k++; // -o NAME / +O NAME: the option name is the next word
+            continue;
+        }
+        return stdin ? { stdin: true, operand: undefined } : { stdin: false, operand: a };
+    }
+    return { stdin: true, operand: undefined };
 }
 
 const INSTALL_GOAL = /^(?:install|uninstall|install-[\w-]+|uninstall-[\w-]+)$/;
+
+/** Targets of `cmake --build`: `--target A B`, `-t A`, `--target=A`, up to the next option. */
+function cmakeTargets(args) {
+    const targets = [];
+    for (let i = 0; i < args.length; i++) {
+        const a = args[i];
+        if (a.startsWith('--target=')) targets.push(a.slice(9));
+        else if (a !== '--target' && a !== '-t') continue;
+        while (i + 1 < args.length && !args[i + 1].startsWith('-')) targets.push(args[++i]);
+    }
+    return targets;
+}
 
 /** `make install` and friends write to the host; there is no exception. */
 function checkInstall(cmd, args) {
@@ -984,7 +1089,9 @@ function checkInstall(cmd, args) {
     else if (cmd === 'meson') installing = args.includes('install');
     else if (cmd === 'cmake') {
         installing = args.some((a) => a === '--install' || a.startsWith('--install=')) ||
-            args.some((a, i) => (a === '--target' || a === '-t') && args[i + 1] === 'install');
+            cmakeTargets(args).some((t) => /^(?:install|uninstall)(?:\/|$)/.test(t)) ||
+            // `cmake -P build/cmake_install.cmake` runs the install script directly.
+            args.some((a, i) => a === '-P' && /install/i.test(basename(args[i + 1] ?? '')));
     } else if (cmd === 'checkinstall') installing = true;
     if (!installing) return null;
     return block(
@@ -995,21 +1102,63 @@ function checkInstall(cmd, args) {
 
 const PKG_MANAGERS = new Set([
     'apt', 'apt-get', 'aptitude', 'dnf', 'dnf5', 'yum', 'zypper', 'pacman', 'yay', 'paru', 'rpm-ostree', 'apk', 'brew', 'snap',
-    'flatpak', 'dpkg', 'rpm', 'port', 'pkg', 'nix-env', 'emerge', 'xbps-install', 'transactional-update',
+    'flatpak', 'dpkg', 'rpm', 'port', 'pkg', 'nix-env', 'emerge', 'xbps-install', 'xbps-remove', 'transactional-update',
 ]);
-const PKG_MUTATING =
-    /^(?:install|reinstall|remove|uninstall|erase|purge|upgrade|update|dist-upgrade|full-upgrade|autoremove|downgrade|swap|add|del|delete|override|reset|rebase|deploy|usroverlay|initramfs|kargs|refresh|-S\w*|-R\w*|-U\w*|-i|-e|--install|--erase|--upgrade|--remove)$/;
+// Subcommands (with the abbreviations dnf, zypper and friends accept) and options that change the system.
+const PKG_MUTATING = new RegExp(
+    '^(?:' +
+        [
+            'install', 'in', 'reinstall', 'localinstall', 'groupinstall', 'groupupdate', 'groupremove', 'builddep', 'build-dep',
+            'source-install', 'si', 'install-new-recommends', 'inr', 'remove', 'rm', 'uninstall', 'erase', 'purge', 'upgrade',
+            'up', 'update', 'dist-upgrade', 'dup', 'full-upgrade', 'distro-sync', 'distrosync', 'dsync', 'upgrade-minimal',
+            'update-minimal', 'autoremove', 'downgrade', 'swap', 'add', 'del', 'delete', 'override', 'reset', 'rebase', 'deploy',
+            'usroverlay', 'initramfs', 'kargs', 'refresh', 'ref',
+            '-S\\w*', '-R\\w*', '-U\\w*', '-i', '-e', '--install', '--erase', '--upgrade', '--remove', '--sync',
+        ].join('|') +
+        ')$'
+);
+// Package managers driven by options rather than a subcommand.
+const RPM_MUTATING_LONG = /^--(?:install|upgrade|freshen|erase|reinstall|import|initdb|rebuilddb|setperms|setugids|restore)(?:=|$)/;
+const DPKG_MUTATING = /^(?:-[a-zA-Z]*[irPA]|--(?:install|unpack|configure|triggers-only|remove|purge|record-avail|set-selections|clear-selections|update-avail|merge-avail|clear-avail|forget-old-unavail|add-architecture|remove-architecture)(?:=|$))/;
+const NIX_ENV_MUTATING = /^(?:-[ieu]|--(?:install|uninstall|upgrade|set|set-flag|rollback|switch-generation|switch-profile|delete-generations)(?:=|$))/;
+
+/** True if a package manager's options select an install/remove/upgrade operation. */
+function pkgOptionsMutate(cmd, args) {
+    if (cmd === 'rpm') {
+        // -i/-U/-F/-e install, upgrade, freshen or erase, unless the cluster is a query/verify (`rpm -qi x`).
+        const query = args.some((a) => /^-[a-zA-Z]*[qVK]/.test(a) || ['--query', '--verify', '--checksig'].includes(a));
+        return args.some((a) => RPM_MUTATING_LONG.test(a)) || (!query && args.some((a) => /^-[a-zA-Z]*[iUFe]/.test(a)));
+    }
+    if (cmd === 'dpkg') return args.some((a) => DPKG_MUTATING.test(a));
+    if (cmd === 'nix-env') return args.some((a) => NIX_ENV_MUTATING.test(a));
+    // pacman -D / --database edits the package database.
+    if (['pacman', 'yay', 'paru'].includes(cmd) && args.some((a) => /^(?:-D\w*|--database)$/.test(a))) return true;
+    // Without an operation these install or upgrade (`yay x`, `paru`, `emerge x`, `xbps-install x`).
+    if (cmd === 'yay' || cmd === 'paru') {
+        return !args.some((a) => /^-[QGPVh]/.test(a) || ['--query', '--getpkgbuild', '--show', '--version', '--help'].includes(a));
+    }
+    if (cmd === 'emerge') {
+        return !args.some((a) => /^-[a-zA-Z]*[psSVh]/.test(a) || /^--(?:pretend|search|searchdesc|info|version|help)$/.test(a));
+    }
+    if (cmd === 'xbps-install' || cmd === 'xbps-remove') {
+        return !args.some((a) => /^-[a-zA-Z]*[nhV]/.test(a) || ['--dry-run', '--help', '--version'].includes(a));
+    }
+    return false;
+}
 
 function checkPackages(cmd, args) {
-    if (PKG_MANAGERS.has(cmd) && args.some((a) => PKG_MUTATING.test(a))) {
+    if (PKG_MANAGERS.has(cmd) && (args.some((a) => PKG_MUTATING.test(a)) || pkgOptionsMutate(cmd, args))) {
         return block(`Blocked: \`${cmd}\` with an install/remove/upgrade action changes the system's packages; ask the owner to install build dependencies.`);
     }
-    const sub = args.find((a) => !a.startsWith('-'));
-    const global = args.some((a) => a === '-g' || a === '--global');
-    if (['npm', 'pnpm'].includes(cmd) && global && ['install', 'i', 'add', 'uninstall', 'remove', 'update', 'link'].includes(sub)) {
+    // `npm --location global i x`: `global` is the option's value, not the subcommand.
+    const sub = args.find((a, n) => !a.startsWith('-') && !a.startsWith('+') && args[n - 1] !== '--location');
+    const global = args.some((a, n) => a === '-g' || a === '--global' || a === '--location=global' || (a === 'global' && args[n - 1] === '--location'));
+    const npmWrites = ['install', 'i', 'in', 'ins', 'inst', 'insta', 'instal', 'isnt', 'isntall', 'add', 'uninstall', 'un', 'unlink', 'remove', 'rm', 'r', 'update', 'up', 'upgrade', 'link', 'ln'];
+    if (['npm', 'pnpm'].includes(cmd) && global && npmWrites.includes(sub)) {
         return block(`Blocked: global \`${cmd}\` installs change the host; install into the project or a scratch directory.`);
     }
     if (cmd === 'yarn' && sub === 'global') return block('Blocked: `yarn global` changes the host.');
+    // `cargo +nightly install x`: the +toolchain word is skipped above.
     if (cmd === 'cargo' && sub === 'install') return block('Blocked: `cargo install` writes to ~/.cargo/bin on the host.');
     if (['pip', 'pip3'].includes(cmd) && sub === 'install' && args.some((a) => /^--(user|break-system-packages|target|prefix|root)(=|$)/.test(a))) {
         return block(`Blocked: \`${cmd} install\` outside a virtual environment changes the host.`);
@@ -1032,18 +1181,97 @@ const GAME_DATA = new RegExp(
     ].join('|'),
     'i'
 );
-const ROOT_TARGET = /^(?:\/|\/\*|~\/?|~\/\*|\$\{?HOME\}?\/?|\$\{?HOME\}?\/\*|\.\.\/?|\*)$/;
+const HOME_WORDS = new Set(['~', '$HOME', '${HOME}']);
+
+/** Path segments of an operand, normalised lexically: `//` and `.` dropped, `x/..` resolved. */
+function pathSegments(operand) {
+    const abs = operand.startsWith('/');
+    const segs = [];
+    for (const seg of operand.split('/')) {
+        if (seg === '' || seg === '.') continue;
+        if (seg === '..' && segs.length && segs.at(-1) !== '..' && !HOME_WORDS.has(segs.at(-1))) segs.pop();
+        else if (!(seg === '..' && abs && !segs.length)) segs.push(seg); // `/..` is `/`
+    }
+    return { abs, segs };
+}
+
+/**
+ * True for /, ~, $HOME, the current directory and its parents, and everything in
+ * one of them (`rm -rf ./*`, `../*`, `../..`, `~/.*`, `/*`).
+ */
+function isRootTarget(operand) {
+    const { segs } = pathSegments(operand);
+    if (segs.length && /^\.?\*+$/.test(segs.at(-1))) segs.pop();
+    const rest = segs.length && HOME_WORDS.has(segs[0]) ? segs.slice(1) : segs;
+    return rest.every((s) => s === '..');
+}
+
+// Names a glob operand is tried against: game data at the top of the repository
+// or in a named directory (gamedat, static, savegames, ~/.exult, ...).
+const GAME_DATA_NAMES = [
+    'gamedat', 'static', 'savegame', 'savegames', 'x.sav', '.exult', '.exult.cfg', 'exult', 'ultima7', 'serpentisle', 'blackgate',
+    'forgeofvirtue',
+];
+
+/** Regular expression for one glob path segment (`*`, `?`, `[...]`); null if it cannot be built. */
+function globSegment(seg) {
+    let re = '';
+    for (let i = 0; i < seg.length; i++) {
+        const c = seg[i];
+        const close = c === '[' ? seg.indexOf(']', i + 2) : -1;
+        if (c === '*') re += '.*';
+        else if (c === '?') re += '.';
+        else if (close !== -1) {
+            const body = seg.slice(i + 1, close);
+            re += `[${body.replace(/^!/, '^').replace(/\\/g, '\\\\')}]`;
+            i = close;
+        } else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+    try {
+        return new RegExp(`^${re}$`);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * True if a glob operand could match game data (`rm -rf gam*`, `g?medat`, `mv ./* x`).
+ * A bare `*` segment below a named directory (`build/*`) is not expanded: it only
+ * reaches game data that the directory's own name would already show.
+ */
+function globHitsGameData(operand) {
+    if (!/[*?[]/.test(operand)) return false;
+    const { abs, segs } = pathSegments(operand);
+    const top = segs.length === 1 && !abs;
+    return GAME_DATA_NAMES.some((name) => {
+        let changed = false;
+        const path = segs.map((s) => {
+            if (!/[*?[]/.test(s) || (!top && /^\*+$/.test(s))) return s;
+            const re = globSegment(s);
+            if (re !== null && !re.test(name)) return s;
+            changed = true;
+            return name; // a segment that cannot be parsed is assumed to match (fail closed)
+        });
+        return changed && GAME_DATA.test((abs ? '/' : '') + path.join('/'));
+    });
+}
 
 function checkDelete(cmd, args) {
     const operands = args.filter((a) => !a.startsWith('-'));
     const recursive = args.some((a) => a === '--recursive' || /^-[a-zA-Z]*[rR]/.test(a));
-    if (cmd === 'rm' && recursive && operands.some((a) => ROOT_TARGET.test(a))) {
-        return block('Blocked: recursive `rm` of /, ~, $HOME, .. or * would delete far more than this repository.');
+    if (cmd === 'rm' && recursive && operands.some(isRootTarget)) {
+        return block('Blocked: recursive `rm` of /, ~, $HOME, the current directory, .. or * would delete far more than this repository.');
     }
     if (cmd === 'find') {
         if (!args.some((a) => ['-delete', '-exec', '-execdir', '-ok', '-okdir'].includes(a))) return null;
     }
-    const hit = operands.find((a) => GAME_DATA.test(a.replace(/^\.\//, '')) || (cmd === 'find' && GAME_DATA.test(a)));
+    const normal = (a) => {
+        const { abs, segs } = pathSegments(a);
+        return (abs ? '/' : '') + segs.join('/');
+    };
+    const hit = operands.find(
+        (a) => GAME_DATA.test(normal(a)) || GAME_DATA.test(a.replace(/^\.\//, '')) || (cmd === 'find' && GAME_DATA.test(a)) || globHitsGameData(a)
+    );
     if (hit !== undefined) {
         return block(
             `Blocked: \`${cmd} ${hit}\` would remove or move Ultima VII game data, a savegame or the user's Exult configuration. ` +
@@ -1302,6 +1530,10 @@ function checkSegment(words, state) {
         w = w.slice(idx);
     }
 
+    // `$(curl URL)` as the command word runs whatever the download returns.
+    if (substitutesDownload(w[0])) {
+        return block('Blocked: running the output of a download (`$(curl ...)`) as a command runs code that nobody reviewed.');
+    }
     const cmd = basename(w[0]);
     const args = w.slice(1);
     // `printf '%s\n' --output=FILE | xargs git log`, `printf '%s\n' +n -c CMD | xargs bash -n`
@@ -1370,6 +1602,10 @@ function checkSegment(words, state) {
         if (cmd === 'fish') {
             const scripts = fishScripts(args);
             for (const s of scripts) {
+                // `fish -c "$(curl URL)"` runs whatever the download returns.
+                if (substitutesDownload(s)) {
+                    return block(`Blocked: \`${cmd} -c "$(curl ...)"\` runs downloaded code that nobody reviewed.`);
+                }
                 const r = checkCommand(s, nested());
                 if (r) return r;
             }
@@ -1378,12 +1614,23 @@ function checkSegment(words, state) {
             const c = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
             // The script is the first non-option word after -c (`sh -c -- 'cmd'`, `sh -c -x 'cmd'`).
             const script = c === -1 ? undefined : args.slice(c + 1).find((a) => !a.startsWith('-'));
-            if (script !== undefined) return checkCommand(script, nested());
+            if (script !== undefined) {
+                // `bash -c "$(curl URL)"` runs whatever the download returns.
+                if (substitutesDownload(script)) {
+                    return block(`Blocked: \`${cmd} -c "$(curl ...)"\` runs downloaded code that nobody reviewed.`);
+                }
+                return checkCommand(script, nested());
+            }
         }
         // `bash -n file` only parses the file; any other shell invocation runs it.
         const syntaxOnly = args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a));
-        // No script operand: the shell reads its program from stdin.
-        if (!syntaxOnly && !args.some((a) => !a.startsWith('-'))) {
+        const { stdin, operand } = shellInput(args);
+        // `bash <(curl URL)`: the script is a process substitution this hook cannot read.
+        if (!syntaxOnly && operand?.startsWith('/dev/fd/')) {
+            return block(`Blocked: running a process substitution as a script (\`${cmd} <(curl ...)\`) runs code this hook cannot inspect.`);
+        }
+        // No script operand, or -s: the shell reads its program from stdin.
+        if (!syntaxOnly && stdin) {
             const feeders = [];
             for (let p = pipedFrom; p; p = p.pipedFrom) feeders.push(p);
             const download = feeders.find((f) => NET_CLIENTS.has(basename(f[0] ?? '')));
@@ -1393,7 +1640,7 @@ function checkSegment(words, state) {
             // A heredoc or here-string fed to a shell is a script it runs.
             // The same holds for text piped in (`cat <<'EOF' | bash`).
             // A literal `echo`/`printf` payload piped in is a script too.
-            for (const text of [heredocBody, hereString, ...feeders.flatMap((f) => [f.heredocBody, f.hereString, literalPayload(f)])]) {
+            for (const text of [heredocBody, hereString, ...feeders.flatMap((f) => [f.heredocBody, f.hereString, ...literalPayloads(f)])]) {
                 if (text === undefined) continue;
                 const r = checkCommand(text, nested());
                 if (r) return r;
@@ -1401,7 +1648,12 @@ function checkSegment(words, state) {
         }
         return null;
     }
-    if (cmd === 'eval') return checkCommand(args.join(' '), nested());
+    if (cmd === 'eval') {
+        if (substitutesDownload(args.join(' '))) {
+            return block('Blocked: `eval "$(curl ...)"` runs downloaded code that nobody reviewed.');
+        }
+        return checkCommand(args.join(' '), nested());
+    }
     if (cmd === 'systemd-run' || cmd === 'flatpak-spawn') {
         // They run a command outside this shell's state: look through to it.
         const at = args.findIndex((a) => ANALYSED.has(basename(a)) || PRIVILEGE.has(basename(a)));
