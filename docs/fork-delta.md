@@ -33,3 +33,4 @@ It exists for two jobs:
 | PR | Files | Reason | Upstream status |
 | -- | ----- | ------ | --------------- |
 | [#190](https://github.com/Danathar/exult/pull/190) | `conf/Configuration.cc`, `conf/XMLEntity.cc`, `conf/XMLEntity.h`, `files/utils.cc` | Reject malformed config files with an error instead of asserting; make `U7copy` accept an empty source file | not reported |
+| [#227](https://github.com/Danathar/exult/pull/227) | `usecode/ucinternal.cc` | Drop surplus indirect-call arguments instead of writing past the callee's locals | not reported |
