@@ -631,11 +631,12 @@ void Chunk_chooser::drag_data_received(
 		&& Is_u7_chunkid(gtk_selection_data_get_data(seldata)) && gtk_selection_data_get_format(seldata) == 8
 		&& gtk_selection_data_get_length(seldata) > 0) {
 		int cnum;
-		Get_u7_chunkid(gtk_selection_data_get_data(seldata), cnum);
-		chooser->group->add(cnum);
-		chooser->setup_info(true);
-		chooser->render();
-		//		chooser->adjust_scrollbar(); ++++++Probably need to do this.
+		if (Get_u7_chunkid(gtk_selection_data_get_data(seldata), cnum)) {
+			chooser->group->add(cnum);
+			chooser->setup_info(true);
+			chooser->render();
+			//		chooser->adjust_scrollbar(); ++++++Probably need to do this.
+		}
 	}
 }
 

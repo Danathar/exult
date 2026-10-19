@@ -74,7 +74,11 @@ public:
 	 */
 	Dynamic_container_gump(Container_game_object* cont, int initx, int inity, int shapenum, bool debug = false);
 
-	~Dynamic_container_gump() override = default;
+	~Dynamic_container_gump() override {
+		if (destroyed_flag) {
+			*destroyed_flag = true;
+		}
+	}
 
 	/**
 	 * Clone this gump for the given container.
@@ -146,6 +150,10 @@ public:
 	 * Called every frame to tick child widgets; slider auto-repeat, etc
 	 */
 	void update_gump() override;
+
+private:
+	// Set by update_gump() while it ticks widgets: the destructor reports through it that a widget callback closed this gump.
+	bool* destroyed_flag = nullptr;
 };
 
 #endif    // DYNAMIC_CONTAINER_GUMP_H
