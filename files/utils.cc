@@ -1039,7 +1039,11 @@ void U7copy(const char* src, const char* dest) {
 	}
 	auto& in  = *pIn;
 	auto& out = *pOut;
-	out << in.rdbuf();
+	// Inserting an empty streambuf sets failbit on out, so only copy when
+	// the source has data; an empty source gives an empty destination.
+	if (in.rdbuf()->sgetc() != std::char_traits<char>::eof()) {
+		out << in.rdbuf();
+	}
 	out.flush();
 	const bool inok  = in.good();
 	const bool outok = out.good();
