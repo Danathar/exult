@@ -111,8 +111,19 @@ void Flex::index_file() {
 	cout << "Count: " << hdr.count << endl;
 #endif
 
+	// The entry table (8 bytes per entry) must fit in the data source;
+	// otherwise the count is corrupt and would make us loop and allocate
+	// far beyond the size of the file.
+	const size_t file_size  = data->getSize();
+	const size_t table_pos  = start_pos + Flex_header::FLEX_HEADER_LEN;
+	const size_t table_room = file_size > table_pos ? file_size - table_pos : 0;
+	if (hdr.count > table_room / 8) {
+		throw file_read_exception(identifier.name);
+	}
+
 	// We should already be there.
-	data->seek(start_pos + Flex_header::FLEX_HEADER_LEN);
+	data->seek(table_pos);
+	object_list.reserve(hdr.count);
 	for (uint32 c = 0; c < hdr.count; c++) {
 		Reference f;
 		f.offset = data->read4() + start_pos;
@@ -120,6 +131,11 @@ void Flex::index_file() {
 #if DEBUGFLEX
 		cout << "Item " << c << ": " << f.size << " bytes @ " << f.offset << endl;
 #endif
+		// Entries that point outside the data source are treated as empty.
+		if (f.offset > file_size || f.size > file_size - f.offset) {
+			f.offset = 0;
+			f.size   = 0;
+		}
 		object_list.push_back(f);
 	}
 }
