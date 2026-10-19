@@ -201,4 +201,10 @@ int   Find_next_map(int start, int maxtry);
 std::string_view get_filename_from_path(std::string_view path);
 std::string_view get_directory_from_path(std::string_view path);
 
+// True if name (read from an untrusted archive such as a savegame) is a
+// relative path that stays inside the directory it is appended to: it is
+// not empty, contains no '\\', ':' or NUL, does not start with '/' and has
+// no '..' component.
+bool is_safe_relative_path(std::string_view name);
+
 #endif /* _UTILS_H_ */
