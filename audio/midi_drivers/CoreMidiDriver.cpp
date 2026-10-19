@@ -170,7 +170,13 @@ void CoreMidiDriver::send_sysex(uint8 status, const uint8* msg, uint16 length) {
 	auto*                                                                         packetList = new (&buf) MIDIPacketList;
 	MIDIPacket*                                                                   packet     = packetList->packet;
 
-	assert(sizeof(packet->data) + 128 >= length + 2);
+	// The packet data is the 256 bytes in MIDIPacket plus the 128 spare bytes
+	// in buf. Anything longer would overflow, so refuse it.
+	if (sizeof(packet->data) + 128 < static_cast<size_t>(length) + 2) {
+		perr << "CoreMIDI driver: SysEx of " << length << " bytes is too long to send." << std::endl;
+		packetList->~MIDIPacketList();
+		return;
+	}
 
 	packetList->numPackets = 1;
 
