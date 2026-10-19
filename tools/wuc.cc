@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 constexpr static const std::array push_table{
 		opcode_desc{   "true", 0, 0x13, 0, 0},
@@ -19,17 +21,16 @@ constexpr static const std::array pop_table{
 
 constexpr static const std::array compiler_table{".argc", ".extern", ".externsize", ".localc"};
 
-#define MAX_LABELS   3500
 #define TOKEN_LENGTH 25600
 
-char     token[TOKEN_LENGTH], *token2, curlabel[256], indata;
+char     token[TOKEN_LENGTH], *token2, indata;
+std::string curlabel;
 int      pass, offset;
 unsigned byteval, word, funcnum, datasize, codesize;
 int      is_extended;
 
-char     labels[MAX_LABELS][10];
-int      offsets[MAX_LABELS];
-unsigned lindex;
+std::vector<std::string> labels;
+std::vector<int>         offsets;
 
 FILE *fo, *fi;
 
@@ -73,24 +74,20 @@ void add_label() {
 	if (token[strlen(token) - 1] == ':') {
 		token[strlen(token) - 1] = 0;
 	}
-	if (lindex >= MAX_LABELS) {
-		printf("Too many labels.\n");
-		exit(0);
-	}
-	for (i = 0; i < lindex; i++) {
-		if (!strcasecmp(token, labels[i])) {
+	for (i = 0; i < labels.size(); i++) {
+		if (!strcasecmp(token, labels[i].c_str())) {
 			printf("Warning: label '%s' already exists.\n", token);
 			return;
 		}
 	}
-	strcpy(labels[lindex], token);
-	offsets[lindex++] = offset;
+	labels.emplace_back(token);
+	offsets.push_back(offset);
 }
 
 int get_label() {
 	unsigned i;
-	for (i = 0; i < lindex; i++) {
-		if (!strcasecmp(token, labels[i])) {
+	for (i = 0; i < labels.size(); i++) {
+		if (!strcasecmp(token, labels[i].c_str())) {
 			return offsets[i];
 		}
 	}
@@ -105,13 +102,13 @@ int get_label() {
 
 void check_jump_label_16(int label) {
 	if (label < -32768 || label > 32767) {
-		printf("Warning: offset too big for 16 bit at label %s!\n", curlabel);
+		printf("Warning: offset too big for 16 bit at label %s!\n", curlabel.c_str());
 	}
 }
 
 void check_data_label_16(int label) {
 	if (label > 65535) {
-		printf("Warning: offset too big for 16 bit at label %s!\n", curlabel);
+		printf("Warning: offset too big for 16 bit at label %s!\n", curlabel.c_str());
 	}
 }
 
@@ -138,19 +135,21 @@ void read_token(FILE* fi) {
 		}
 		token[i++] = c;
 		if (c == ';') {
-			while ((c = fgetc(fi)) != '\n') /* do nothing */
+			while ((c = fgetc(fi)) != '\n' && c != EOF) /* do nothing */
 				;
 			i = 0;
 		}
 		if (c == 39) {
-			while ((c = fgetc(fi)) != '\n') {
+			while ((c = fgetc(fi)) != '\n' && c != EOF) {
 				if (i >= TOKEN_LENGTH - 1) {
 					fprintf(stderr, "Error: token too long!\n");
 					exit(-1);
 				}
 				token[i++] = c;
 			}
-			ungetc(c, fi);
+			if (c != EOF) {
+				ungetc(c, fi);
+			}
 			i--;
 		}
 		c = fgetc(fi);
@@ -191,7 +190,8 @@ int main(int argc, char* argv[]) {
 		func_table = bg_intrinsic_table;
 	}
 
-	lindex = 0;
+	labels.clear();
+	offsets.clear();
 	for (pass = 0; pass < 2; pass++) {
 		//          printf("Pass %d\n",pass+1);
 		if ((fi = fopen(argv[findex], "r")) == nullptr) {
@@ -209,7 +209,7 @@ int main(int argc, char* argv[]) {
 				if (pass == 0) {
 					add_label();
 				}
-				strcpy(curlabel, token);
+				curlabel = token;
 			} else if (!strcmp(token, ".code")) {
 				indata = 0;
 				offset = 0;

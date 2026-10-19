@@ -676,7 +676,7 @@ void ActionCreateShape(const int* params) {
 		Game_window* gwin     = Game_window::get_instance();
 		const int    delta    = params[2] == -1 ? 1 : params[2];
 		const int    shapenum = params[0];
-		const int    qual     = params[2] == -1 ? c_any_qual : params[2];
+		const int    qual     = params[3] == -1 ? c_any_qual : params[3];
 		const int    framenum = params[1] == -1 ? 0 : params[1];
 		gwin->get_main_actor()->add_quantity(delta, shapenum, qual, framenum);
 		gwin->get_effects()->center_text(Strings::ObjectCreated());
