@@ -28,6 +28,7 @@ USECODE_OBJECTS :=	\
 	src/items/hourglass.uc	\
 	src/items/nightmare.uc	\
 	src/items/pillar.uc	\
+	src/items/plaque_ophidian.uc	\
 	src/items/potion.uc	\
 	src/items/scroll.uc	\
 	src/items/time_tellers.uc	\
@@ -36,6 +37,7 @@ USECODE_OBJECTS :=	\
 	src/misc/egg_bane_holocaust.uc	\
 	src/misc/egg_gorlab_swamp_sleep.uc	\
 	src/misc/egg_gwani_attack.uc	\
+	src/misc/egg_shamino_sees_his_castle.uc	\
 	src/misc/egg_skullcrusher_automatons.uc	\
 	src/misc/egg_spinebreaker_antechamber_ambush.uc	\
 	src/misc/egg_starting_hints.uc	\
@@ -51,6 +53,7 @@ USECODE_OBJECTS :=	\
 	src/misc/luther_return_shield.uc	\
 	src/misc/resurrect.uc	\
 	src/npcs/baiyanda.uc	\
+	src/npcs/batlin.uc	\
 	src/npcs/bwundiai.uc	\
 	src/npcs/cantra.uc	\
 	src/npcs/delin.uc	\
@@ -170,23 +173,30 @@ $(UCC):
 
 
 data/usecode: $(UCC) $(USECODE_OBJECTS)
-	$(UCC) -I $(srcdir)/src -o $(srcdir)/data/usecode $(srcdir)/src/usecode.uc
+	@$(MKDIR_P) data
+	$(UCC) -I $(srcdir)/src -o data/usecode $(srcdir)/src/usecode.uc
 
 data/faces.vga: $(EXPACK) $(FACES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/faces.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/faces.in src/graphics
 
 data/gumps.vga: $(EXPACK) $(GUMPS_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/gumps.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/gumps.in src/graphics
 
 data/mainshp.flx: $(EXPACK) $(MAINSHP_FLX_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/mainshp.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/mainshp.in src/graphics
 
 data/paperdol.vga: $(EXPACK) $(PAPERDOL_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/paperdol.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/paperdol.in src/graphics
 
 data/shapes.vga: $(EXPACK) $(SHAPES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/shapes.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/shapes.in src/graphics
 
 data/sprites.vga: $(EXPACK) $(SPRITES_VGA_OBJECTS)
-	$(EXPACK) -i $(srcdir)/src/graphics/sprites.in
+	@$(MKDIR_P) src/graphics data
+	$(EXPACK) -i $(srcdir)/src/graphics/sprites.in src/graphics
 

@@ -28,3 +28,5 @@ EXTRA_DIST = \
 	flags.data	\
 	u7opcodes.data	\
 	u7misc.data
+
+CLEANFILES = u7bgintrinsics.data u7siintrinsics.data u7sibetaintrinsics.data
