@@ -15,7 +15,7 @@ expack \- manipulate Flex files
 .IR FLEXFILE " [" INDEX ]
 
 .B expack -i
-.I MANIFEST
+.IR MANIFEST " [" OUTDIR ]
 
 .B expack -l
 .I FLEXFILE
@@ -69,7 +69,22 @@ instead of the command line.
 .I MANIFEST
 must be a list of file names, one per line. The first name
 is that of the Flex file that is to be created, the rest are the input
-files used in building it.
+files used in building it. Names are relative to the directory holding
+.IR MANIFEST .
+
+If
+.I OUTDIR
+is given, the Flex file and its header are written relative to
+.I OUTDIR
+instead, and each input file is looked for under
+.I OUTDIR
+first and next to
+.I MANIFEST
+second. This lets a build directory hold everything
+.B expack
+writes while
+.I MANIFEST
+stays in a read-only source directory.
 
 .TP
 .BR -l " List"

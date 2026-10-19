@@ -27,6 +27,7 @@
 #include "crc.h"
 #include "databuf.h"
 #include "exceptions.h"
+#include "utils.h"
 
 #include <unistd.h>
 
@@ -194,12 +195,27 @@ int main(int argc, char** argv) {
 		if (type.size() == 2 && type[0] == '-') {
 			switch (type[1]) {
 			case 'i': {
+				// Files named in the manifest are relative to its directory.
+				// An optional output directory stands in for that directory
+				// when writing the Flex and its header, and is searched first
+				// for input files, so an out-of-tree build can leave the
+				// source directory untouched.
+				if (argc > 4) {
+					break;
+				}
 				string path_prefix;
 
 				std::unique_ptr<std::istream> pRespfile;
 				const size_t                  slash = fname.rfind('/');
 				if (slash != string::npos) {
 					path_prefix = fname.substr(0, slash + 1);
+				}
+				string out_prefix = path_prefix;
+				if (argc == 4) {
+					out_prefix = argv[3];
+					if (!out_prefix.empty() && out_prefix.back() != '/') {
+						out_prefix += '/';
+					}
 				}
 				set_mode(mode, RESPONSE);
 				try {
@@ -217,12 +233,12 @@ int main(int argc, char** argv) {
 				// Read the output file name
 				string temp;
 				getline(respfile, temp);
-				fname = path_prefix + temp;
+				fname = out_prefix + temp;
 
 				// Header file name
 				hprefix = temp;
 				make_header_name(hprefix);
-				hname = path_prefix + hprefix + ".h";
+				hname = out_prefix + hprefix + ".h";
 				strip_path(hprefix);
 				make_uppercase(hprefix);
 
@@ -250,7 +266,10 @@ int main(int argc, char** argv) {
 							assert(*ptr == ':');
 							ptr++;
 						}
-						const string temp2 = path_prefix + ptr;
+						string temp2 = path_prefix + ptr;
+						if (out_prefix != path_prefix && U7exists(out_prefix + ptr)) {
+							temp2 = out_prefix + ptr;
+						}
 						if (shnum >= file_names.size()) {
 							file_names.resize(shnum + 1);
 						}
@@ -397,7 +416,7 @@ int main(int argc, char** argv) {
 		}
 		break;
 	default:
-		cout << "Usage:" << endl << argv[0] << " -[l|x|c] file [index]" << endl << argv[0] << " -i indexfile" << endl;
+		cout << "Usage:" << endl << argv[0] << " -[l|x|c] file [index]" << endl << argv[0] << " -i indexfile [outdir]" << endl;
 		break;
 	}
 	return 0;

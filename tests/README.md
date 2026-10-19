@@ -31,7 +31,9 @@ Builds the command-line tools `ucc` and `expack` (autoreconf + configure with
 - compiles a small usecode script with `ucc` and checks that a script with a
   syntax error is rejected;
 - packs files into a Flex archive with `expack -c`, lists it with `-l`,
-  extracts it with `-x`, and compares the extracted bytes to the inputs.
+  extracts it with `-x`, and compares the extracted bytes to the inputs;
+- packs a manifest with `expack -i MANIFEST OUTDIR` and checks that the archive
+  and header land in `OUTDIR` and nothing is written next to the manifest.
 
 ```sh
 tests/e2e/run.sh                          # configure, build, test
@@ -43,6 +45,25 @@ autoconf-archive pkg-config bison flex zlib1g-dev libsdl3-dev
 libsdl3-image-dev libpng-dev libogg-dev libvorbis-dev`. `autoreconf` writes
 generated files into the source tree (they are gitignored).
 
+## Out-of-tree build: `tests/out-of-tree-build.sh`
+
+Copies the checkout, runs `autoreconf` in the copy, makes the copy read-only,
+then configures with `--enable-data --enable-mods --enable-compiler` in a
+separate directory and builds everything. Any rule that writes into the source
+tree fails the build. It then checks that the generated Flex files, headers,
+mod usecode and `gitinfo.h` are in the build tree, that `make install` finds
+them, and that `make maintainer-clean` removes every file the build created.
+
+```sh
+tests/out-of-tree-build.sh                # source copy with git metadata
+WITH_GIT=0 tests/out-of-tree-build.sh     # source copy without .git, like a tarball
+tests/out-of-tree-build.sh --disable-alsa # extra arguments go to configure
+```
+
+Run it as a normal user: root ignores the read-only permission bits, and the
+script stops if the copy is still writable. Needs the same dependencies as the
+end-to-end tests, plus `git`.
+
 ## Coverage floor
 
 `.github/workflows/coverage-gate.yml` runs the unit tests with `COVERAGE=1` and
@@ -52,6 +73,7 @@ uses `gcovr` to measure line coverage over the files named in
 
 ## CI
 
-`.github/workflows/ci.yml` (`CI`) runs `Unit tests (gcc)`, `Unit tests (clang)` and
-`E2E (tools)` in Debian 13 containers on every pull request and push to
-`master`. The upstream `ci-*.yml` workflows still perform the full platform builds.
+`.github/workflows/ci.yml` (`CI`) runs `Unit tests (gcc)`, `Unit tests (clang)`,
+`E2E (tools)` and `Out-of-tree build (read-only source)` in Debian 13 containers
+on every pull request and push to `master`. The upstream `ci-*.yml` workflows
+still perform the full platform builds.
