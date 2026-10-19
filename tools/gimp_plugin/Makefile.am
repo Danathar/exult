@@ -11,9 +11,12 @@ if GIMP2_PLUGIN
 GIMP_PLUGIN_SRC = u7shp-old
 GIMP_PLUGINS = u7shp
 else
+GIMP_PLUGIN_SRC = u7shp
 GIMP_PLUGINS =
 endif
 endif
+
+EXTRA_PROGRAMS = u7shp
 
 u7shp_SOURCES = $(GIMP_PLUGIN_SRC).cc
 
@@ -38,5 +41,8 @@ else
 install-exec-local:
 endif
 endif
+
+# The source that GIMP_PLUGIN_SRC does not select is still shipped in tarballs.
+EXTRA_DIST = gimpmacos.txt gimpwin32.txt u7shp.cc u7shp-old.cc uniquepal.c
 
 CLEANFILES = *~

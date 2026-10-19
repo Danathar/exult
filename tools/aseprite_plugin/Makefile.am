@@ -4,14 +4,15 @@ AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/files -I$(top_srcdir)/headers \
 	$(DEBUG_LEVEL) $(OPT_LEVEL) $(WARNINGS) $(CPPFLAGS) -DHAVE_CONFIG_H
 
 if BUILD_ASEPRITE_PLUGIN
-ASEPRITE_PLUGIN_SRC = exult_shp
 ASEPRITE_PLUGINS = exult_shp
 bin_PROGRAMS = $(ASEPRITE_PLUGINS)
 else
 ASEPRITE_PLUGINS =
 endif
 
-exult_shp_SOURCES = $(ASEPRITE_PLUGIN_SRC).cc
+EXTRA_PROGRAMS = exult_shp
+
+exult_shp_SOURCES = exult_shp.cc
 
 exult_shp_LDADD = \
 	$(top_builddir)/imagewin/libimagewin.la	\
@@ -20,5 +21,7 @@ exult_shp_LDADD = \
 	$(PNG_LIBS) $(SYSLIBS)
 
 noinst_PROGRAMS = $(ASEPRITE_PLUGINS)
+
+EXTRA_DIST = Readme.txt main.lua package.json u7.pal
 
 CLEANFILES = *~
