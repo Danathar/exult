@@ -41,7 +41,7 @@
 #   modified version of the Autoconf Macro, you may extend this special
 #   exception to the GPL to apply to your modified version as well.
 
-#serial 4
+#serial 5
 
 AC_DEFUN([GB_ENABLE_LTO], [
 	AC_ARG_ENABLE([lto], [AS_HELP_STRING([--enable-lto], [turn on link time optimizations (experimental) [default=no]])],
@@ -57,7 +57,7 @@ AC_DEFUN([GB_ENABLE_LTO], [
 			AC_PATH_PROG([GCC_AR], [gcc-ar], [no])
 			AC_PATH_PROG([GCC_NM], [gcc-nm], [no])
 			AC_PATH_PROG([GCC_RANLIB], [gcc-ranlib], [no])
-			AX_CHECK_COMPILE_FLAG([-flto], [LTO_CFLAGS=-flto], [LTO_CLFAGS=no])
+			AX_CHECK_COMPILE_FLAG([-flto], [LTO_CFLAGS=-flto], [LTO_CFLAGS=no])
 			AS_IF([test "$GCC_AR" = "no" || test "$GCC_NM" = "no" || test "$GCC_RANLIB" = "no" || test "$LTO_CFLAGS" = "no"], [
 				enable_lto=no
 			], [
