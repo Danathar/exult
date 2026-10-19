@@ -1182,3 +1182,25 @@ std::string_view get_directory_from_path(std::string_view path) {
 	// no slash so no directory so return empty string
 	return "";
 }
+
+bool is_safe_relative_path(std::string_view name) {
+	if (name.empty() || name.front() == '/') {
+		return false;
+	}
+	if (name.find_first_of(std::string_view("\\:\0", 3)) != std::string_view::npos) {
+		return false;
+	}
+	// Check each '/'-separated component for '..'.
+	size_t start = 0;
+	while (start <= name.size()) {
+		size_t end = name.find('/', start);
+		if (end == std::string_view::npos) {
+			end = name.size();
+		}
+		if (name.substr(start, end - start) == "..") {
+			return false;
+		}
+		start = end + 1;
+	}
+	return true;
+}
