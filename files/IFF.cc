@@ -70,6 +70,7 @@ void IFF::index_file() {
 	object
 	*/
 
+	const size_t file_size = data->getSize();
 	while (data->getPos() < full_length) {
 		Reference r;
 		char      type[4];
@@ -79,6 +80,10 @@ void IFF::index_file() {
 		r.offset = data->getPos();
 
 		if (r.size == 0 || r.offset == 0) {
+			break;
+		}
+		// Stop at a truncated or corrupt chunk that extends past the data.
+		if (!data->good() || r.offset > file_size || r.size > file_size - r.offset) {
 			break;
 		}
 		object_list.push_back(r);
