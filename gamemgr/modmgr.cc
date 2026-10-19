@@ -798,6 +798,16 @@ int ModManager::InstallModZip(std::string& zipfilename, ModManager* game_overrid
 			std::cerr << "InstallMod: Didn't find patch path in mod cfg" << std::endl;
 			return -8;
 		}
+		// The old patch directory is deleted recursively before extraction,
+		// and patch_path comes from the zip.
+		if (!is_safe_relative_path(patch_path)) {
+			std::cerr << "InstallMod: Unsafe patch path \"" << patch_path << "\" in mod cfg. Not installing mod" << std::endl;
+			return -19;
+		}
+		// Only entries under moddir are extracted, so only a patch directory
+		// inside it can hold files from an earlier install of this mod.
+		const bool patch_in_moddir = moddir != "." && is_safe_relative_path(moddir)
+									 && (patch_path == moddir || patch_path.compare(0, moddir.size() + 1, moddir + '/') == 0);
 
 		// try to load initgame.dat in zip file to get identity
 		std::string initgame_path = patch_path + "/initgame.dat";
@@ -918,7 +928,14 @@ int ModManager::InstallModZip(std::string& zipfilename, ModManager* game_overrid
 
 		// Delete mod patch directory and cfg
 		U7remove((game_mod_path + "/" + cfgname).c_str());
-		U7rmdir((game_mod_path + "/" + patch_path).c_str(), true);
+		const std::string old_patch_dir = game_mod_path + "/" + patch_path;
+		if (!patch_in_moddir) {
+			std::cerr << "InstallMod: Warning: patch path \"" << patch_path << "\" is outside mod directory \"" << moddir
+					  << "\". Not deleting it, so files from an earlier install may remain." << std::endl;
+		} else if (U7exists(old_patch_dir) && U7rmdir(old_patch_dir.c_str(), true) != 0) {
+			std::cerr << "InstallMod: Warning: could not fully delete \"" << get_system_path(old_patch_dir)
+					  << "\". Files from an earlier install may remain." << std::endl;
+		}
 
 		// Get list of game's static files ro fixup the filename caseing of
 		// themod's files to match te game's files
