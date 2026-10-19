@@ -329,27 +329,27 @@ bool Uc_binary_expression::eval_const(int& val    // Value returned here.
 	}
 	switch (opcode) {
 	case UC_ADD:
-		val = val1 + val2;
+		val = Uc_wrapping_add(val1, val2);
 		return true;
 	case UC_SUB:
-		val = val1 - val2;
+		val = Uc_wrapping_sub(val1, val2);
 		return true;
 	case UC_MUL:
-		val = val1 * val2;
+		val = Uc_wrapping_mul(val1, val2);
 		return true;
 	case UC_DIV:
 		if (!val2) {
 			error("Division by 0");
 			return false;
 		}
-		val = val1 / val2;
+		val = Uc_wrapping_div(val1, val2);
 		return true;
 	case UC_MOD:
 		if (!val2) {
 			error("Division by 0");
 			return false;
 		}
-		val = val1 % val2;
+		val = Uc_wrapping_mod(val1, val2);
 		return true;
 	case UC_CMPGT:
 		val = val1 > val2;

@@ -154,7 +154,8 @@ int main(int argc, char** argv) {
 	const int errs = Uc_location::get_num_errors();
 	if (errs > 0) {    // Check for errors.
 		std::cout << "\033[1;31mUsecode compilation failed!\033[0m\n";
-		return errs;
+		// Not the error count: exit statuses are truncated to 8 bits.
+		return EXIT_FAILURE;
 	}
 	// Open output.
 	std::ofstream out(outname, ios::binary | ios::out);
@@ -188,7 +189,7 @@ int main(int argc, char** argv) {
 	} else {
 		std::cout << "\033[1;31mUsecode compilation failed!\033[0m\n";
 	}
-	return final_errs;
+	return final_errs == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 /*
