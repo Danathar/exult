@@ -708,7 +708,7 @@ void Gump_manager::close_all_gumps(bool pers) {
 
 		// Don't delete if persistant or modal.
 		if ((!gump->gump->is_persistent() || pers) && !gump->gump->is_modal()) {
-			if (!gump->gump->is_persistent()) {
+			if (!gump->gump->is_persistent() && !dont_pause_game) {
 				gwin->get_tqueue()->resume(Game::get_ticks());
 			}
 			if (prev) {
