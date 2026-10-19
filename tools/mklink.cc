@@ -30,7 +30,7 @@ private:
 	vector<usecode_func> functions;
 
 public:
-	usecode_functions() : functions(4096) {}
+	usecode_functions() : functions(65536) {}
 
 	uint16         get_total_size(vector<uint16>& call_tree) const;
 	vector<uint16> get_tree(uint16 func_num);
@@ -100,8 +100,8 @@ vector<uint16> usecode_functions::get_tree(uint16 func_num) {
  */
 void usecode_functions::clear_visited() {
 	// Clear all "visited" flags
-	for (size_t i = 0; i < 4096; i++) {
-		functions[i].visited = false;
+	for (auto& func : functions) {
+		func.visited = false;
 	}
 }
 
@@ -134,6 +134,11 @@ int main() {
 
 	// Process the usecode file
 	while (!usecode.eof()) {
+		if (func_num == 0xFFFFu) {
+			// Extended (ext32) function header; sizes would not fit in 16 bits.
+			cerr << "Extended (ext32) usecode functions are not supported!" << endl;
+			exit(1);
+		}
 		usecode_func& u_ptr    = functions.get(func_num);
 		u_ptr.where            = func_pos;                         // Remember start of function
 		u_ptr.size             = little_endian::Read2(usecode);    // Read the function size
