@@ -98,6 +98,8 @@ class Usecode_internal : public Usecode_machine {
 	void           say_string();                      // "Say" the string.
 	Usecode_value* stack;                             // Stack.
 	Usecode_value* sp;                                // Stack ptr.  Grows upwards.
+	// Set when push() finds 'stack' full; run() then aborts the function.
+	bool stack_overflow = false;
 	void           push(const Usecode_value& val);    // Push/pop stack.
 	Usecode_value  pop();
 	Usecode_value  peek();

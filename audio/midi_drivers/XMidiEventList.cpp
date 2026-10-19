@@ -221,7 +221,10 @@ void XMidiEventList::decrementCounter() {
 	if (--counter < 0) {
 		// Lock the mutex here
 		auto lock = lockMutex();
-		events->FreeThis();
+		// A track that failed to load never got any events
+		if (events) {
+			events->FreeThis();
+		}
 		events = nullptr;
 		FreeThis();
 	}

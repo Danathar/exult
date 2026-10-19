@@ -196,7 +196,7 @@ static void Update_locate_button(
 static void Set_schedule_line(
 		ExultStudio* studio,
 		int          time,            // 0-7.
-		int          type,            // Activity (0-31, or -1 for none).
+		int          type,            // Activity (0-255, or -1 for none).
 		int tx, int ty, int tz = 0    // Location.
 ) {
 	char*     lname = g_strdup_printf("npc_sched%d", time);
@@ -204,7 +204,14 @@ static void Set_schedule_line(
 	g_free(lname);
 	// User data = schedule #.
 	g_object_set_data(G_OBJECT(label), "user_data", reinterpret_cast<gpointer>(uintptr(type)));
-	gtk_label_set_text(label, type >= 0 && type < 32 ? sched_names[type] : "-----");
+	if (type >= 32) {
+		// Exult-only or scripted schedule:  no name, but keep it.
+		char* tname = g_strdup_printf("Type %d", type);
+		gtk_label_set_text(label, tname);
+		g_free(tname);
+	} else {
+		gtk_label_set_text(label, type >= 0 ? sched_names[type] : "-----");
+	}
 	// Set location.
 	char*   locname = g_strdup_printf("sched_loc%d", time);
 	GtkBox* box     = GTK_BOX(studio->get_widget(locname));
@@ -239,10 +246,13 @@ static bool Get_schedule_line(
 	GtkLabel* label = GTK_LABEL(studio->get_widget(lname));
 	g_free(lname);
 	// User data = schedule #.
-	sched.type = reinterpret_cast<sintptr>(g_object_get_data(G_OBJECT(label), "user_data"));
-	if (sched.type < 0 || sched.type > 31) {
+	const sintptr type = reinterpret_cast<sintptr>(g_object_get_data(G_OBJECT(label), "user_data"));
+	// Exult stores the type in a byte; 32 and up are Exult-only or
+	//   scripted schedules, which must survive a save.
+	if (type < 0 || type > 255) {
 		return false;
 	}
+	sched.type = static_cast<short>(type);
 	// Get location.
 	char*   locname = g_strdup_printf("sched_loc%d", time);
 	GtkBox* box     = GTK_BOX(studio->get_widget(locname));
@@ -495,7 +505,7 @@ int ExultStudio::init_npc_window(unsigned char* data, int datalen) {
 	unsigned long   xflags;        // Extra object flags.
 	unsigned long   type_flags;    // Movement flags.
 	short           num_schedules;
-	Serial_schedule schedules[8];
+	Serial_schedule schedules[max_serial_schedules];
 	if (!Npc_actor_in(
 				data, datalen, addr, tx, ty, tz, shape, frame, face, name, npc_num, ident, usecode, usecodefun, properties,
 				attack_mode, alignment, oflags, xflags, type_flags, num_schedules, schedules)) {
@@ -676,7 +686,7 @@ int ExultStudio::save_npc_window() {
 	}
 	g_list_free(children);
 	short           num_schedules = 0;
-	Serial_schedule schedules[8];
+	Serial_schedule schedules[max_serial_schedules];
 	for (int i = 0; i < 8; i++) {
 		if (Get_schedule_line(this, i, schedules[num_schedules])) {
 			num_schedules++;

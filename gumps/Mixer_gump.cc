@@ -271,7 +271,8 @@ void Mixer_gump::save_settings() {
 	if (midi) {
 		if (oggslider) {
 			midi->SetOggMusicVolume(oggslider->getselection(), true);
-		} else if (midislider) {
+		}
+		if (midislider) {
 			midi->SetMidiMusicVolume(midislider->getselection(), true);
 		}
 	}

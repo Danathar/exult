@@ -722,6 +722,10 @@ int Audio::play_wave_sfx(
 	size_t wavlen;    // Read .wav file.
 	auto   wavbuf = ds.steal_data(wavlen);
 	auto*  wave   = AudioSample::createAudioSample(std::move(wavbuf), wavlen);
+	if (!wave) {
+		cerr << "Couldn't play sfx '" << num << "' from {" << sfxfile.name << ", " << sfxfile.index << "}" << endl;
+		return -1;
+	}
 
 	volume                = (volume * sfx_volume) / 100;
 	const int instance_id = mixer->playSample(wave, repeat, 0, true, AUDIO_DEF_PITCH, volume, volume);

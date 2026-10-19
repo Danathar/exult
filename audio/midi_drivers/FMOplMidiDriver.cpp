@@ -526,7 +526,7 @@ void FMOplMidiDriver::send(uint32 b) {
 				if (!bank) {
 					continue;
 				}
-				if (bank->insbank[instrument].perc_voice &= 0x80) {
+				if (bank->insbank[instrument].perc_voice & 0x80) {
 					ins = &bank->insbank[instrument];
 					break;
 				}
@@ -1037,6 +1037,10 @@ const double FMOplMidiDriver::bend_coarse[128]
 		   1534.2664467217226};
 
 void FMOplMidiDriver::midi_fm_playnote(int voice, int note, int volume, int pitchbend, int pan) {
+	// note includes nshift (-13), so low notes can go negative
+	if (note < 0) {
+		note = 0;
+	}
 	int freq = fnums[note % 12];
 	int oct  = note / 12;
 

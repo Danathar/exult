@@ -228,10 +228,22 @@ Object_browser* Npcs_file_info::create_browser(
 }
 
 /*
+ *  Get the nullptr-terminated name at the end of an npc_info reply,
+ *  without reading past the bytes that were received.
+ */
+static string Npc_info_name(const unsigned char* ptr, const unsigned char* end) {
+	if (ptr >= end) {
+		return string();
+	}
+	const unsigned char* nul = std::find(ptr, end, 0);
+	return convertToUTF8(string(reinterpret_cast<const char*>(ptr), nul - ptr).c_str());
+}
+
+/*
  *  Read in an NPC from Exult.
  */
 bool Npcs_file_info::read_npc(unsigned num) {
-	if (num > npcs.size()) {
+	if (num >= npcs.size()) {
 		npcs.resize(num + 1);
 	}
 	ExultStudio*           studio        = ExultStudio::get_instance();
@@ -242,8 +254,9 @@ bool Npcs_file_info::read_npc(unsigned num) {
 	const unsigned char*   newptr;
 	newptr = ptr = &buf[0];
 	little_endian::Write2(ptr, num);
+	int len = -1;
 	if (!studio->send_to_server(Exult_server::npc_info, buf, ptr - buf) || !Exult_server::wait_for_response(server_socket, 100)
-		|| Exult_server::Receive_data(server_socket, id, buf, sizeof(buf)) == -1 || id != Exult_server::npc_info
+		|| (len = Exult_server::Receive_data(server_socket, id, buf, sizeof(buf))) < 4 || id != Exult_server::npc_info
 		|| little_endian::Read2(newptr) != num) {
 		return false;
 	}
@@ -251,8 +264,7 @@ bool Npcs_file_info::read_npc(unsigned num) {
 	npcs[num].shapenum = little_endian::Read2(newptr);    // -1 if unused.
 	if (npcs[num].shapenum >= 0) {
 		npcs[num].unused = Read1(newptr) != 0;
-		const string utf8name(convertToUTF8(reinterpret_cast<const char*>(newptr)));
-		npcs[num].name = utf8name;
+		npcs[num].name   = Npc_info_name(newptr, buf + len);
 	} else {
 		npcs[num].unused = true;
 		npcs[num].name   = "";
@@ -290,8 +302,9 @@ void Npcs_file_info::setup() {
 	for (int i = 0; i < num_npcs; ++i) {
 		newptr = ptr = &buf[0];
 		little_endian::Write2(ptr, i);
+		int len = -1;
 		if (!studio->send_to_server(Exult_server::npc_info, buf, ptr - buf) || !Exult_server::wait_for_response(server_socket, 100)
-			|| Exult_server::Receive_data(server_socket, id, buf, sizeof(buf)) == -1 || id != Exult_server::npc_info
+			|| (len = Exult_server::Receive_data(server_socket, id, buf, sizeof(buf))) < 4 || id != Exult_server::npc_info
 			|| little_endian::Read2(newptr) != i) {
 			npcs.resize(0);
 			cerr << "Error getting info for NPC #" << i << endl;
@@ -300,8 +313,7 @@ void Npcs_file_info::setup() {
 		npcs[i].shapenum = little_endian::Read2(newptr);    // -1 if unused.
 		if (npcs[i].shapenum >= 0) {
 			npcs[i].unused = Read1(newptr) != 0;
-			const string utf8name(convertToUTF8(reinterpret_cast<const char*>(newptr)));
-			npcs[i].name = utf8name;
+			npcs[i].name   = Npc_info_name(newptr, buf + len);
 		} else {
 			npcs[i].unused = true;
 			npcs[i].name   = "";
