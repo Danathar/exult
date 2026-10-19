@@ -140,11 +140,141 @@ export function findWriteCommands(text, writeRe) {
     return [...text.matchAll(new RegExp(writeRe, 'g'))].map((m) => m[0]);
 }
 
+/**
+ * Words of the gh command that starts at `from` (just after `gh`). Quotes are
+ * removed (a backslash escapes the next character inside double quotes),
+ * `${{ ... }}` stays one word, and an unquoted ; & | ( ) or backtick ends the
+ * command (a shell separator, `$(...)`, or the end of Markdown inline code).
+ * This is not a shell parser: it only has to read the method, body flags and
+ * positional arguments of one command.
+ */
+export function ghWords(text, from) {
+    const words = [];
+    let cur = null;
+    for (let i = from; i < text.length; i++) {
+        const c = text[i];
+        if (text.startsWith('${{', i)) {
+            const end = text.indexOf('}}', i);
+            const stop = end === -1 ? text.length : end + 2;
+            cur = (cur ?? '') + text.slice(i, stop);
+            i = stop - 1;
+        } else if (c === '"' || c === "'") {
+            let j = i + 1;
+            let s = '';
+            for (; j < text.length && text[j] !== c; j++) {
+                if (c === '"' && text[j] === '\\' && j + 1 < text.length) j++;
+                s += text[j];
+            }
+            cur = (cur ?? '') + s;
+            i = j;
+        } else if (/\s/.test(c)) {
+            if (cur !== null) words.push(cur);
+            cur = null;
+        } else if (/[;&|()`]/.test(c)) {
+            break;
+        } else {
+            cur = (cur ?? '') + c;
+        }
+    }
+    if (cur !== null) words.push(cur);
+    return words;
+}
+
+// gh api flags that take a value (the value is not the endpoint).
+const GH_API_VALUE_FLAGS = new Set(['-H', '--header', '--hostname', '-q', '--jq', '-t', '--template', '--cache', '-p', '--preview']);
+const GH_API_BODY_FLAGS = new Set(['-f', '-F', '--field', '--raw-field', '--input']);
+
+/** Method, body and endpoint of the arguments after `gh api`. */
+export function parseGhApi(args) {
+    let method = null;
+    let hasBody = false;
+    const positionals = [];
+    for (let i = 0; i < args.length; i++) {
+        const a = args[i];
+        if (a === '-X' || a === '--method') method = args[++i] ?? '';
+        else if (a.startsWith('--method=')) method = a.slice(9);
+        else if (/^-X./.test(a)) method = a.slice(2).replace(/^=/, '');
+        else if (GH_API_BODY_FLAGS.has(a)) {
+            hasBody = true;
+            i++;
+        } else if (/^--(?:field|raw-field|input)=/.test(a) || /^-[fF]./.test(a)) hasBody = true;
+        else if (GH_API_VALUE_FLAGS.has(a)) i++;
+        else if (!a.startsWith('-')) positionals.push(a);
+    }
+    const m = method === null ? null : method.toUpperCase();
+    const endpoint = (positionals[0] ?? '').replace(/^\/+/, '');
+    // gh api sends a body as POST unless -X/--method says otherwise.
+    const mutating = m !== null ? !['GET', 'HEAD'].includes(m) : hasBody;
+    return { method: m, hasBody, endpoint, mutating };
+}
+
+/**
+ * `gh api` writes and `gh issue transfer` destinations name their repository
+ * in a positional argument, which the --repo rule cannot see. In `text` (one
+ * logical line), report:
+ *   - a mutating `gh api` call (-X/--method other than GET or HEAD, or a body
+ *     from -f/-F/--field/--raw-field/--input, which makes gh default to POST)
+ *     whose endpoint is not `repos/<allowed>/...`. `{owner}/{repo}`
+ *     placeholders, shell variables and endpoints outside `repos/` (user/...,
+ *     orgs/..., gists) are rejected: gh fills placeholders from its default
+ *     repository, which in a clone of this fork can be the upstream parent.
+ *     A GraphQL call is rejected when it spells a mutation or its query is
+ *     not an inline `query=` literal (the target cannot be read).
+ *   - a `gh issue transfer` whose destination (the second positional
+ *     argument) is missing or not an allowed repository.
+ * `okRepo(value)` says whether an owner/repo value is allowed. Returns
+ * messages without the file:line prefix.
+ */
+export function ghPositionalTargets(text, okRepo) {
+    const out = [];
+    for (const m of text.matchAll(/\bgh\s+/g)) {
+        const words = ghWords(text, m.index + m[0].length);
+        // The noun is the first word that is not a flag or a --repo/-R value.
+        let k = 0;
+        while (k < words.length && words[k].startsWith('-')) {
+            k += words[k] === '-R' || words[k] === '--repo' ? 2 : 1;
+        }
+        const noun = words[k];
+        const args = words.slice(k + 1);
+        if (noun === 'api') {
+            const call = parseGhApi(args);
+            const cmd = `gh api ${call.method ? `-X ${call.method} ` : ''}${call.endpoint}`.trim();
+            if (call.endpoint.toLowerCase() === 'graphql') {
+                const query = args.map((a) => /^query=([\s\S]*)$/.exec(a)).find(Boolean);
+                const opaque = args.some((a) => a === '--input' || a.startsWith('--input=')) || !query || /^[@$]/.test(query[1]);
+                if (args.some((a) => /\bmutation\b/i.test(a)) || opaque) {
+                    out.push(`"${cmd}" may be a GraphQL mutation; its target repository cannot be checked`);
+                }
+                continue;
+            }
+            if (!call.mutating) continue;
+            const r = /^repos\/(\$\{\{[^}]*\}\}|[^/?#\s]+\/[^/?#\s]+)(?:[/?#]|$)/.exec(call.endpoint);
+            if (!r || !okRepo(r[1])) {
+                out.push(
+                    `"${cmd}" writes to "${call.endpoint || '?'}"; a gh api write must target repos/Danathar/exult/... ` +
+                        `literally ({owner}/{repo} placeholders and variables are not accepted)`,
+                );
+            }
+        } else if (noun === 'issue') {
+            const plain = args.filter((a, n) => !a.startsWith('-') && !['-R', '--repo'].includes(args[n - 1]));
+            if (plain[0] !== 'transfer') continue;
+            const dest = plain[2];
+            if (dest === undefined || !okRepo(dest)) {
+                out.push(`"gh issue transfer" moves the issue to "${dest ?? '?'}", expected Danathar/exult`);
+            }
+        }
+    }
+    return out;
+}
+
 export function checkRepoTarget(root, policy, files) {
     const v = [];
     const literal = policy.requiredLiteral;
     const repoRe = new RegExp(policy.repoFlagPattern);
     const forbidden = policy.forbiddenPatterns.map((p) => new RegExp(p));
+    // Repositories a gh api endpoint or issue transfer destination may name.
+    const allowedRepos = policy.allowedRepoValues ?? [literal.replace(/^\S+\s+/, '')];
+    const okRepo = (x) => allowedRepos.includes(x);
 
     const directionFiles = files.filter((f) =>
         matchesAny(policy.directionGlobs, f),
@@ -174,6 +304,9 @@ export function checkRepoTarget(root, policy, files) {
                             `(${re.source}); work stays in Danathar/exult`,
                     );
                 }
+            }
+            for (const p of ghPositionalTargets(t, okRepo)) {
+                v.push(`${f}:${line}: ${p}`);
             }
             // Judge each write command on its own segment, so one --repo does
             // not cover every command on the line.
@@ -452,6 +585,11 @@ export function checkGhScope(f, code, policy) {
     });
     const logical = logicalLines(code.join('\n'));
     for (const { line, text: t } of logical) {
+        // gh api writes and issue transfer destinations name the repository
+        // in a positional argument, not in --repo.
+        for (const p of ghPositionalTargets(t, okLiteral)) {
+            v.push(`${f}:${line}: ${p}`);
+        }
         const writes = findWriteCommands(t, policy.ghWriteCommandPattern);
         if (writes.length === 0) continue;
         // Judge each write command on its own segment of the line, so a

@@ -79,6 +79,75 @@ test('gh scope: read-only gh commands with a leading flag are not writes', () =>
     }
 });
 
+// gh api writes name the repository in the endpoint, not in --repo.
+test('gh api: a write outside repos/Danathar/exult is judged', () => {
+    for (const cmd of [
+        'gh api -X POST repos/exult/exult/issues -f title=x',
+        'gh api repos/exult/exult/issues -f title=x',
+        'gh api --method PATCH repos/exult/exult/issues/5 -f state=closed',
+        'gh api --method=DELETE repos/exult/exult/git/refs/heads/x',
+        'gh api -XPUT repos/octocat/other-repo/subscription',
+        'gh api repos/exult/exult/issues/5/comments -F body=@note.md',
+        'gh api repos/exult/exult/issues --raw-field title=x',
+        'gh api repos/exult/exult/issues --input body.json',
+        'gh api -X POST "repos/Danathar/exult-other/issues" -f title=x',
+        'gh api -X POST repos/{owner}/{repo}/issues -f title=x',
+        'gh api -X POST "repos/$GH_REPO/issues" -f title=x',
+        'gh api -X POST user/repos -f name=x',
+        'gh api -X PUT /repos/exult/exult/pulls/3/merge',
+        'gh api graphql -f query="mutation { addComment(input: {}) { clientMutationId } }"',
+        'gh api graphql --input query.json',
+    ]) {
+        assert.ok(wfFlags(cmd).length > 0, `workflow: ${cmd}`);
+        assert.ok(mdFlags(cmd + '\n').length > 0, `markdown: ${cmd}`);
+    }
+});
+
+test('gh api: reads, and writes to repos/Danathar/exult, pass', () => {
+    for (const cmd of [
+        'gh api repos/exult/exult/pulls',
+        'gh api -X GET repos/exult/exult/issues -f state=open',
+        'gh api --method HEAD repos/octocat/other-repo',
+        'gh api --method GET --paginate "repos/Danathar/exult/pulls/5/comments"',
+        'gh api repos/{owner}/{repo}/pulls --jq .[].number',
+        'gh api -X PUT "repos/Danathar/exult/rulesets/$id" --input .github/rulesets/master.json',
+        'gh api -X POST repos/Danathar/exult/rulesets --input .github/rulesets/master.json',
+        'gh api repos/Danathar/exult/issues/5/comments -f body=x',
+        "gh api graphql -f query='query { viewer { login } }'",
+        'id=$(gh api repos/exult/exult/rulesets --jq \'.[] | select(.name=="x") | .id\')',
+    ]) {
+        assert.deepEqual(wfFlags(cmd), [], `workflow: ${cmd}`);
+        assert.deepEqual(mdFlags(cmd + '\n'), [], `markdown: ${cmd}`);
+    }
+    assert.deepEqual(wfFlags('gh api -X POST "repos/${{ github.repository }}/issues" -f title=x'), []);
+});
+
+test('gh api: each call on a line is judged on its own endpoint', () => {
+    const v = wfFlags('gh api repos/Danathar/exult/issues -f title=x && gh api -X POST repos/exult/exult/issues -f title=x');
+    assert.equal(v.length, 1);
+    assert.match(v[0], /writes to "repos\/exult\/exult\/issues"/);
+    assert.deepEqual(mdFlags('Read with `gh api repos/exult/exult/pulls`, never write with it.\n'), []);
+});
+
+test('gh issue transfer: the destination repository is judged', () => {
+    for (const cmd of [
+        'gh issue transfer 5 exult/exult --repo Danathar/exult',
+        'gh issue transfer --repo Danathar/exult 5 exult/exult',
+        'gh -R Danathar/exult issue transfer 5 octocat/other-repo',
+        'gh issue transfer 5 --repo Danathar/exult',
+    ]) {
+        assert.ok(wfFlags(cmd).length > 0, `workflow: ${cmd}`);
+        assert.ok(mdFlags(cmd + '\n').length > 0, `markdown: ${cmd}`);
+    }
+    const v = wfFlags('gh issue transfer 5 exult/exult --repo Danathar/exult');
+    assert.equal(v.length, 1);
+    assert.match(v[0], /moves the issue to "exult\/exult"/);
+    for (const cmd of ['gh issue transfer 5 Danathar/exult --repo Danathar/exult', 'gh -R Danathar/exult issue transfer 5 Danathar/exult']) {
+        assert.deepEqual(wfFlags(cmd), [], `workflow: ${cmd}`);
+        assert.deepEqual(mdFlags(cmd + '\n'), [], `markdown: ${cmd}`);
+    }
+});
+
 const runFlags = (expr) => checkRunExpressions('w.yml', ["        run: echo '" + expr + "'"], WORKFLOWS);
 
 test('run expressions: toJSON(github.event), toJSON(github) and github.ref are rejected', () => {
