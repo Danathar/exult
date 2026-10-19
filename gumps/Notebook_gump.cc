@@ -846,7 +846,7 @@ void Notebook_gump::add_gflag_text(int gflag, const string& text) {
 		}
 	}
 	if (gwin->get_allow_autonotes()) {
-		instance->add_new_with_line_breaks(text, gflag);
+		add_new_with_line_breaks(text, gflag);
 	}
 }
 

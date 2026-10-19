@@ -88,6 +88,12 @@ public:
 			return nullptr;
 		}
 		const Reference ref = get_object_reference(objnum);
+		// Never read (or allocate) more than the data source holds.
+		const size_t size = data->getSize();
+		if (ref.offset > size || ref.size > size - ref.offset) {
+			len = 0;
+			return nullptr;
+		}
 		data->seek(ref.offset);
 		if (!data->good()) {
 			len = 0;
