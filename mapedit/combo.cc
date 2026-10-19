@@ -740,10 +740,14 @@ void Combo_editor::save() {
 	int  len;    // Serialize.
 	auto newbuf = combo->write(len);
 	// Update or append file data.
-	flex_info->set(file_index == -1 ? flex_info->size() : file_index, std::move(newbuf), len);
+	const bool is_new = file_index == -1;
+	const int  index  = is_new ? flex_info->size() : file_index;
+	flex_info->set(index, std::move(newbuf), len);
+	// From now on we refer to this entry, even if no chooser is open.
+	file_index    = index;
 	auto* chooser = dynamic_cast<Combo_chooser*>(studio->get_browser());
 	if (chooser) {    // Browser open?
-		file_index = chooser->add(new Combo(*combo), file_index);
+		file_index = chooser->add(new Combo(*combo), is_new ? -1 : index);
 	}
 	dirty = false;    // Saved, no longer dirty.
 }
@@ -1243,6 +1247,10 @@ void Combo_chooser::remove() {
 	Combo* todel = combos[tnum];
 	delete todel;    // Delete from our list.
 	combos.erase(combos.begin() + tnum);
+	// An open editor's entry may have shifted down.
+	if (combowin && combowin->is_visible() && combowin->file_index > tnum) {
+		combowin->file_index--;
+	}
 	flex_info->set_modified();
 	flex_info->remove(tnum);    // Update flex-file list.
 	setup_info(true);

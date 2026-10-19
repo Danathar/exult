@@ -82,7 +82,7 @@ EXULT_FONTS_SERIF_VGA_OBJECTS = \
 	fonts/navfonton.shp
 
 EXULT_SHORTCUTBAR_VGA_OBJECTS = \
-	shortcutbar.in
+	shortcutbar.in \
 	sb_combat.shp \
 	sb_disk.shp \
 	sb_jawbone.shp \
@@ -273,7 +273,9 @@ else
 estudionew_DATA =
 endif
 
-CLEANFILES = exult.flx exult_bg.flx exult_si.flx bg/bg_paperdol.vga bg/bg_mr_faces.vga bg/introsfx_mt32.flx bg/introsfx_mt.flx fonts_original.vga fonts_serif.vga shortcutbar.vga *~
+CLEANFILES = exult.flx exult_bg.flx exult_si.flx bg/bg_paperdol.vga bg/bg_mr_faces.vga bg/introsfx_mt32.flx bg/introsfx_sb.flx fonts_original.vga fonts_serif.vga shortcutbar.vga \
+	exult_flx.h exult_bg_flx.h exult_si_flx.h bg/bg_paperdol_vga.h bg/bg_mr_faces_vga.h bg/introsfx_mt32_flx.h bg/introsfx_sb_flx.h \
+	fonts_original_vga.h fonts_serif_vga.h shortcutbar_vga.h *~
 
 EXTRA_DIST = flx.in $(EXULT_FLX_OBJECTS) $(EXULT_BG_FLX_OBJECTS) \
 	$(EXULT_SI_FLX_OBJECTS) $(ESTUDIO_NEW_FILES) midisfx.flx \
@@ -281,7 +283,7 @@ EXTRA_DIST = flx.in $(EXULT_FLX_OBJECTS) $(EXULT_BG_FLX_OBJECTS) \
 	exultmsg.txt bginclude.uc marketpl.mid myusecode.uc \
 	$(EXULT_BG_PAPERDOL_VGA_OBJECTS) $(EXULT_BG_MR_FACES_VGA_OBJECTS) \
 	$(EXULT_FONTS_ORIGINAL_VGA_OBJECTS) $(EXULT_FONTS_SERIF_VGA_OBJECTS) \
-	$(EXULT_SHORTCUTBAR_VGA)
+	$(EXULT_SHORTCUTBAR_VGA_OBJECTS)
 
 if CROSS_COMPILING
 expack = $(EXPACK_PROG)
@@ -293,34 +295,42 @@ $(top_builddir)/tools/expack$(EXEEXT):
 	+(cd $(top_builddir)/tools;$(MAKE) expack$(EXEEXT))
 
 bg/bg_paperdol.vga: $(expack) $(EXULT_BG_PAPERDOL_VGA_OBJECTS)
-	$(expack) -i $(srcdir)/bg/bg_paperdol.in
+	@$(MKDIR_P) bg
+	$(expack) -i $(srcdir)/bg/bg_paperdol.in bg
 
 bg/bg_mr_faces.vga: $(expack) $(EXULT_BG_MR_FACES_VGA_OBJECTS)
-	$(expack) -i $(srcdir)/bg/bg_mr_faces.in
+	@$(MKDIR_P) bg
+	$(expack) -i $(srcdir)/bg/bg_mr_faces.in bg
 
 fonts_original.vga: $(expack) $(EXULT_FONTS_ORIGINAL_VGA_OBJECTS)
-	$(expack) -i $(srcdir)/fonts/original.in
+	@$(MKDIR_P) fonts
+	$(expack) -i $(srcdir)/fonts/original.in fonts
 
 fonts_serif.vga: $(expack) $(EXULT_FONTS_SERIF_VGA_OBJECTS)
-	$(expack) -i $(srcdir)/fonts/serif.in
+	@$(MKDIR_P) fonts
+	$(expack) -i $(srcdir)/fonts/serif.in fonts
 
 shortcutbar.vga:  $(expack) $(EXULT_SHORTCUTBAR_VGA_OBJECTS)
-	$(expack) -i $(srcdir)/shortcutbar.in
+	$(expack) -i $(srcdir)/shortcutbar.in .
 
 exult.flx: $(expack) $(EXULT_FLX_OBJECTS) fonts_original.vga fonts_serif.vga shortcutbar.vga
-	$(expack) -i $(srcdir)/flx.in
+	$(expack) -i $(srcdir)/flx.in .
 
 exult_bg.flx: $(expack) $(EXULT_BG_FLX_OBJECTS) bg/bg_paperdol.vga bg/bg_mr_faces.vga bg/introsfx_mt32.flx bg/introsfx_sb.flx
-	$(expack) -i $(srcdir)/bg/flx.in
+	@$(MKDIR_P) bg
+	$(expack) -i $(srcdir)/bg/flx.in bg
 
 bg/introsfx_mt32.flx: $(expack) $(EXULT_BG_INTROSFX_MT32_OBJECTS)
-	$(expack) -i $(srcdir)/bg/introsfx_mt.in
+	@$(MKDIR_P) bg
+	$(expack) -i $(srcdir)/bg/introsfx_mt.in bg
 
 bg/introsfx_sb.flx: $(expack) $(EXULT_BG_INTROSFX_SB_OBJECTS)
-	$(expack) -i $(srcdir)/bg/introsfx_sb.in
+	@$(MKDIR_P) bg
+	$(expack) -i $(srcdir)/bg/introsfx_sb.in bg
 
 exult_si.flx: $(expack) $(EXULT_SI_FLX_OBJECTS)
-	$(expack) -i $(srcdir)/si/flx.in
+	@$(MKDIR_P) si
+	$(expack) -i $(srcdir)/si/flx.in si
 
 exult_flx.h: exult.flx
 
@@ -336,5 +346,6 @@ bg/introsfx_mt32_flx.h: bg/introsfx_mt32.flx
 
 bg/introsfx_sb_flx.h: bg/introsfx_sb.flx
 
+# The engine needs the generated *_flx.h headers even when the data files are
+# not installed (--disable-data).
 all-local: exult.flx exult_bg.flx exult_si.flx
-	-cp -fR $(srcdir)/*.flx $(builddir) 2>/dev/null

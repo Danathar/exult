@@ -221,9 +221,9 @@ namespace Pentagram {
 		protected:
 			inline void updateCoefficients() {
 				a = ((-x0 * 2) + (x1 * 5) - (x2 * 4) + x3);
-				b = ((x0 + x2 - (2 * x1)) * 6) << 8;
-				c = ((-4 * x0) + x1 + (x2 * 4) - x3) << 8;
-				d = (x1 * 6) << 8;
+				b = ((x0 + x2 - (2 * x1)) * 6) * 256;
+				c = ((-4 * x0) + x1 + (x2 * 4) - x3) * 256;
+				d = (x1 * 6) * 256;
 			}
 		};
 

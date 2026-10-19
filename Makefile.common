@@ -378,6 +378,7 @@ EXULT_FONTS_SERIF_VGA_OBJECTS := \
 
 EXULT_SHORTCUTBAR_VGA := data/shortcutbar.vga data/shortcutbar_vga.h
 EXULT_SHORTCUTBAR_VGA_OBJECTS := \
+	data/shortcutbar.in \
 	data/sb_combat.shp \
 	data/sb_disk.shp \
 	data/sb_jawbone.shp \
