@@ -85,6 +85,8 @@ Text_msg_file_reader::Text_msg_file_reader(IDataSource& in, bool use_special_cha
 
 bool Text_msg_file_reader::parse_contents() {
 	constexpr static const auto             NONEFOUND = std::numeric_limits<uint32>::max();
+	// Largest entry index accepted; real message files stay far below this.
+	constexpr static const uint32           MAX_INDEX = 0xffff;
 	constexpr static const std::string_view sectionStart("%%section");
 	constexpr static const std::string_view sectionEnd("%%endsection");
 
@@ -120,18 +122,22 @@ bool Text_msg_file_reader::parse_contents() {
 			data.remove_prefix(data.size());
 		}
 		// Ignore leading whitespace.
-		auto nonWs = line.find_first_not_of(" \t\b");
-		line.remove_prefix(nonWs);
-		if (line.empty()) {
-			continue;    // Empty line.
+		const auto nonWs = line.find_first_not_of(" \t\b");
+		if (nonWs == std::string_view::npos) {
+			continue;    // Empty or whitespace-only line.
 		}
+		line.remove_prefix(nonWs);
 
 		if (line.compare(0, sectionStart.length(), sectionStart) == 0) {
 			if (state == State::InSection) {
 				cerr << "Line " << linenum << " has a section starting inside another section" << endl;
 			}
 			const auto namePos = line.find_first_not_of(" \t\b", sectionStart.length());
-			line.remove_prefix(namePos);
+			if (namePos != std::string_view::npos) {
+				line.remove_prefix(namePos);
+			} else {
+				line = std::string_view();
+			}
 			auto sectionName(line);
 			if (sectionName.empty()) {
 				cerr << "Line " << linenum << " has an empty section name" << endl;
@@ -201,8 +207,12 @@ bool Text_msg_file_reader::parse_contents() {
 			}
 			lineVal = line.substr(colon + 1);
 		}
+		if (index > MAX_INDEX) {
+			cerr << "Line " << linenum << " has an index above the maximum of " << MAX_INDEX << endl;
+			return false;
+		}
 		if (index >= current_section->size()) {
-			current_section->resize(index + 1);
+			current_section->resize(static_cast<size_t>(index) + 1);
 		}
 		(*current_section)[index] = lineVal;
 		*current_first            = std::min(index, *current_first);
