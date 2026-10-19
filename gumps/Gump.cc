@@ -265,8 +265,7 @@ void Gump::get_shape_location(const Game_object* obj, int& ox, int& oy) const {
 Game_object* Gump::find_object(
 		int mx, int my    // Mouse pos. on screen.
 ) {
-	int          cnt = 0;
-	Game_object* list[100];
+	Game_object* last = nullptr;    // Top-most hit so far.
 	if (!container) {
 		return nullptr;
 	}
@@ -283,12 +282,12 @@ Game_object* Gump::find_object(
 			s = obj->get_shape();
 			get_shape_location(obj, ox, oy);
 			if (s->has_point(mx - ox, my - oy)) {
-				list[cnt++] = obj;
+				last = obj;
 			}
 		}
 	}
 	// ++++++Return top item.
-	return cnt ? list[cnt - 1] : nullptr;
+	return last;
 }
 
 /*

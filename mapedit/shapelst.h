@@ -136,6 +136,10 @@ public:
 		return selected < 0 ? -1 : info[selected].shapenum;
 	}
 
+	int find_id_index(int id) override {
+		return find_shape(id);
+	}
+
 	void       scroll_row_vertical(unsigned newrow);
 	void       scroll_vertical(int newoffset);    // Scroll.
 	void       setup_vscrollbar();                // Set new scroll amounts.
