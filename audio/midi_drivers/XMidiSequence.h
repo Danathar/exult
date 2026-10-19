@@ -192,8 +192,8 @@ private:
 		CoarseFine footpedal = {0, 0};                // 4
 		CoarseFine volume    = {80, 0};               // MT32EMU seems to default this to
 													  // 80, so I'm going to do the same
-		CoarseFine pan        = cf_centre_default;    // 9
-		CoarseFine balance    = cf_centre_default;    // 10
+		CoarseFine pan        = cf_centre_default;    // 10
+		CoarseFine balance    = cf_centre_default;    // 8
 		CoarseFine expression = {127, 0};             // 11
 		int        sustain    = 0;                    // 64
 		int        effects    = 0;                    // 91
