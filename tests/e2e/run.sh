@@ -7,6 +7,8 @@
 #   2. expack builds a Flex archive from known files, lists it, extracts it, and
 #      the extracted bytes must equal the inputs. A truncated archive must not
 #      round-trip.
+#   3. tests/e2e/tool-regressions.sh checks expack -i response files, textpack -x
+#      and ipack (blank lines, long names, tiled updates) on synthetic input.
 #
 # Usage:
 #   tests/e2e/run.sh                      # configure + build ucc and expack, then test
@@ -36,6 +38,8 @@ if [ -n "${EXULT_BIN_DIR:-}" ]; then
 	d="$EXULT_BIN_DIR"
 	ucc="$(find_tool ucc "$d" "$d/tools/compiler")" || { echo "ucc not found under $d" >&2; exit 2; }
 	expack="$(find_tool expack "$d" "$d/tools")" || { echo "expack not found under $d" >&2; exit 2; }
+	textpack="$(find_tool textpack "$d" "$d/tools")" || textpack=""
+	ipack="$(find_tool ipack "$d" "$d/tools")" || ipack=""
 else
 	build="${BUILD_DIR:-${TMPDIR:-/tmp}/exult-e2e-build}"
 	mkdir -p "$build"
@@ -50,10 +54,19 @@ else
 	fi
 	make -C "$build/files" -j"$jobs" libu7file.la
 	make -C "$build/usecode" -j"$jobs" libusecode.la
-	make -C "$build/tools" -j"$jobs" expack
+	make -C "$build/tools" -j"$jobs" expack textpack
 	make -C "$build/tools/compiler" -j"$jobs" ucc
 	ucc="$build/tools/compiler/ucc"
 	expack="$build/tools/expack"
+	textpack="$build/tools/textpack"
+	# ipack needs libpng and SDL; skip its checks if it cannot be built here.
+	ipack=""
+	if make -C "$build/shapes" -j"$jobs" libshapes.la && make -C "$build/imagewin" -j"$jobs" libimagewin.la \
+		&& make -C "$build/tools" -j"$jobs" ipack; then
+		ipack="$build/tools/ipack"
+	else
+		echo "WARN - ipack could not be built; skipping the ipack checks" >&2
+	fi
 fi
 
 work="$(mktemp -d)"
@@ -177,6 +190,13 @@ if grep -Eq '^#define[[:space:]]+PACK_FLX_GEN_BIN[[:space:]]+1$' "$work/mbuild/p
 	ok "expack -i MANIFEST OUTDIR names the OUTDIR input in the header"
 else
 	bad "expack -i MANIFEST OUTDIR header lacks the OUTDIR input"
+fi
+
+# --- regressions in expack -i, textpack and ipack ------------------------------
+if EXULT_EXPACK="$expack" EXULT_TEXTPACK="$textpack" EXULT_IPACK="$ipack" "$root/tests/e2e/tool-regressions.sh"; then
+	ok "tool regression checks"
+else
+	bad "tool regression checks"
 fi
 
 if [ "$fail" -ne 0 ]; then

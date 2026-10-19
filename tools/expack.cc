@@ -164,22 +164,32 @@ bool Write_Object(U7object& obj, const char* fname) {
 	return true;
 }
 
-// This getline() accepts any kind of endline on any platform
-// (So it will accept windows linefeeds in linux, and vice versa)
-void getline(ifstream& file, string& buf) {
+// Reads one line, accepting any kind of endline on any platform
+// (so it will accept Windows line endings on Linux, and vice versa):
+// "\n", "\r\n" and a lone "\r" all end a line.
+// Returns false if nothing could be read (end of file).
+static bool read_line(std::istream& file, string& buf) {
 	buf.clear();
-	char c;
-	file.get(c);
-
-	while ((c >= ' ' || c == '\t') && file.good()) {
-		buf += c;
-		file.get(c);
+	char chr;
+	bool got_any = false;
+	while (file.get(chr)) {
+		got_any = true;
+		if (chr == '\n') {
+			break;
+		}
+		if (chr == '\r') {
+			if (file.peek() == '\n') {
+				file.get(chr);
+			}
+			break;
+		}
+		buf += chr;
 	}
-
-	while (file.peek() < ' ' && file.peek() != '\t' && file.good()) {
-		file.get(c);
-	}
+	return got_any;
 }
+
+// Largest shape number accepted in a response file line ":shapenum:filename".
+constexpr const unsigned int MAX_RESPONSE_SHAPENUM = 0xFFFF;
 
 int main(int argc, char** argv) {
 	Arch_mode      mode = NOMODE;
@@ -232,7 +242,13 @@ int main(int argc, char** argv) {
 
 				// Read the output file name
 				string temp;
-				getline(respfile, temp);
+				read_line(respfile, temp);
+				if (temp.empty()) {
+					cerr << "Line 1: archive name not found. The first line of a response file must be the name of the "
+							"archive to create."
+						 << endl;
+					exit(1);
+				}
 				fname = out_prefix + temp;
 
 				// Header file name
@@ -243,9 +259,9 @@ int main(int argc, char** argv) {
 				make_uppercase(hprefix);
 
 				unsigned int shnum   = 0;
-				int          linenum = 2;
-				while (respfile.good()) {
-					getline(respfile, temp);
+				int          linenum = 1;
+				while (read_line(respfile, temp)) {
+					linenum++;
 					if (!temp.empty()) {
 						const char* ptr = temp.c_str();
 						if (*ptr == ':') {
@@ -253,7 +269,7 @@ int main(int argc, char** argv) {
 							// Shape # specified.
 							char*      eptr;
 							const long num = strtol(ptr, &eptr, 0);
-							if (eptr == ptr) {
+							if (eptr == ptr || *eptr != ':') {
 								cerr << "Line " << linenum
 									 << ": shapenumber not found. The correct "
 										"format of a line with specified shape "
@@ -261,10 +277,18 @@ int main(int argc, char** argv) {
 									 << endl;
 								exit(1);
 							}
+							if (num < 0 || num > static_cast<long>(MAX_RESPONSE_SHAPENUM)) {
+								cerr << "Line " << linenum << ": shapenumber must be between 0 and " << MAX_RESPONSE_SHAPENUM << "."
+									 << endl;
+								exit(1);
+							}
 							shnum = static_cast<unsigned int>(num);
-							ptr   = eptr;
-							assert(*ptr == ':');
-							ptr++;
+							ptr   = eptr + 1;
+						}
+						if (shnum > MAX_RESPONSE_SHAPENUM) {
+							cerr << "Line " << linenum << ": too many files; the shape number would exceed " << MAX_RESPONSE_SHAPENUM
+								 << "." << endl;
+							exit(1);
 						}
 						string temp2 = path_prefix + ptr;
 						if (out_prefix != path_prefix && U7exists(out_prefix + ptr)) {
@@ -275,7 +299,6 @@ int main(int argc, char** argv) {
 						}
 						file_names[shnum] = temp2;
 						shnum++;
-						linenum++;
 					}
 				}
 			} break;
@@ -307,43 +330,57 @@ int main(int argc, char** argv) {
 		if (argc != 3) {
 			break;
 		}
-		U7FileManager* fm    = U7FileManager::get_ptr();
-		U7file*        f     = fm->get_file_object(fname);
-		const size_t   count = f->number_of_objects();
-		cout << "Archive: " << fname << endl;
-		cout << "Type: " << f->get_archive_type() << endl;
-		cout << "Size: " << count << endl;
-		cout << "-------------------------" << endl;
-		for (size_t i = 0; i < count; i++) {
-			size_t len;
-			auto   buf = f->retrieve(static_cast<uint32>(i), len);
-			cout << i << "\t" << len << endl;
+		try {
+			U7FileManager* fm = U7FileManager::get_ptr();
+			U7file*        f  = fm->get_file_object(fname);
+			if (!f) {
+				cerr << "Error opening file " << fname << endl;
+				exit(1);
+			}
+			const size_t count = f->number_of_objects();
+			cout << "Archive: " << fname << endl;
+			cout << "Type: " << f->get_archive_type() << endl;
+			cout << "Size: " << count << endl;
+			cout << "-------------------------" << endl;
+			for (size_t i = 0; i < count; i++) {
+				size_t len;
+				auto   buf = f->retrieve(static_cast<uint32>(i), len);
+				cout << i << "\t" << len << endl;
+			}
+		} catch (const exult_exception& e) {
+			cerr << e.what() << endl;
+			exit(1);
 		}
 	} break;
 	case EXTRACT: {
 		constexpr const char ext[] = "u7o";
-		if (argc == 4) {
-			U7object            f(fname, atoi(argv[3]));
-			const unsigned long nobjs = f.number_of_objects();
-			const unsigned long n     = strtoul(argv[3], nullptr, 0);
-			if (n >= nobjs) {
-				cerr << "Obj. #(" << n << ") is too large.  ";
-				cerr << "Flex size is " << nobjs << '.' << endl;
-				exit(1);
+		try {
+			if (argc == 4) {
+				U7object            f(fname, atoi(argv[3]));
+				const unsigned long nobjs = f.number_of_objects();
+				const unsigned long n     = strtoul(argv[3], nullptr, 0);
+				if (n >= nobjs) {
+					cerr << "Obj. #(" << n << ") is too large.  ";
+					cerr << "Flex size is " << nobjs << '.' << endl;
+					exit(1);
+				}
+				char outfile[32];
+				snprintf(outfile, sizeof(outfile), "%05lu.%s", n, ext);
+				Write_Object(f, outfile);    // may throw!
+			} else {
+				U7FileManager* fm    = U7FileManager::get_ptr();
+				U7file*        f     = fm->get_file_object(fname);
+				const int      count = static_cast<int>(f->number_of_objects());
+				for (int index = 0; index < count; index++) {
+					U7object o(fname, index);
+					char     outfile[32];
+					snprintf(outfile, sizeof(outfile), "%05d.%s", index, ext);
+					Write_Object(o, outfile);
+				}
 			}
-			char outfile[32];
-			snprintf(outfile, sizeof(outfile), "%05lu.%s", n, ext);
-			Write_Object(f, outfile);    // may throw!
-		} else {
-			U7FileManager* fm    = U7FileManager::get_ptr();
-			U7file*        f     = fm->get_file_object(fname);
-			const int      count = static_cast<int>(f->number_of_objects());
-			for (int index = 0; index < count; index++) {
-				U7object o(fname, index);
-				char     outfile[32];
-				snprintf(outfile, sizeof(outfile), "%05d.%s", index, ext);
-				Write_Object(o, outfile);
-			}
+		} catch (const exult_exception& e) {
+			cerr << e.what() << endl;
+			exit(1);
 		}
 	} break;
 	case RESPONSE:

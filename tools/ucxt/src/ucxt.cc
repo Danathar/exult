@@ -50,6 +50,7 @@
 #include <cstring>
 #include <iomanip>
 #include <map>
+#include <memory>
 #include <stack>
 #include <string>
 #include <vector>
@@ -109,9 +110,10 @@ int main(int argc, char** argv) {
 	// could't find... it seems appropriate
 	// FIXME: Problem nolonger exists. Probably should put some 'nice' code in
 	// it's place.
-	std::streambuf* coutbuf = nullptr;
+	std::streambuf*               coutbuf = nullptr;
+	std::unique_ptr<std::ostream> pOutputstream;    // must outlive the cout redirect
 	if (!uc.output_redirect().empty()) {
-		auto pOutputstream = U7open_out(uc.output_redirect().c_str(), false);
+		pOutputstream = U7open_out(uc.output_redirect().c_str(), false);
 		if (!pOutputstream) {
 			cout << "error. failed to open " << uc.output_redirect() << " for writing. exiting." << endl;
 			exit(1);
@@ -141,6 +143,7 @@ int main(int argc, char** argv) {
 	// now we clean up the <ick>y ness from before
 	if (!uc.output_redirect().empty()) {
 		cout.rdbuf(coutbuf);
+		pOutputstream.reset();    // closes and flushes the output file
 	}
 
 	return 0;
