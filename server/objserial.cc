@@ -39,8 +39,10 @@ Serial_out& Serial_out::operator<<(std::string& s) {
 	const char*    str = s.c_str();
 	const uint32_t len = std::strlen(str);    // Get length.
 	*this << len;                             // First the length.
-	std::memcpy(buf, str, len);               // Then the bytes.
-	buf += len;
+	if (room(len)) {
+		std::memcpy(buf, str, len);    // Then the bytes.
+		buf += len;
+	}
 	return *this;
 }
 
@@ -49,7 +51,11 @@ Serial_out& Serial_out::operator<<(std::string& s) {
  */
 Serial_in& Serial_in::operator<<(std::string& s) {
 	uint32_t len;
-	(*this) << len;                                       // Get length.
+	(*this) << len;    // Get length.
+	if (!room(len)) {
+		s.clear();
+		return *this;
+	}
 	s.assign(reinterpret_cast<const char*>(buf), len);    // Set string.
 	buf += len;
 	return *this;
@@ -154,7 +160,7 @@ static void Npc_actor_io(
 		unsigned long&   xflags,           // Extra flags for SI.
 		unsigned long&   type_flags,       // Movement flags.
 		short&           num_schedules,    // # of schedule changes.
-		Serial_schedule* schedules         // Schedule changes.  Room for 8.
+		Serial_schedule* schedules         // Schedule changes.  Room for max_serial_schedules.
 ) {
 	Common_obj_io(io, addr, tx, ty, tz, shape, frame);
 	io << face << name << npc_num << ident << usecode << usecodefun;
@@ -164,6 +170,10 @@ static void Npc_actor_io(
 	}
 	io << attack_mode << alignment << oflags << xflags << type_flags;
 	io << num_schedules;
+	if (num_schedules < 0 || num_schedules > max_serial_schedules) {
+		io.fail();    // Would overrun the schedules array.
+		num_schedules = 0;
+	}
 	for (i = 0; i < num_schedules; i++) {
 		io << schedules[i].time << schedules[i].type << schedules[i].tx << schedules[i].ty << schedules[i].tz;
 	}
@@ -183,8 +193,11 @@ int Object_out(
 		int shape, int frame, int quality, std::string name) {
 	static unsigned char buf[Exult_server::maxlength];
 	unsigned char*       ptr = &buf[0];
-	Serial_out           io(ptr);
+	Serial_out           io(ptr, buf + sizeof(buf));
 	Object_io(io, addr, tx, ty, tz, shape, frame, quality, name);
+	if (io.failed()) {
+		return -1;    // Too big for one message.
+	}
 	return Exult_server::Send_data(fd, id, buf, ptr - buf);
 }
 
@@ -201,9 +214,9 @@ bool Object_in(
 		int& tx, int& ty, int& tz,       // Absolute tile coords.
 		int& shape, int& frame, int& quality, std::string& name) {
 	const unsigned char* ptr = data;
-	Serial_in            io(ptr);
+	Serial_in            io(ptr, data + datalen);
 	Object_io(io, addr, tx, ty, tz, shape, frame, quality, name);
-	return (ptr - data) == datalen;
+	return !io.failed() && (ptr - data) == datalen;
 }
 
 /*
@@ -219,8 +232,11 @@ int Container_out(
 		int shape, int frame, int quality, std::string name, unsigned char resistance, bool invisible, bool okay_to_take) {
 	static unsigned char buf[Exult_server::maxlength];
 	unsigned char*       ptr = &buf[0];
-	Serial_out           io(ptr);
+	Serial_out           io(ptr, buf + sizeof(buf));
 	Container_io(io, addr, tx, ty, tz, shape, frame, quality, name, resistance, invisible, okay_to_take);
+	if (io.failed()) {
+		return -1;    // Too big for one message.
+	}
 	return Exult_server::Send_data(fd, Exult_server::container, buf, ptr - buf);
 }
 
@@ -237,9 +253,9 @@ bool Container_in(
 		int& tx, int& ty, int& tz,          // Absolute tile coords.
 		int& shape, int& frame, int& quality, std::string& name, unsigned char& resistance, bool& invisible, bool& okay_to_take) {
 	const unsigned char* ptr = data;
-	Serial_in            io(ptr);
+	Serial_in            io(ptr, data + datalen);
 	Container_io(io, addr, tx, ty, tz, shape, frame, quality, name, resistance, invisible, okay_to_take);
-	return (ptr - data) == datalen;
+	return !io.failed() && (ptr - data) == datalen;
 }
 
 /*
@@ -255,8 +271,11 @@ int Barge_object_out(
 		int shape, int frame, int xtiles, int ytiles, int dir) {
 	static unsigned char buf[Exult_server::maxlength];
 	unsigned char*       ptr = &buf[0];
-	Serial_out           io(ptr);
+	Serial_out           io(ptr, buf + sizeof(buf));
 	Barge_object_io(io, addr, tx, ty, tz, shape, frame, xtiles, ytiles, dir);
+	if (io.failed()) {
+		return -1;    // Too big for one message.
+	}
 	return Exult_server::Send_data(fd, Exult_server::barge, buf, ptr - buf);
 }
 
@@ -273,9 +292,9 @@ bool Barge_object_in(
 		int& tx, int& ty, int& tz,       // Absolute tile coords.
 		int& shape, int& frame, int& xtiles, int& ytiles, int& dir) {
 	const unsigned char* ptr = data;
-	Serial_in            io(ptr);
+	Serial_in            io(ptr, data + datalen);
 	Barge_object_io(io, addr, tx, ty, tz, shape, frame, xtiles, ytiles, dir);
-	return (ptr - data) == datalen;
+	return !io.failed() && (ptr - data) == datalen;
 }
 
 /*
@@ -292,10 +311,13 @@ int Egg_object_out(
 		bool auto_reset, int data1, int data2, int data3, std::string str1) {
 	static unsigned char buf[Exult_server::maxlength];
 	unsigned char*       ptr = &buf[0];
-	Serial_out           io(ptr);
+	Serial_out           io(ptr, buf + sizeof(buf));
 	Egg_object_io(
 			io, addr, tx, ty, tz, shape, frame, type, criteria, probability, distance, nocturnal, once, hatched, auto_reset, data1,
 			data2, data3, str1);
+	if (io.failed()) {
+		return -1;    // Too big for one message.
+	}
 	return Exult_server::Send_data(fd, Exult_server::egg, buf, ptr - buf);
 }
 
@@ -313,11 +335,11 @@ bool Egg_object_in(
 		int& shape, int& frame, int& type, int& criteria, int& probability, int& distance, bool& nocturnal, bool& once,
 		bool& hatched, bool& auto_reset, int& data1, int& data2, int& data3, std::string& str1) {
 	const unsigned char* ptr = data;
-	Serial_in            io(ptr);
+	Serial_in            io(ptr, data + datalen);
 	Egg_object_io(
 			io, addr, tx, ty, tz, shape, frame, type, criteria, probability, distance, nocturnal, once, hatched, auto_reset, data1,
 			data2, data3, str1);
-	return (ptr - data) == datalen;
+	return !io.failed() && (ptr - data) == datalen;
 }
 
 /*
@@ -340,10 +362,13 @@ int Npc_actor_out(
 ) {
 	static unsigned char buf[Exult_server::maxlength];
 	unsigned char*       ptr = &buf[0];
-	Serial_out           io(ptr);
+	Serial_out           io(ptr, buf + sizeof(buf));
 	Npc_actor_io(
 			io, addr, tx, ty, tz, shape, frame, face, name, npc_num, ident, usecode, usecodefun, properties, attack_mode, alignment,
 			oflags, xflags, type_flags, num_schedules, schedules);
+	if (io.failed()) {
+		return -1;    // Too big for one message.
+	}
 	return Exult_server::Send_data(fd, Exult_server::npc, buf, ptr - buf);
 }
 
@@ -364,14 +389,14 @@ bool Npc_actor_in(
 		unsigned long&   xflags,           // Extra object flags.
 		unsigned long&   type_flags,       // Movement flags.
 		short&           num_schedules,    // # of schedule changes.
-		Serial_schedule* schedules         // Schedule changes.  Room for 8.
+		Serial_schedule* schedules         // Schedule changes.  Room for max_serial_schedules.
 ) {
 	const unsigned char* ptr = data;
-	Serial_in            io(ptr);
+	Serial_in            io(ptr, data + datalen);
 	Npc_actor_io(
 			io, addr, tx, ty, tz, shape, frame, face, name, npc_num, ident, usecode, usecodefun, properties, attack_mode, alignment,
 			oflags, xflags, type_flags, num_schedules, schedules);
-	return (ptr - data) == datalen;
+	return !io.failed() && (ptr - data) == datalen;
 }
 
 /*
@@ -410,8 +435,11 @@ int Game_info_out(
 ) {
 	static unsigned char buf[Exult_server::maxlength];
 	unsigned char*       ptr = &buf[0];
-	Serial_out           io(ptr);
+	Serial_out           io(ptr, buf + sizeof(buf));
 	Game_info_io(io, version, edit_lift, hide_lift, map_editing, tile_grid, map_modified, edit_mode);
+	if (io.failed()) {
+		return -1;    // Too big for one message.
+	}
 	return Exult_server::Send_data(fd, Exult_server::info, buf, ptr - buf);
 }
 
@@ -433,7 +461,7 @@ bool Game_info_in(
 		int&                 edit_mode        // Mode we're in.
 ) {
 	const unsigned char* ptr = data;
-	Serial_in            io(ptr);
+	Serial_in            io(ptr, data + datalen);
 	Game_info_io(io, version, edit_lift, hide_lift, map_editing, tile_grid, map_modified, edit_mode);
-	return (ptr - data) == datalen;
+	return !io.failed() && (ptr - data) == datalen;
 }
