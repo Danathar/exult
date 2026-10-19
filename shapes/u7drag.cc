@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
 
 #define FILE_URI "file://"
 static const size_t FileUriLen = strlen(FILE_URI);
@@ -39,11 +40,13 @@ static const size_t FileUriLen = strlen(FILE_URI);
  */
 static bool verify_is_uri(const unsigned char*& data, const char* searched_uri) {
 	const size_t urilen = strlen(searched_uri);
-	if (memcmp(data, searched_uri, urilen) == 0) {
+	// strncmp stops at the terminating NUL, so short dropped strings are not read past their end.
+	const char* text = reinterpret_cast<const char*>(data);
+	if (strncmp(text, searched_uri, urilen) == 0) {
 		data += urilen;
 		return true;
 	}
-	if (memcmp(data, searched_uri + FileUriLen, urilen - FileUriLen) == 0) {
+	if (strncmp(text, searched_uri + FileUriLen, urilen - FileUriLen) == 0) {
 		data += urilen - FileUriLen;
 		return true;
 	}
@@ -69,16 +72,27 @@ int Store_u7_shapeid(
 
 /*
  *  Retrieve a Shape : file, shape, frame.
+ *
+ *  Output: true if the text was well formed. On failure the outputs are not modified.
  */
 
-void Get_u7_shapeid(
+bool Get_u7_shapeid(
 		const unsigned char* data,
 		int&                 file,     // 0-0xff.
 		int&                 shape,    // 0-0xffff.
 		int&                 frame     // 0-0xff.
 ) {
 	const char* ptr = strchr(reinterpret_cast<const char*>(data), '.');
-	sscanf(ptr, ".%d.%d.%d", &file, &shape, &frame);
+	int         f;
+	int         s;
+	int         fr;
+	if (!ptr || sscanf(ptr, ".%d.%d.%d", &f, &s, &fr) != 3) {
+		return false;
+	}
+	file  = f;
+	shape = s;
+	frame = fr;
+	return true;
 }
 
 /*
@@ -104,14 +118,21 @@ int Store_u7_chunkid(
 
 /*
  *  Retrieve a Chunk : chunk.
+ *
+ *  Output: true if the text was well formed. On failure the output is not modified.
  */
 
-void Get_u7_chunkid(
+bool Get_u7_chunkid(
 		const unsigned char* data,
 		int&                 cnum    // 0-0xffff.
 ) {
 	const char* ptr = strchr(reinterpret_cast<const char*>(data), '.');
-	sscanf(ptr, ".%d", &cnum);
+	int         c;
+	if (!ptr || sscanf(ptr, ".%d", &c) != 1) {
+		return false;
+	}
+	cnum = c;
+	return true;
 }
 
 /*
@@ -137,14 +158,21 @@ int Store_u7_npcid(
 
 /*
  *  Retrieve an NPC.
+ *
+ *  Output: true if the text was well formed. On failure the output is not modified.
  */
 
-void Get_u7_npcid(
+bool Get_u7_npcid(
 		const unsigned char* data,
 		int&                 npcnum    // 0-0xffff.
 ) {
 	const char* ptr = strchr(reinterpret_cast<const char*>(data), '.');
-	sscanf(ptr, ".%d", &npcnum);
+	int         num;
+	if (!ptr || sscanf(ptr, ".%d", &num) != 1) {
+		return false;
+	}
+	npcnum = num;
+	return true;
 }
 
 /*
@@ -189,11 +217,12 @@ int Store_u7_comboid(
  *  Retrieve a Combo : x, y, right, below tiles, count of shapes -> each shape :
  * x, y, z, shape, frame.
  *
- *  Output: cnt  = count of shapes.
- *          ents = Allocated array of shapes with offsets relative to hot-spot.
+ *  Output: true if the text was well formed, else false (with cnt = 0 and ents = nullptr).
+ *          cnt  = count of shapes.
+ *          ents = Allocated (new[]) array of shapes with offsets relative to hot-spot.
  */
 
-void Get_u7_comboid(
+bool Get_u7_comboid(
 		const unsigned char* data,
 		int&                 xtiles,         // 0-0xffff : X - Footprint in tiles.
 		int&                 ytiles,         // 0-0xffff : Y - Footprint in tiles.
@@ -203,15 +232,44 @@ void Get_u7_comboid(
 		U7_combo_data*&      ents            // The members, with locations relative - can be
 											 // negative - to hot-spot.
 ) {
+	cnt  = 0;
+	ents = nullptr;
 	const char* ptr = strchr(reinterpret_cast<const char*>(data), '.');
-	int         n;
-	sscanf(ptr, ".%d.%d.%d.%d.%d%n", &xtiles, &ytiles, &tiles_right, &tiles_below, &cnt, &n);
+	if (!ptr) {
+		return false;
+	}
+	int n     = 0;
+	int xt    = 0;
+	int yt    = 0;
+	int right = 0;
+	int below = 0;
+	int count = 0;
+	if (sscanf(ptr, ".%d.%d.%d.%d.%d%n", &xt, &yt, &right, &below, &count, &n) != 5 || n <= 0) {
+		return false;
+	}
+	if (count < 0 || count > 0xffff) {    // Cap the allocation: the count comes from untrusted text.
+		return false;
+	}
 	ptr += n;
-	ents = new U7_combo_data[cnt];
-	for (int i = 0; i < cnt; i++) {
-		sscanf(ptr, ".%d.%d.%d.%d.%d%n", &ents[i].tx, &ents[i].ty, &ents[i].tz, &ents[i].shape, &ents[i].frame, &n);
+	std::unique_ptr<U7_combo_data[]> members(new U7_combo_data[count]());
+	for (int i = 0; i < count; i++) {
+		n = 0;
+		if (sscanf(
+					ptr, ".%d.%d.%d.%d.%d%n", &members[i].tx, &members[i].ty, &members[i].tz, &members[i].shape, &members[i].frame,
+					&n)
+					!= 5
+			|| n <= 0) {
+			return false;
+		}
 		ptr += n;
 	}
+	xtiles      = xt;
+	ytiles      = yt;
+	tiles_right = right;
+	tiles_below = below;
+	cnt         = count;
+	ents        = members.release();
+	return true;
 }
 
 /*

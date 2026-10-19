@@ -14,9 +14,9 @@ bundle: ${EXE_TARGET}
 	$(INSTALL_DATA) Info.plist $(bundle_name)/Contents/
 	$(INSTALL_PROGRAM) $< $(bundle_name)/Contents/MacOS/
 	$(INSTALL_DATA) $(srcdir)/macosx/exult.icns $(bundle_name)/Contents/Resources/
-	$(INSTALL_DATA) $(srcdir)/data/exult.flx $(bundle_name)/Contents/Resources/data
-	$(INSTALL_DATA) $(srcdir)/data/exult_bg.flx $(bundle_name)/Contents/Resources/data
-	$(INSTALL_DATA) $(srcdir)/data/exult_si.flx $(bundle_name)/Contents/Resources/data
+	$(INSTALL_DATA) $(top_builddir)/data/exult.flx $(bundle_name)/Contents/Resources/data
+	$(INSTALL_DATA) $(top_builddir)/data/exult_bg.flx $(bundle_name)/Contents/Resources/data
+	$(INSTALL_DATA) $(top_builddir)/data/exult_si.flx $(bundle_name)/Contents/Resources/data
 	$(INSTALL_DATA) $(srcdir)/AUTHORS $(bundle_name)/Contents/Documents
 	$(INSTALL_DATA) $(srcdir)/COPYING $(bundle_name)/Contents/Documents
 	$(INSTALL_DATA) $(srcdir)/FAQ $(bundle_name)/Contents/Documents

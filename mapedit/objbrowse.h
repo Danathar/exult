@@ -99,6 +99,16 @@ public:
 		return -1;
 	}
 
+	// Position in our group of the selected item, or -1.  (The selected
+	// index is into the displayed entries, which may differ from the group.)
+	int get_selected_group_index();
+
+	// Index of displayed entry for given ID, or -1.
+	virtual int find_id_index(int id) {
+		ignore_unused_variable_warning(id);
+		return -1;
+	}
+
 	virtual bool server_response(int id, unsigned char* data, int datalen);
 	virtual void end_terrain_editing();
 	virtual void set_background_color(guint32 c);

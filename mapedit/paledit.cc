@@ -808,18 +808,17 @@ void Palette_edit::import_palette(const char* fname, gpointer user_data) {
 	// Read in current palette.
 	ExultRgbCmap* pal = paled->palettes[paled->cur_pal];
 	ifstream      in(fname);    // OKAY that it's a 'text' file.
-	char          buf[256];
-	in.getline(buf, sizeof(buf));    // Skip 1st line.
-	if (!in.good()) {
+	string        line;
+	if (!std::getline(in, line)) {    // Skip 1st line.
 		Alert("Error reading '%s'", fname);
 		return;
 	}
 	int i = 0;    // Color #.
-	while (i < 256 && !in.eof()) {
-		in.getline(buf, sizeof(buf));
-		char* ptr = &buf[0];
+	// Lines of any length are fine; stops at end of file or on error.
+	while (i < 256 && std::getline(in, line)) {
+		const char* ptr = line.c_str();
 		// Skip spaces.
-		while (ptr < buf + sizeof(buf) && *ptr && isspace(static_cast<unsigned char>(*ptr))) {
+		while (*ptr && isspace(static_cast<unsigned char>(*ptr))) {
 			ptr++;
 		}
 		if (*ptr == '#') {
@@ -828,7 +827,7 @@ void Palette_edit::import_palette(const char* fname, gpointer user_data) {
 		int r;
 		int g;
 		int b;
-		if (sscanf(buf, "%d %d %d", &r, &g, &b) == 3) {
+		if (sscanf(ptr, "%d %d %d", &r, &g, &b) == 3) {
 			pal->colors[i++] = (r << 16) + (g << 8) + b;
 		}
 	}
