@@ -107,6 +107,30 @@ TEST(rmdir_recursive_does_not_follow_symlinks) {
 	U7remove((outside + "/keep.txt").c_str());
 	CHECK_EQ(U7rmdir(outside.c_str(), false), 0);
 }
+
+TEST(rmdir_recursive_treats_wildcards_literally) {
+	// A mod zip picks its own directory name, so "*" or "[o]ther" must name
+	// only that directory, never its siblings.
+	const std::string root = "unit_rmdir_glob";
+	U7rmdir(root.c_str(), true);
+	CHECK_EQ(U7mkdir((root + "/other/sub").c_str(), 0755, true), 0);
+	const char* const names[] = {"/*", "/[o]ther", "/?ther"};
+	for (const char* name : names) {
+		CHECK_EQ(U7mkdir((root + name + "/sub").c_str(), 0755, true), 0);
+		auto out = U7open_out((root + name + "/sub/x.txt").c_str(), true);
+		*out << "x";
+	}
+	{
+		auto out = U7open_out((root + "/other/sub/keep.txt").c_str(), true);
+		*out << "keep";
+	}
+	for (const char* name : names) {
+		CHECK_EQ(U7rmdir((root + name).c_str(), true), 0);
+		CHECK(!U7exists(root + name));
+		CHECK(U7exists(root + "/other/sub/keep.txt"));
+	}
+	CHECK_EQ(U7rmdir(root.c_str(), true), 0);
+}
 #endif
 
 TEST(open_missing_file_throws) {
