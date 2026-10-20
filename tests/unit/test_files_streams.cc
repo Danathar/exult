@@ -13,6 +13,7 @@
 #include <string>
 
 #ifndef _WIN32
+#	include <sys/stat.h>
 #	include <unistd.h>
 #endif
 
@@ -130,6 +131,31 @@ TEST(rmdir_recursive_treats_wildcards_literally) {
 		CHECK(U7exists(root + "/other/sub/keep.txt"));
 	}
 	CHECK_EQ(U7rmdir(root.c_str(), true), 0);
+}
+
+TEST(rmdir_recursive_removes_symlinked_root_not_target) {
+	const std::string link    = "unit_rmdir_root_link";
+	const std::string outside = "unit_rmdir_root_target";
+	// unlink(), not U7rmdir(): a link left by a failed run must not be followed.
+	unlink(link.c_str());
+	U7rmdir(outside.c_str(), true);
+	CHECK_EQ(U7mkdir(outside.c_str()), 0);
+	{
+		auto out = U7open_out((outside + "/keep.txt").c_str(), true);
+		*out << "keep";
+	}
+	// The directory being deleted is itself a link to another directory,
+	// named with and without a trailing '/'.
+	for (const std::string& path : {link, link + "/"}) {
+		CHECK_EQ(symlink(outside.c_str(), link.c_str()), 0);
+		CHECK_EQ(U7rmdir(path.c_str(), true), 0);
+		struct stat st;
+		CHECK(lstat(link.c_str(), &st) != 0);
+		// The link went, what it pointed to did not.
+		CHECK(U7exists(outside + "/keep.txt"));
+	}
+	U7remove((outside + "/keep.txt").c_str());
+	CHECK_EQ(U7rmdir(outside.c_str(), false), 0);
 }
 #endif
 
