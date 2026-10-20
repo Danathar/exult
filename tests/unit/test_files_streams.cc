@@ -145,8 +145,8 @@ TEST(rmdir_recursive_removes_symlinked_root_not_target) {
 		*out << "keep";
 	}
 	// The directory being deleted is itself a link to another directory,
-	// named with and without a trailing '/'.
-	for (const std::string& path : {link, link + "/"}) {
+	// however the name ends (a mod's cfg may spell the patch path "dir/.").
+	for (const std::string& path : {link, link + "/", link + "/.", link + "/./", link + "//./."}) {
 		CHECK_EQ(symlink(outside.c_str(), link.c_str()), 0);
 		CHECK_EQ(U7rmdir(path.c_str(), true), 0);
 		struct stat st;

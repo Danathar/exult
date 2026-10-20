@@ -526,10 +526,17 @@ int U7rmdir(const char* dirname, bool recursive) {
 #ifndef _WIN32
 		// The directory itself may be a symbolic link. Listing name + "/*"
 		// would follow it and delete the files it points to, so remove the
-		// link instead. A trailing '/' would make lstat() follow it too.
+		// link instead. A trailing '/' or "/." would make lstat() follow it
+		// too, so strip those first.
 		string root = name;
-		while (root.size() > 1 && root.back() == '/') {
-			root.pop_back();
+		for (;;) {
+			if (root.size() > 1 && root.back() == '/') {
+				root.pop_back();
+			} else if (root.size() > 2 && root.compare(root.size() - 2, 2, "/.") == 0) {
+				root.resize(root.size() - 2);
+			} else {
+				break;
+			}
 		}
 		struct stat root_st;
 		if (lstat(root.c_str(), &root_st) == 0 && S_ISLNK(root_st.st_mode)) {
