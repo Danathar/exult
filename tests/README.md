@@ -6,10 +6,11 @@ data or a display.
 ## Unit tests: `tests/run-unit-tests.sh`
 
 Builds `tests/unit/*.cc` together with a handful of SDL-free product sources
-(`istring.cc`, `files/utils.cc`, `files/listfiles.cc`, `files/crc.cc`,
-`files/sha1/sha1.cpp`) and the headers `rect.h`, `hash_utils.h`,
+(`istring.cc`, `files/utils.cc`, `files/listfiles.cc`, `files/msgfile.cc`,
+`files/crc.cc`, `files/sha1/sha1.cpp`) and the headers `rect.h`, `hash_utils.h`,
 `files/databuf.h`, `files/endianio.h`, then runs them. It needs only a C++17
-compiler; autotools is not involved.
+compiler; autotools is not involved. The build defines `_GLIBCXX_ASSERTIONS`,
+so an out-of-range `std::string_view` or `std::vector` access aborts the run.
 
 ```sh
 tests/run-unit-tests.sh                 # g++
