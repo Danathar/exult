@@ -14,7 +14,10 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build="${BUILD_DIR:-${TMPDIR:-/tmp}/exult-unit-tests}"
 cxx="${CXX:-g++}"
 
-flags=(-DEXULT_DATADIR=\"/usr/share/exult\" -std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter -Werror=return-type)
+# _GLIBCXX_ASSERTIONS turns an out-of-range std::string_view / std::vector
+# access into an abort instead of a silent out-of-bounds read, so a bounds bug
+# fails the test even when the bytes it reads happen to give the right answer.
+flags=(-DEXULT_DATADIR=\"/usr/share/exult\" -D_GLIBCXX_ASSERTIONS -std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter -Werror=return-type)
 if [ "${COVERAGE:-0}" = 1 ]; then
 	flags+=(--coverage)
 fi
@@ -26,6 +29,7 @@ sources=(
 	"$root/istring.cc"
 	"$root/files/utils.cc"
 	"$root/files/listfiles.cc"
+	"$root/files/msgfile.cc"
 	"$root/files/crc.cc"
 	"$root/files/sha1/sha1.cpp"
 	"$root/conf/Configuration.cc"
