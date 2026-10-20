@@ -1308,18 +1308,19 @@ const WRAPPER_VALUE_OPTS = {
     ionice: ['-c', '-n', '-p', '-P', '-u', '--class', '--classdata', '--pid', '--pgid', '--uid'],
     time: ['-f', '--format', '-o', '--output'],
     exec: ['-a'],
-    flock: ['-w', '--timeout', '--wait', '-E', '--conflict-exit-code'],
+    flock: ['-w', '--timeout', '--wait', '-E', '--conflict-exit-code', '--start', '--length'],
     watch: ['-n', '--interval', '-q', '--equexit', '--eqexit', '-s', '--shotsdir'],
     chrt: ['-T', '--sched-runtime', '-P', '--sched-period', '-D', '--sched-deadline'],
     unshare: [
-        '-S', '--setuid', '-G', '--setgid', '-R', '--root', '-w', '--wd', '--propagation', '--setgroups', '--monotonic',
-        '--boottime', '--map-user', '--map-group', '--map-users', '--map-groups',
+        '-S', '--setuid', '-G', '--setgid', '-R', '--root', '-w', '--wd', '-l', '--load-interp', '--owner', '--propagation',
+        '--setgroups', '--monotonic', '--boottime', '--map-user', '--map-group', '--map-users', '--map-groups',
     ],
-    nsenter: ['-t', '--target', '-S', '--setuid', '-G', '--setgid', '-W', '--wdns', '-N', '--net-socket'],
+    // nsenter's -W/--wdns value is optional (`-W/path`, `--wdns=/path`), so the next word is never it.
+    nsenter: ['-t', '--target', '-S', '--setuid', '-G', '--setgid', '-N', '--net-socket'],
     setpriv: [
         '--ambient-caps', '--inh-caps', '--bounding-set', '--ruid', '--euid', '--rgid', '--egid', '--reuid', '--regid',
         '--groups', '--securebits', '--pdeathsig', '--selinux-label', '--apparmor-profile', '--landlock-access',
-        '--landlock-rule', '--seccomp-filter',
+        '--landlock-rule', '--seccomp-filter', '--ptracer',
     ],
     chroot: ['--userspec', '--groups'],
 };
@@ -1345,6 +1346,45 @@ const WRAPPER_GETOPT = {
     xargs: { value: 'adEILnPs', optional: 'eil', long: ['arg-file', 'delimiter', 'eof', 'replace', 'max-lines', 'max-args', 'max-procs', 'max-chars', 'process-slot-var', 'null', 'open-tty', 'interactive', 'no-run-if-empty', 'verbose', 'exit', 'show-limits'] },
     time: { value: 'fo', long: ['format', 'output', 'append', 'verbose', 'portability', 'quiet'] },
     exec: { value: 'a', long: [] },
+    flock: {
+        value: 'wE',
+        long: ['shared', 'exclusive', 'unlock', 'nonblocking', 'nb', 'timeout', 'wait', 'conflict-exit-code', 'close', 'no-fork', 'verbose', 'fcntl', 'start', 'length', 'help', 'version'],
+    },
+    watch: {
+        value: 'nqs',
+        optional: 'd',
+        long: ['color', 'no-color', 'differences', 'help', 'interval', 'beep', 'errexit', 'follow', 'chgexit', 'equexit', 'exec', 'precise', 'no-rerun', 'shotsdir', 'no-title', 'no-wrap', 'version'],
+    },
+    chrt: {
+        value: 'DPT',
+        long: ['all-tasks', 'batch', 'deadline', 'ext', 'fifo', 'idle', 'pid', 'help', 'max', 'other', 'rr', 'sched-runtime', 'sched-period', 'sched-deadline', 'reset-on-fork', 'verbose', 'version'],
+    },
+    taskset: { value: '', long: ['all-tasks', 'pid', 'cpu-list', 'help', 'version'] },
+    unshare: {
+        value: 'RwSGl',
+        long: [
+            'help', 'version', 'mount', 'uts', 'ipc', 'net', 'pid', 'user', 'cgroup', 'time', 'fork', 'kill-child', 'forward-signals', 'mount-proc',
+            'mount-binfmt', 'map-user', 'map-users', 'map-group', 'map-groups', 'map-root-user', 'map-current-user', 'map-auto', 'map-subids',
+            'owner', 'propagation', 'setgroups', 'keep-caps', 'monotonic', 'boottime', 'load-interp', 'setuid', 'setgid', 'root', 'wd',
+        ],
+    },
+    nsenter: {
+        value: 'tNSG',
+        optional: 'muinpCUTrwW',
+        long: [
+            'all', 'help', 'version', 'target', 'mount', 'uts', 'ipc', 'net', 'net-socket', 'pid', 'user', 'cgroup', 'time', 'setuid', 'setgid',
+            'root', 'wd', 'wdns', 'env', 'no-fork', 'join-cgroup', 'preserve-credentials', 'keep-caps', 'user-parent', 'follow-context',
+        ],
+    },
+    setpriv: {
+        value: '',
+        long: [
+            'dump', 'nnp', 'no-new-privs', 'inh-caps', 'ambient-caps', 'list-caps', 'ruid', 'euid', 'rgid', 'egid', 'reuid', 'regid', 'clear-groups',
+            'keep-groups', 'init-groups', 'groups', 'bounding-set', 'securebits', 'pdeathsig', 'ptracer', 'selinux-label', 'apparmor-profile',
+            'landlock-access', 'landlock-rule', 'seccomp-filter', 'help', 'reset-env', 'version',
+        ],
+    },
+    chroot: { value: '', long: ['groups', 'userspec', 'skip-chdir', 'help', 'version'] },
 };
 
 /**
