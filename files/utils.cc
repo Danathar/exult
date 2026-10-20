@@ -525,10 +525,23 @@ int U7rmdir(const char* dirname, bool recursive) {
 	if (recursive) {
 		// Get contents if recrusive
 		FileList files;
-		U7ListFiles(name + "/*", files, true);
+#ifdef _WIN32
+		const string& pattern = name;
+#else
+		// glob() expands wildcards in every component, so a directory named
+		// "*" would otherwise list (and delete) its siblings' contents.
+		string pattern;
+		for (const char c : name) {
+			if (c == '*' || c == '?' || c == '[' || c == '\\') {
+				pattern += '\\';
+			}
+			pattern += c;
+		}
+#endif
+		U7ListFiles(pattern + "/*", files, true);
 #ifndef _WIN32
 		// glob() leaves out names starting with '.'; FindFirstFile does not.
-		U7ListFiles(name + "/.*", files, true);
+		U7ListFiles(pattern + "/.*", files, true);
 #endif
 
 		for (const auto& filename : files) {
