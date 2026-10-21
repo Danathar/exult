@@ -25,6 +25,12 @@ on the engine and its tooling, including with AI agents under guardrails (see
 
 ## Ground rules
 
+- **Follow upstream's contribution guidelines** on original engine code,
+  decompilations and AI use: do not use or link original engine source,
+  leaked source or decompiled/disassembled executables, do not feed them to AI
+  tools, and say what AI did and what you checked yourself. Fixes here are
+  candidates to send upstream, so they must meet those rules. A copy of the
+  guidelines is in [docs/upstream-contributing.md](docs/upstream-contributing.md).
 - **Never commit Ultima VII game data or copyrighted assets**: the original
   `static/`, `gamedat/`, `*.flx` files and anything from the original games.
   Exult needs the player's own copy of the games; tests and CI must not.
