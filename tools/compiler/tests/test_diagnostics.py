@@ -373,6 +373,50 @@ void example 0x901 () { var callback = &helper; script item call callback; }
         self.assert_failed(self.compile("void example 0x900 () {}\n", "-Wtypo"),
                            "unknown warning option '-Wtypo'")
 
+    def test_help_does_not_compile_or_touch_output(self):
+        self.output.write_bytes(b'previous successful build')
+        result = self.run_ucc('-h', '-o', str(self.output), 'nonexistent.uc')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('Usage: ucc [OPTIONS] [FILE]', result.stdout)
+        self.assertIn('Warning categories', result.stdout)
+        self.assertIn('function-id-alias', result.stdout)
+        self.assertIn('disabled by default', result.stdout)
+        self.assertIn('UCC_INCLUDE', result.stdout)
+        self.assertIn('a.ucout', result.stdout)
+        self.assertIn('Examples:', result.stdout)
+        self.assertNotIn('error:', result.stdout)
+        self.assertNotIn('Usecode successfully compiled', result.stdout)
+        self.assertEqual(self.output.read_bytes(), b'previous successful build')
+        self.assertEqual(sorted(path.name for path in self.directory.iterdir()), ['output.uco'])
+
+    def test_help_uses_stdout_even_with_forced_color(self):
+        result = subprocess.run([UCC, '-c', 'always', '-h'], input='',
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, cwd=str(self.directory), timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Usage: ucc', result.stdout)
+        self.assertEqual(result.stderr, '')
+        self.assertNotIn('\033[', result.stdout)
+        self.assertEqual(list(self.directory.iterdir()), [])
+
+    def test_command_line_errors_suggest_help(self):
+        for arguments in (('-Q',), ('--unknown-option',), ('-o',), ('-I',),
+                          ('-c',), ('-W',), ('-c', 'sometimes'), ('-Wtypo',),
+                          ('first.uc', 'second.uc')):
+            with self.subTest(arguments=arguments):
+                result = self.run_ucc(*arguments)
+                self.assert_failed(result, "Try 'ucc -h' for more information.")
+                self.assertIn('error:', result.stdout)
+                self.assertNotIn('Usage:', result.stdout)
+
+    def test_option_terminator_allows_hyphenated_input(self):
+        source = self.directory / '-h'
+        source.write_text('void example 0x900 () {}\n', encoding='ascii')
+        result = self.run_ucc('-o', str(self.output), '--', '-h')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertTrue(self.output.exists())
+        self.assertNotIn('Usage:', result.stdout)
+
     def test_unknown_option(self):
         self.assert_failed(self.run_ucc("-Q"), "unknown option '-Q'")
 

@@ -6,6 +6,8 @@ The standalone location test checks nested context-stack growth, restoration dur
 
 The suite checks diagnostic locations and excerpts, include and line-directive handling, color controls, invalid command-line options, failure exit status, statement recovery, restoration of parser and lexer contexts, and warning controls. Warning suppression must preserve bytecode and must not suppress hard errors. Recovery tests include independent errors in following statements and functions to detect premature termination and state leakage.
 
+Command-line tests also check detailed `-h` help on stdout, successful exit without opening the source or touching output, help hints for invalid options and arguments, and `--` handling for filenames beginning with a hyphen.
+
 For compiler changes, also compile `tools/compiler/test1.uc`, BG Keyring's `content/bgkeyring/src/usecode.uc`, and SI Fixes' `content/sifixes/src/usecode.uc`, each with its corresponding include directory and a temporary output path. Compare their diagnostics and bytecode against the baseline for changes that should not affect code generation. `test1.uc` deliberately triggers warnings.
 
 Recovery synchronizes statements, global declarations, and class/struct members at semicolons and closing braces. Recovery restores lexer modes and parser declaration/scope state. A malformed signature can be discarded so later declarations are checked. Missing semicolons after complete declarations can retain the next declaration; incomplete expressions can require discarding through the next delimiter.

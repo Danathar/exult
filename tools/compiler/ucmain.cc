@@ -53,6 +53,81 @@ extern std::vector<Uc_design_unit*> units;
 
 std::vector<char*> include_dirs;    // -I directories.
 
+static void print_help() {
+	std::cout << R"(Usage: ucc [OPTIONS] [FILE]
+Compile Exult Usecode source into bytecode.
+
+Input and output:
+  FILE                  Read one source file; omit FILE to read standard input.
+  -o FILE               Write bytecode to FILE. Without -o, replace the input
+                        filename's extension with .uco (or append .uco if it
+                        has no extension). Standard input defaults to a.ucout.
+  -I DIRECTORY          Add an include search directory. May be repeated.
+                        UCC_INCLUDE adds one further include directory.
+  -s                    Select Serpent Isle intrinsics. A source #game directive
+                        overrides this choice; otherwise Black Gate is assumed
+                        when no game is selected.
+  -b                    Omit the symbol table from the output.
+
+Diagnostics:
+  -c MODE               Color diagnostics: always, never, or auto (the default).
+                        Auto enables color when standard error is a terminal.
+  -WNAME                Enable warning category NAME; -W NAME also works.
+  -Wno-NAME             Disable warning category NAME.
+  -Wall                 Enable all warning categories, including optional ones.
+  -Wno-all              Disable all warning categories.
+  -Werror               Treat enabled warnings as errors; does not enable them.
+  -Wno-error            Restore ordinary severity, except explicit -Werror=NAME.
+  -Werror=NAME          Enable category NAME and treat its warnings as errors.
+  -Wno-error=NAME       Exempt category NAME from -Werror; does not enable it.
+  -u                    Disable all warning categories (same as -Wno-all).
+
+Warning categories (enabled by default except function-id-alias):
+  goto                  Use of goto statements.
+  integer-coercion      Integer literal range and signedness conversions.
+  shape-to-function     Shape/function ID conversions and unverified script calls.
+  constant-condition    Conditions whose result is known at compile time.
+  unreachable-code      Statements that cannot be reached.
+  implicit-return-type  Function declarations without an explicit return type.
+  implicit-function-kind
+                        Function IDs implicitly treated as shape# or object#.
+  autonumber            Automatic function IDs without an #autonumber directive.
+  missing-game          Intrinsics used without selecting a game.
+  missing-itemref       Object/shape function calls without an explicit item.
+  constructor-arguments Missing class constructor arguments, filled with zero.
+  unknown-directives    Unrecognized source directives.
+  unknown-escape-sequence
+                        Unrecognized escape sequences in strings.
+  function-id-alias     Compatible declarations with different names sharing an
+                        explicit function ID (disabled by default).
+  general               Warnings without a more specific category.
+
+Warning options are processed in order. An explicit per-category severity
+overrides the global -Werror/-Wno-error setting. Disabling warnings never
+disables hard errors.
+
+Other options:
+  -h                    Display this help and exit successfully, without
+                        compiling or writing output.
+  --                    End options, for example: ucc -- -source.uc
+
+Examples:
+  ucc -o example.uco example.uc
+  ucc -I content/bgkeyring/src -o usecode content/bgkeyring/src/usecode.uc
+  ucc -Werror -Wno-error=goto -o example.uco example.uc
+  ucc -o example.uco < example.uc
+
+Diagnostics go to standard error; help and compilation status go to standard
+output. Exit status is zero on success and nonzero on failure. Compilation
+errors preserve any previous output file.
+)";
+}
+
+static int command_line_failure() {
+	std::cerr << "Try 'ucc -h' for more information.\n";
+	return EXIT_FAILURE;
+}
+
 static void compilation_status(const std::string& message, bool success) {
 	if (Uc_location::get_color_output()) {
 		std::cout << (success ? "\033[1;32m" : "\033[1;31m");
@@ -75,13 +150,16 @@ int main(int argc, char** argv) try {
 	std::string                 outbuf;
 	const char*                 outname        = nullptr;
 	bool                        want_sym_table = true;
-	static const char*          optstring      = "o:I:sbc:uW:";
+	static const char*          optstring      = "ho:I:sbc:uW:";
 	Uc_function::Intrinsic_type ty             = Uc_function::unset;
 	opterr                                     = 0;    // Don't let getopt() print errs.
 	Uc_location::set_color_output(isatty(fileno(stderr)));
 	int optchr;
 	while ((optchr = getopt(argc, argv, optstring)) != -1) {
 		switch (optchr) {
+		case 'h':
+			print_help();
+			return EXIT_SUCCESS;
 		case 'o':    // Output to write.
 			outname = optarg;
 			break;
@@ -97,7 +175,7 @@ int main(int argc, char** argv) try {
 				Uc_location::set_color_output(isatty(fileno(stderr)));
 			} else {
 				std::cerr << "error: invalid color mode '" << optarg << "'; expected 'always', 'never', or 'auto'\n";
-				return 1;
+				return command_line_failure();
 			}
 			break;
 		case 's':
@@ -109,7 +187,7 @@ int main(int argc, char** argv) try {
 		case 'W':
 			if (!Uc_location::set_warning_option(optarg)) {
 				std::cerr << "error: unknown warning option '-W" << optarg << "'\n";
-				return EXIT_FAILURE;
+				return command_line_failure();
 			}
 			break;
 		case 'u':
@@ -130,13 +208,13 @@ int main(int argc, char** argv) try {
 					std::cerr << "error: unknown option '-" << static_cast<char>(optopt) << "'\n";
 				}
 			}
-			return EXIT_FAILURE;
+			return command_line_failure();
 		}
 		}
 	}
 	if (argc - optind > 1) {
 		std::cerr << "error: expected a single input file\n";
-		return EXIT_FAILURE;
+		return command_line_failure();
 	}
 	char* env = getenv("UCC_INCLUDE");
 	if (env) {
