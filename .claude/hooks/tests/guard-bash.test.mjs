@@ -149,6 +149,13 @@ const allowed = [
     'rm -f build/*.o',
     'rm -f *.o',
     'rm -rf ../exult-build',
+    // Behind a program this hook does not list, a command that passes alone
+    // still passes, and programs that only print or look up words are not read.
+    'setarch x86_64 git status',
+    'strace -f git log -1',
+    'which sudo',
+    "grep -rn 'git push --force' docs",
+    'setarch x86_64 less CMakeLists.txt',
 ];
 
 const blocked = [
@@ -621,6 +628,20 @@ const blocked = [
     // issue transfer names the destination as a positional OWNER/REPO (#71)
     'gh issue transfer 5 exult/exult -R Danathar/exult',
     'gh issue transfer 5 Danathar/other --repo Danathar/exult',
+    // any other program that runs the words after it, or hands a shell one
+    // string: what it would run is checked as though it stood alone
+    'setarch x86_64 sudo true',
+    'setarch x86_64 git push --force origin feature',
+    'prlimit --nofile=1024 git push --force origin feature',
+    'strace -o log git diff --no-index /dev/null .env',
+    'linux64 gh pr merge 5',
+    'faketime now dnf install -y x',
+    'setarch x86_64 gh issue create --title t --body b',
+    'GIT_EXTERNAL_DIFF=x setarch x86_64 git diff',
+    'script -qc "git push --force origin feature" /dev/null',
+    "script -qc'sudo id' /dev/null",
+    "script --command='sudo id' /dev/null",
+    `setarch x86_64 ${'git status '.repeat(9)}`,
 ];
 
 for (const command of allowed) {
@@ -702,4 +723,21 @@ test('pushing HEAD or no refspec is blocked on master and allowed on other branc
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }
+});
+
+test('behind an unlisted program the refusal names the program', () => {
+    const r = run('setarch x86_64 sudo true');
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /guard-bash: Blocked: `setarch` runs a command/);
+});
+
+test('a command still being read past the budget is refused, not left to the hook timeout', () => {
+    // Every tail of a long short-option cluster is read, which grows with the
+    // square of the word, and Claude Code runs the command when the hook times out.
+    const code = `import { main } from ${JSON.stringify(HOOK)}; main(undefined, 1);`;
+    const command = `true -${'a'.repeat(20000)}cgit log`;
+    const input = JSON.stringify({ tool_name: 'Bash', tool_input: { command } });
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { input, encoding: 'utf8' });
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /could not finish checking the command within/);
 });
