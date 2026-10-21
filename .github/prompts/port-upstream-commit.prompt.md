@@ -16,7 +16,12 @@ change the owner asked for.
    in the commit message (original author and upstream commit SHA) and the
    original file license headers.
 3. Check that it still applies to this fork's code, does not conflict with
-   fork-only files, and does not pull in game data.
+   fork-only files, and does not pull in game data. Where it touches a file
+   listed in `docs/fork-delta.md`, resolve against that row the way
+   `sync-from-upstream` step 3 says (upstream fixed the same bug: take
+   upstream's; changed something nearby: combine both; never fixed it: keep
+   ours), and update the row in this PR: drop the files upstream's version
+   now covers, or say in the reason what is still carried.
 4. Run `tests/run-unit-tests.sh` (and `tests/e2e/run.sh` where relevant).
 5. Sign off the commit (`git commit -s`) and open the PR with
    `gh pr create --repo Danathar/exult --base master --head <branch>`, citing
