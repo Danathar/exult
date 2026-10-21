@@ -187,7 +187,6 @@ cat > "$work/fold_wrap.uc" <<'UC'
 const int a = -2147483648;
 const int b = 2147483647 + 1;
 const int c = 0 - (-2147483647 - 1);
-const int d = (-2147483647 - 1) / -1;
 
 var wrap ()
 {
@@ -195,6 +194,13 @@ var wrap ()
 }
 UC
 ucc_accepts fold_wrap "constant expressions that overflow 32 bits"
+
+# INT32_MIN / -1 and INT32_MIN % -1 are reported as overflow errors (upstream exult#1059).
+printf 'const int d = (-2147483647 - 1) / -1;\n' > "$work/fold_div_overflow.uc"
+ucc_rejects fold_div_overflow "a constant division that overflows 32 bits"
+
+printf 'const int m = (-2147483647 - 1) %% -1;\n' > "$work/fold_mod_overflow.uc"
+ucc_rejects fold_mod_overflow "a constant remainder that overflows 32 bits"
 
 # --- expack ------------------------------------------------------------
 mkdir "$work/in" "$work/out"
