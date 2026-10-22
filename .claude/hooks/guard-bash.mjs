@@ -104,7 +104,11 @@
 // segments on && || ; | & newlines, subshells and command substitutions;
 // shell -c, eval, watch and `flock FILE -c` strings are analysed recursively.
 // Quoted text is data, so a quoted "sudo" inside an `echo` or a read-only
-// command is fine.
+// command is fine. A command name is read the way the shell builds it:
+// `$'...'` escapes and `$"..."` are decoded (`$'\x67it'` is git), a brace group
+// that can expand to a checked command is refused (`{git,} diff ...`), and a
+// glob in a path is checked as each checked command it can match
+// (`/usr/bin/g?t diff ...` as `git diff ...`), also behind any other program.
 
 import { basename, resolve } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
@@ -356,6 +360,15 @@ export function tokenize(input) {
             const stop = end === -1 ? input.length : end + 1;
             append(input.slice(i, stop));
             i = stop;
+        } else if (c === '$' && input[i + 1] === "'") {
+            // ANSI-C quoting: the shell decodes the escapes and runs what they
+            // spell, so `$'git'` and `$'\x67it'` are both git.
+            const { text, next } = readAnsiC(input, i + 2);
+            append(text);
+            i = next;
+        } else if (c === '$' && input[i + 1] === '"') {
+            // Locale quoting: `$"git"` is the double-quoted string "git".
+            i++;
         } else if (c === '$' && input[i + 1] === '(') {
             const end = closeParen(input, i + 2);
             append(input.slice(i, end));
@@ -369,6 +382,46 @@ export function tokenize(input) {
     return segments;
 }
 
+// What each one-letter escape in `$'...'` stands for; see readAnsiC().
+const ANSI_C_ESCAPES = {
+    a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v',
+    '\\': '\\', "'": "'", '"': '"', '?': '?',
+};
+
+/**
+ * Decode the body of an ANSI-C quoted string `$'...'` that starts at `i` (just
+ * past the opening quote), as bash does: one-letter escapes, `\NNN` octal,
+ * `\xHH`, `\uHHHH`, `\UHHHHHHHH` and `\cX`. Bash ends the string at a NUL. An
+ * escape it does not know keeps its backslash. Returns { text, next } (next =
+ * index after the closing quote).
+ */
+function readAnsiC(input, i) {
+    let text = '';
+    let ended = false;
+    while (i < input.length && input[i] !== "'") {
+        let ch = input[i++];
+        if (ch === '\\' && i < input.length) {
+            const e = input[i++];
+            const digits = (re) => {
+                const m = re.exec(input.slice(i));
+                if (m) i += m[0].length;
+                return m?.[0];
+            };
+            let hex;
+            if (e in ANSI_C_ESCAPES) ch = ANSI_C_ESCAPES[e];
+            else if (/[0-7]/.test(e)) ch = String.fromCharCode(parseInt(e + (digits(/^[0-7]{1,2}/) ?? ''), 8) & 0xff);
+            else if (e === 'x' && (hex = digits(/^[0-9a-fA-F]{1,2}/))) ch = String.fromCharCode(parseInt(hex, 16));
+            else if (e === 'u' && (hex = digits(/^[0-9a-fA-F]{1,4}/))) ch = String.fromCodePoint(parseInt(hex, 16));
+            else if (e === 'U' && (hex = digits(/^[0-9a-fA-F]{1,8}/))) ch = String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff));
+            else if (e === 'c' && i < input.length) ch = String.fromCharCode(input.charCodeAt(i++) & 0x1f);
+            else ch = `\\${e}`;
+        }
+        if (ch === '\0') ended = true;
+        if (!ended) text += ch;
+    }
+    return { text, next: i + 1 };
+}
+
 /**
  * Find the bodies of $(...) and `...` substitutions, including ones inside
  * double quotes (but not single quotes), so they can be analysed as commands.
@@ -377,12 +430,17 @@ export function extractSubstitutions(input) {
     const found = [];
     let inSingle = false;
     let inDouble = false;
+    // In `$'...'` a backslash escapes the next character, `\'` included, so
+    // `$'it\'s' $(cmd)` ends its quote before the substitution.
+    let ansiC = false;
+    let escaped = -1; // index of the last character a backslash escaped
     const pending = []; // heredocs started on the current line
     for (let i = 0; i < input.length; i++) {
         const c = input[i];
-        if (c === '\\' && !inSingle) {
-            i++;
+        if (c === '\\' && (!inSingle || ansiC)) {
+            escaped = ++i;
         } else if (c === "'" && !inDouble) {
+            ansiC = !inSingle && input[i - 1] === '$' && escaped !== i - 1;
             inSingle = !inSingle;
         } else if (c === '"' && !inSingle) {
             inDouble = !inDouble;
@@ -1615,7 +1673,97 @@ const ANALYSED = new Set([
 /** Whether this word names a command checkSegment() checks or looks through. */
 function namesCheckedCommand(a) {
     const name = basename(a);
-    return ANALYSED.has(name) || PRIVILEGE.has(name) || ['find', 'watch', 'flock'].includes(name);
+    return ANALYSED.has(name) || PRIVILEGE.has(name) || ['find', 'watch', 'flock'].includes(name) || spelledNames(a).names.length > 0;
+}
+
+// A command name the shell builds before it looks it up (#257). Bash expands
+// brace groups (`{git,}` is git, the empty alternative dropped; `{git,diff}` is
+// `git diff`; `{f..h}it` holds git) and, in a word with a `/`, globs
+// (`/usr/bin/g?t` is /usr/bin/git), so the word this hook reads is not the
+// program that runs. A glob with no `/` matches files in the working directory
+// and a last part that is only `*` matches whatever the directory holds, not
+// one name, so neither is read as a checked command. A name built from a
+// variable stays out of scope, as in the header.
+const SPELLABLE = new Set([...ANALYSED, ...PRIVILEGE, ...WRAPPERS, 'find', 'watch', 'flock']);
+const BRACE_GROUP = /\{([^{}]*,[^{}]*|[A-Za-z]\.\.[A-Za-z](?:\.\.-?\d+)?)\}/;
+const GLOB = /[*?[]/;
+// A word with more brace forms than this is read only as far as this many
+// forms and with its braces and commas taken out; the forms grow with the
+// product of the groups.
+const MAX_BRACE_FORMS = 32;
+
+/** The words one brace group stands for: its comma alternatives or its letter sequence. */
+function braceAlternatives(body) {
+    const seq = /^([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?$/.exec(body);
+    if (!seq) return body.split(',');
+    const [from, to] = [seq[1].charCodeAt(0), seq[2].charCodeAt(0)];
+    const step = Math.abs(Number(seq[3] ?? 1)) || 1;
+    const out = [];
+    for (let k = Math.min(from, to); k <= Math.max(from, to) && out.length < MAX_BRACE_FORMS; k += step) {
+        out.push(String.fromCharCode(k));
+    }
+    return out;
+}
+
+/** The word, the forms its brace groups expand to (at most MAX_BRACE_FORMS) and the word with braces and commas taken out. */
+function braceForms(word) {
+    const forms = [word, word.replace(/[{},]/g, '')];
+    const pending = [word];
+    while (pending.length && forms.length < MAX_BRACE_FORMS) {
+        const form = pending.pop();
+        const group = BRACE_GROUP.exec(form);
+        if (!group) continue;
+        for (const alt of braceAlternatives(group[1]).slice(0, MAX_BRACE_FORMS)) {
+            const expanded = form.slice(0, group.index) + alt + form.slice(group.index + group[0].length);
+            forms.push(expanded);
+            pending.push(expanded);
+        }
+    }
+    return forms;
+}
+
+/** A RegExp for a glob pattern of one path part: `*`, `?` and `[...]` (`[!...]`, `[^...]`); an unclosed `[` is literal. */
+function globRegExp(pattern) {
+    let src = '';
+    for (let i = 0; i < pattern.length; i++) {
+        const c = pattern[i];
+        const close = c === '[' ? pattern.indexOf(']', i + 2) : -1;
+        if (c === '*') src += '.*';
+        else if (c === '?') src += '.';
+        else if (close !== -1) {
+            let set = pattern.slice(i + 1, close);
+            if (set[0] === '!') set = `^${set.slice(1)}`;
+            src += `[${set.replace(/[\\\]]/g, '\\$&')}]`;
+            i = close;
+        } else src += c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    }
+    try {
+        return new RegExp(`^${src}$`);
+    } catch {
+        return /^/; // a class JavaScript cannot read: assume it matches anything
+    }
+}
+
+/**
+ * The commands this hook checks or looks through that the shell could run
+ * from this command word once it expands it, and whether braces did it:
+ * { braces, names }. `names` is empty for a word read as typed (`git`,
+ * `./configure`, `{a,b}.txt`).
+ */
+function spelledNames(word) {
+    const braces = BRACE_GROUP.test(word);
+    if (!braces && !(word.includes('/') && GLOB.test(word))) return { braces: false, names: [] };
+    const names = new Set();
+    for (const form of braces ? braceForms(word) : [word]) {
+        if (/\s/.test(form)) continue; // a word with a space in it names no program
+        const name = basename(form);
+        if (name !== basename(word) && SPELLABLE.has(name)) names.add(name);
+        else if (form.includes('/') && GLOB.test(name) && !/^\*+$/.test(name)) {
+            const re = globRegExp(name);
+            for (const n of SPELLABLE) if (re.test(n)) names.add(n);
+        }
+    }
+    return { braces, names: [...names] };
 }
 
 /**
@@ -1681,12 +1829,10 @@ function checkUnlistedProgram(w, inlineEnv, state) {
             for (const text of commandStrings(w[n])) {
                 spend();
                 const names = (t) => t.split(COMMAND_STRING_SEPARATORS).some((piece) => piece && namesCheckedCommand(piece));
-                if (!names(text) && !names(unquoted(text))) continue;
+                // The words as the shell reads them too: `$'\x67it'` is git.
+                const read = () => tokenize(text).some((seg) => seg.some(namesCheckedCommand));
+                if (!names(text) && !names(unquoted(text)) && !read()) continue;
                 refusal = checkCommand(text, state());
-                // The tokenizer leaves `$'git'` as `$git` and a `$` before a quote
-                // means nothing to it, so read the string once more without them.
-                const plain = text.replace(/\$(?=['"])/g, '');
-                if (!refusal && plain !== text) refusal = checkCommand(plain, state());
                 if (refusal) break;
             }
         }
@@ -1723,6 +1869,29 @@ function checkSegment(words, state) {
             w.shift();
         }
         if (!w.length) return null;
+        // A command word the shell expands into a checked command (#257).
+        // Braces are refused: `{git,diff} --no-index ...` is `git diff
+        // --no-index ...`, and the words they add are not modelled. A glob in
+        // a path is checked as each command it can match, then read on as
+        // typed below, so `/usr/bin/g?t status` passes as `git status` does.
+        const spelled = spelledNames(w[0]);
+        if (spelled.braces && spelled.names.length) {
+            return block(
+                `Blocked: \`${w[0]}\` is a command name the shell expands with its braces before running it, and it can ` +
+                    `expand to \`${spelled.names[0]}\`, which this hook checks only when the name is spelled out. Spell the name out.`
+            );
+        }
+        for (const name of spelled.names) {
+            const env = Object.entries(inlineEnv).map(([k, v]) => `${k}=${v}`);
+            const respelled = Object.assign([...env, name, ...w.slice(1)], { pipedFrom, stdinFrom, hereString, heredocBody });
+            const r = checkSegment(respelled, state);
+            if (r) {
+                return {
+                    ...r,
+                    reason: `Blocked: \`${w[0]}\` is a path the shell can expand to \`${name}\`, so it is checked as \`${name}\`. ${r.reason.replace(/^Blocked: /, '')}`,
+                };
+            }
+        }
         const cmd = basename(w[0]);
         if (PRIVILEGE.has(cmd)) {
             return block(`Blocked: \`${cmd}\` (privilege escalation) is never run by agents in this repository.`);
