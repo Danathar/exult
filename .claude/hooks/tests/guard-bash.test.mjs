@@ -151,6 +151,7 @@ const allowed = [
     'rm -rf ../exult-build',
     // Behind a program this hook does not list, a command that passes alone
     // still passes, and programs that only print or look up words are not read.
+    "script -qc 'g\"\"it status' /dev/null",
     'setarch x86_64 git status',
     'strace -f git log -1',
     'which sudo',
@@ -641,6 +642,10 @@ const blocked = [
     'script -qc "git push --force origin feature" /dev/null',
     "script -qc'sudo id' /dev/null",
     "script --command='sudo id' /dev/null",
+    // the shell drops quotes and backslashes before it looks a name up
+    "script -qc 'g\"\"it diff --no-index /dev/null .env' /dev/null",
+    "script -qc 'gi\\t diff --no-index /dev/null .env' /dev/null",
+    `script -qc "$'git' diff --no-index /dev/null .env" /dev/null`,
     `setarch x86_64 ${'git status '.repeat(9)}`,
 ];
 
