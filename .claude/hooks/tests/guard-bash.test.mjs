@@ -160,6 +160,8 @@ const allowed = [
     // A name the shell builds that passes spelled out still passes, and braces,
     // globs and `$'...'` that build no checked command are left alone (#257).
     '/usr/bin/g?t status',
+    'g?t status',
+    'grep -rn g?t docs',
     `$'git' status`,
     'ls /usr/bin/g*',
     'ls -d ./*',
@@ -686,6 +688,22 @@ const blocked = [
     "script -qc '/usr/bin/g?t diff --no-index /dev/null .env' /dev/null",
     // `\'` inside `$'...'` does not end the quote, so the substitution after it runs
     `echo $'it\\'s' $(git push --force origin feature)`,
+    // a glob with no `/` matches a file the agent can create in the working
+    // directory, and the name it expands to is looked up on PATH
+    'touch git && g?t push --force origin master',
+    'g[i]t push --force origin master',
+    's?do id',
+    'g? pr merge 1',
+    'm?ke install',
+    'nice g?t push --force origin master',
+    'timeout 5 s?do id',
+    "sh -c 'g?t push --force origin master'",
+    'setarch x86_64 g?t diff --no-index /dev/null .env',
+    // a command word of only `*` runs whichever file matches first
+    '* push --force origin master',
+    './* push --force origin master',
+    'nice * id',
+    'env FOO=1 * id',
 ];
 
 for (const command of allowed) {
@@ -742,6 +760,18 @@ test('a glob in a path is checked as the command it matches', () => {
     const r = run('/usr/bin/g?t diff --no-index /dev/null .env');
     assert.equal(r.status, 2);
     assert.match(r.stderr, /can expand to `git`, so it is checked as `git`/);
+});
+
+test('a glob with no path is checked as the command it matches', () => {
+    const r = run('g?t push --force origin master');
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /can expand to `git`, so it is checked as `git`/);
+});
+
+test('a command word of only `*` is refused with the reason', () => {
+    const r = run('* push --force origin master');
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /runs whichever file the shell matches first/);
 });
 
 test('ignores non-Bash tools', () => {

@@ -106,9 +106,10 @@
 // Quoted text is data, so a quoted "sudo" inside an `echo` or a read-only
 // command is fine. A command name is read the way the shell builds it:
 // `$'...'` escapes and `$"..."` are decoded (`$'\x67it'` is git), a brace group
-// that can expand to a checked command is refused (`{git,} diff ...`), and a
-// glob in a path is checked as each checked command it can match
-// (`/usr/bin/g?t diff ...` as `git diff ...`), also behind any other program.
+// that can expand to a checked command is refused (`{git,} diff ...`), a glob
+// is checked as each checked command it can match (`/usr/bin/g?t diff ...` and
+// `g?t diff ...` as `git diff ...`), also behind any other program, and a
+// command word that is only `*` wildcards (`*`, `./*`) is refused.
 
 import { basename, resolve } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
@@ -1680,10 +1681,12 @@ function namesCheckedCommand(a) {
 // brace groups (`{git,}` is git, the empty alternative dropped; `{git,diff}` is
 // `git diff`; `{f..h}it` holds git) and, in a word with a `/`, globs
 // (`/usr/bin/g?t` is /usr/bin/git), so the word this hook reads is not the
-// program that runs. A glob with no `/` matches files in the working directory
-// and a last part that is only `*` matches whatever the directory holds, not
-// one name, so neither is read as a checked command. A name built from a
-// variable stays out of scope, as in the header.
+// program that runs. A glob with no `/` matches files in the working directory,
+// and an agent can create them (`touch git; g?t ...`); the name it expands to
+// is then looked up on PATH, so `g?t` is read as git too. A last part that is
+// only `*` matches whatever the directory holds, not one name, so it is not
+// read as a checked command here; checkSegment() refuses it as a command word.
+// A name built from a variable stays out of scope, as in the header.
 const SPELLABLE = new Set([...ANALYSED, ...PRIVILEGE, ...WRAPPERS, 'find', 'watch', 'flock']);
 const BRACE_GROUP = /\{([^{}]*,[^{}]*|[A-Za-z]\.\.[A-Za-z](?:\.\.-?\d+)?)\}/;
 const GLOB = /[*?[]/;
@@ -1752,13 +1755,13 @@ function globRegExp(pattern) {
  */
 function spelledNames(word) {
     const braces = BRACE_GROUP.test(word);
-    if (!braces && !(word.includes('/') && GLOB.test(word))) return { braces: false, names: [] };
+    if (!braces && !GLOB.test(word)) return { braces: false, names: [] };
     const names = new Set();
     for (const form of braces ? braceForms(word) : [word]) {
         if (/\s/.test(form)) continue; // a word with a space in it names no program
         const name = basename(form);
         if (name !== basename(word) && SPELLABLE.has(name)) names.add(name);
-        else if (form.includes('/') && GLOB.test(name) && !/^\*+$/.test(name)) {
+        else if (GLOB.test(name) && !/^\*+$/.test(name)) {
             const re = globRegExp(name);
             for (const n of SPELLABLE) if (re.test(n)) names.add(n);
         }
@@ -1873,7 +1876,8 @@ function checkSegment(words, state) {
         // Braces are refused: `{git,diff} --no-index ...` is `git diff
         // --no-index ...`, and the words they add are not modelled. A glob in
         // a path is checked as each command it can match, then read on as
-        // typed below, so `/usr/bin/g?t status` passes as `git status` does.
+        // typed below, so `/usr/bin/g?t status` and `g?t status` pass as `git
+        // status` does.
         const spelled = spelledNames(w[0]);
         if (spelled.braces && spelled.names.length) {
             return block(
@@ -1888,9 +1892,17 @@ function checkSegment(words, state) {
             if (r) {
                 return {
                     ...r,
-                    reason: `Blocked: \`${w[0]}\` is a path the shell can expand to \`${name}\`, so it is checked as \`${name}\`. ${r.reason.replace(/^Blocked: /, '')}`,
+                    reason: `Blocked: \`${w[0]}\` is a word the shell can expand to \`${name}\`, so it is checked as \`${name}\`. ${r.reason.replace(/^Blocked: /, '')}`,
                 };
             }
+        }
+        // `*` or `./*` as the command word runs the first file the directory
+        // holds, with the rest as its arguments, so it can be any program.
+        if (/^\*+$/.test(basename(w[0]))) {
+            return block(
+                `Blocked: \`${w[0]}\` as a command name runs whichever file the shell matches first, so this hook ` +
+                    'cannot tell which program it is. Spell the name out.'
+            );
         }
         const cmd = basename(w[0]);
         if (PRIVILEGE.has(cmd)) {
