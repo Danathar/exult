@@ -167,10 +167,10 @@ const allowed = [
     'mkdir -p build/{a,b}/{c,d}',
     "find . -name '*' -print",
     "awk -F, '{print $1, $2}' data.csv",
-    `awk "{ if (\$1 == \"x\") print }" data.csv`,
-    `echo $'a\tb'`,
-    `git log --format=$'%h\t%s' -3`,
-    `script -qc "$'\x67it' status" /dev/null`,
+    `awk "{ if (\\$1 == \\"x\\") print }" data.csv`,
+    `echo $'a\\tb'`,
+    `git log --format=$'%h\\t%s' -3`,
+    `script -qc "$'\\x67it' status" /dev/null`,
 ];
 
 const blocked = [
@@ -674,18 +674,18 @@ const blocked = [
     '/usr/bin/g[i]t log -p --output=.env -1',
     'timeout 5 /usr/bin/g?t diff --no-index /dev/null .env',
     '/usr/bin/s?do id',
-    `$'git' diff --no-index /dev/null .env`,
+    `$'\\u0067it' diff --no-index /dev/null .env`,
     `$"git" diff --no-index /dev/null .env`,
-    `$'\x67it' diff --no-index /dev/null .env`,
-    `$'\147it' diff --no-index /dev/null .env`,
+    `$'\\x67it' diff --no-index /dev/null .env`,
+    `$'\\147it' diff --no-index /dev/null .env`,
     `$'\u0067it' diff --no-index /dev/null .env`,
-    `$'git\0x' diff --no-index /dev/null .env`,
-    `setarch x86_64 $'\x67it' diff --no-index /dev/null .env`,
-    `script -qc "$'\x67it' diff --no-index /dev/null .env" /dev/null`,
+    `$'git\\0x' diff --no-index /dev/null .env`,
+    `setarch x86_64 $'\\x67it' diff --no-index /dev/null .env`,
+    `script -qc "$'\\x67it' diff --no-index /dev/null .env" /dev/null`,
     "script -qc '{git,} diff --no-index /dev/null .env' /dev/null",
     "script -qc '/usr/bin/g?t diff --no-index /dev/null .env' /dev/null",
     // `\'` inside `$'...'` does not end the quote, so the substitution after it runs
-    `echo $'it\'s' $(git push --force origin feature)`,
+    `echo $'it\\'s' $(git push --force origin feature)`,
 ];
 
 for (const command of allowed) {
