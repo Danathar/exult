@@ -157,6 +157,20 @@ const allowed = [
     'which sudo',
     "grep -rn 'git push --force' docs",
     'setarch x86_64 less CMakeLists.txt',
+    // A name the shell builds that passes spelled out still passes, and braces,
+    // globs and `$'...'` that build no checked command are left alone (#257).
+    '/usr/bin/g?t status',
+    `$'git' status`,
+    'ls /usr/bin/g*',
+    'ls -d ./*',
+    'cat {a,b}.txt',
+    'mkdir -p build/{a,b}/{c,d}',
+    "find . -name '*' -print",
+    "awk -F, '{print $1, $2}' data.csv",
+    `awk "{ if (\\$1 == \\"x\\") print }" data.csv`,
+    `echo $'a\\tb'`,
+    `git log --format=$'%h\\t%s' -3`,
+    `script -qc "$'\\x67it' status" /dev/null`,
 ];
 
 const blocked = [
@@ -647,6 +661,31 @@ const blocked = [
     "script -qc 'gi\\t diff --no-index /dev/null .env' /dev/null",
     `script -qc "$'git' diff --no-index /dev/null .env" /dev/null`,
     `setarch x86_64 ${'git status '.repeat(9)}`,
+    // the shell expands braces, a glob in a path and `$'...'` / `$"..."`
+    // quoting before it looks a name up (#257)
+    '{git,} diff --no-index /dev/null .env',
+    'setarch x86_64 {git,} diff --no-index /dev/null .env',
+    '{git,diff} --no-index /dev/null .env',
+    'g{i,x}t diff --no-index /dev/null .env',
+    '{f..h}it diff --no-index /dev/null .env',
+    '/usr/bin/{sudo,} id',
+    '/usr/bin/g?t diff --no-index /dev/null .env',
+    'setarch x86_64 /usr/bin/g?t diff --no-index /dev/null .env',
+    '/usr/bin/g[i]t log -p --output=.env -1',
+    'timeout 5 /usr/bin/g?t diff --no-index /dev/null .env',
+    '/usr/bin/s?do id',
+    `$'\\u0067it' diff --no-index /dev/null .env`,
+    `$"git" diff --no-index /dev/null .env`,
+    `$'\\x67it' diff --no-index /dev/null .env`,
+    `$'\\147it' diff --no-index /dev/null .env`,
+    `$'\u0067it' diff --no-index /dev/null .env`,
+    `$'git\\0x' diff --no-index /dev/null .env`,
+    `setarch x86_64 $'\\x67it' diff --no-index /dev/null .env`,
+    `script -qc "$'\\x67it' diff --no-index /dev/null .env" /dev/null`,
+    "script -qc '{git,} diff --no-index /dev/null .env' /dev/null",
+    "script -qc '/usr/bin/g?t diff --no-index /dev/null .env' /dev/null",
+    // `\'` inside `$'...'` does not end the quote, so the substitution after it runs
+    `echo $'it\\'s' $(git push --force origin feature)`,
 ];
 
 for (const command of allowed) {
@@ -685,6 +724,24 @@ test('checkCommand returns null for allowed and an object for blocked commands',
 
 test('tokenize splits segments and drops redirections', () => {
     assert.deepEqual(tokenize('a b && c d > out 2>&1; e').map((s) => [...s]), [['a', 'b'], ['c', 'd'], ['e']]);
+});
+
+test('tokenize decodes ANSI-C and locale quoting as the shell does', () => {
+    assert.deepEqual([...tokenize(`$'\\x67it' $"diff" $'\\101\\u0042\\cc' $'it\\'s' $'a\\0b' \\$'x'`)[0]], [
+        'git', 'diff', 'AB\x03', "it's", 'a', '$x',
+    ]);
+});
+
+test('a brace-built command name is refused with the reason', () => {
+    const r = run('{git,} diff --no-index /dev/null .env');
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /expands with its braces/);
+});
+
+test('a glob in a path is checked as the command it matches', () => {
+    const r = run('/usr/bin/g?t diff --no-index /dev/null .env');
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /can expand to `git`, so it is checked as `git`/);
 });
 
 test('ignores non-Bash tools', () => {
