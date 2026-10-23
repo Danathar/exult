@@ -76,6 +76,11 @@ layer assumes the one inside it can fail.
    deliberate obfuscation (built strings, scripts written to disk, aliases),
    and it only covers Claude Code. Other agents rely on layers 1, 4 and 5.
    Its tests are `.claude/hooks/tests/`, run by the `agent-tooling` workflow.
+   The part that reads a command line the way the shell would is
+   `.claude/hooks/shell-reader.mjs`, the same file in each of the owner's
+   repositories that carry this guard (canonical in Danathar/akmods, pinned by
+   hash in `scripts/tests/shell-reader.test.mjs`); this repository's rules stay
+   in `guard-bash.mjs`.
 4. **Policy checks in CI.** The `policy-check` workflow runs
    `scripts/check-policies.mjs` on every pull request (section 7).
 5. **Review.** `.github/CODEOWNERS` names the owner for Tier 3 paths, and

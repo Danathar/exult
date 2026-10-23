@@ -49,9 +49,15 @@
 //   - git options that write a file, read outside the repository or run a
 //     program on the pre-approved read commands: --output[=FILE], --no-index,
 //     --ext-diff, git grep -O/--open-files-in-pager, --exec-path=DIR, and
-//     `-c` keys such as diff.external, core.pager, alias.*; GIT_* / PAGER /
-//     EDITOR variables (inline or exported) other than identity and no-op
-//     pagers (GIT_EXTERNAL_DIFF=, GIT_TRACE=FILE, GIT_DIR=, ...).
+//     `-c` keys such as diff.external, core.pager, alias.*, protocol.*
+//     (`protocol.ext.allow=always`); --upload-pack (and its abbreviations such
+//     as --upl), --exec and clone/ls-remote -u on git
+//     fetch|pull|clone|ls-remote|archive, which run the program they name;
+//     GIT_* / PAGER / EDITOR variables (inline or exported) other than
+//     identity and no-op pagers (GIT_EXTERNAL_DIFF=, GIT_TRACE=FILE, GIT_DIR=, ...).
+//   - git push after a directory change this hook cannot follow (`cd $DIR`,
+//     `eval cd DIR`, a cd name built from braces, wildcards or `$X`): the
+//     repository being pushed cannot be verified.
 //   - git, node, curl/wget or a shell run through xargs: xargs appends words
 //     read at run time, so none of the argument checks here could see them.
 //   node
@@ -110,16 +116,38 @@
 // is checked as each checked command it can match (`/usr/bin/g?t diff ...` and
 // `g?t diff ...` as `git diff ...`), also behind any other program, and a
 // command word that is only `*` wildcards (`*`, `./*`) is refused.
+//
+// Layout: the reading described in these notes (words, quotes, `$'...'`,
+// substitutions and heredocs, brace and wildcard names, wrappers and the
+// commands they run, shell and fish command strings, the git option, config
+// and environment rules, the time budget) lives in shell-reader.mjs. That file
+// names no repository and is kept byte-identical in every repository that
+// carries this guard (its sha256 is pinned by scripts/tests/shell-reader.test.mjs);
+// a reading fix is made in Danathar/akmods first and then copied. This file
+// holds this repository's rules (the list above), its messages and the hook's
+// entry point, and imports the reader. Where this repository reads a word
+// more strictly than the shared reader (letter-sequence braces, wildcard-only
+// names behind another program, what a `$(...)` holds), that reading is kept
+// here as policy on top of it.
 
 import { basename, resolve } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// Reading the command line as the shell would is shared with the other
+// repositories that carry this guard; see shell-reader.mjs.
+import {
+    ARGUMENT_ONLY_PROGRAMS, BUDGET_MS, changesDirectory, CHDIR, COMMAND_STRING_SEPARATORS, commandNameReader,
+    commandStrings, EXEC_GIT_CONFIG, expandWrapperOptions, extractSubstitutions, FIND_EXEC, fishScripts, GIT_EXEC_OPTION,
+    GIT_SHORT_UPLOAD_PACK, GIT_UPLOAD_PACK_OPTION, GIT_UPLOAD_PACK_SUBCOMMANDS, globMatches, isAssignment, KEYWORDS,
+    MAX_UNLISTED_INNER, OverBudget, REFUSED_GIT_OPTION, RISKY_GIT_CONFIG, riskyEnv, SAFE_ENV, SHELLS, spend, startBudget,
+    tokenize, unquoted, WATCHED_ENV, WRAPPERS, wrapperTarget,
+} from './shell-reader.mjs';
+
+// Kept importable from here, where they were defined before the split.
+export { BUDGET_MS, extractSubstitutions, tokenize } from './shell-reader.mjs';
 
 export const REPO = 'danathar/exult';
-
-// Shell redirection operators (`>`, `>>`, `>&`, `>|`, `&>`, `&>>`, `<`, `<&`, `<>`, `<<<`; `<<` heredocs are handled separately).
-const REDIRECT = /^(?:&>>?|<<<|<&|<>|>>|>&|>\||<|>)/;
 
 const GUIDANCE =
     'Hard rules for this repository (a fork of exult/exult): GitHub writes go to Danathar/exult only ' +
@@ -165,378 +193,9 @@ const GH_OTHER_READONLY = {
     version: true,
 };
 
-// Words that may precede the real command and carry no meaning for us.
-const KEYWORDS = new Set(['{', '}', '!', 'if', 'then', 'else', 'elif', 'do', 'while', 'until']);
-// Wrappers that run another command; we look through them for gh/git/shells.
-// `time` is here rather than in KEYWORDS: the keyword takes `-p` and `--`, and
-// /usr/bin/time takes options too, so its own options must be skipped.
-const WRAPPERS = new Set([
-    'env', 'command', 'builtin', 'exec', 'nohup', 'sudo', 'nice', 'xargs',
-    'timeout', 'setsid', 'stdbuf', 'ionice', 'chronic', 'time',
-    'flock', 'watch', 'taskset', 'chrt', 'unshare', 'nsenter', 'setpriv', 'chroot', 'busybox',
-]);
-const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'yash', 'posh', 'fish', 'csh', 'tcsh']);
-// No list of programs that run a command is complete: `setarch x86_64 git
-// push --force`, `prlimit` and `strace -o log` run the words after them, and
-// `script -qc '...'` hands a shell one string. Behind any program this hook
-// neither checks nor steps over, the checked command it would run is checked
-// as a command of its own; see checkUnlistedProgram(). These print, match or
-// look up their arguments and never run them, so they are not read at all,
-// which keeps `grep -rn 'git push --force' docs` and `which sudo` working.
-// Only the bare spelling counts, and leaving a program out can only over-refuse.
-const ARGUMENT_ONLY_PROGRAMS = new Set(['echo', 'printf', 'grep', 'egrep', 'fgrep', 'which', 'whereis']);
-// Each checked command behind such a program is checked from where it starts
-// to the end of the segment, so the work grows with the square of the words.
-// Past this many the command is refused unread; no real invocation runs that many.
-const MAX_UNLISTED_INNER = 8;
-// What separates the words of a command string a program hands to a shell:
-// whitespace, the shell's own punctuation and quotes. Splitting on all of them
-// reads more words than the shell would, which can only over-refuse.
-const COMMAND_STRING_SEPARATORS = /[\s;&|()<>`'"]+/;
-// How long one decision may take. Claude Code runs the command when the hook
-// times out or dies, and reading every tail of a short-option cluster grows
-// with the square of the word. A command still being read past this is
-// refused instead; see spend().
-export const BUDGET_MS = 5000;
-let deadline = null;
-
-/** Thrown once a decision has run past BUDGET_MS; main() refuses with it. */
-class OverBudget extends Error {}
-
-function spend() {
-    if (deadline !== null && Date.now() > deadline) {
-        throw new OverBudget(
-            `Blocked: this hook could not finish checking the command within ${BUDGET_MS / 1000} seconds, and ` +
-                'Claude Code runs a command whose hook times out, so it is refused rather than left half-read. ' +
-                'Split it into shorter commands.'
-        );
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tokenizer
-// ---------------------------------------------------------------------------
-
-/**
- * Split a shell command line into segments of words.
- * Quotes and backslashes are resolved; operators and parentheses end a segment;
- * heredoc bodies are skipped. This is a deliberately small approximation of
- * shell parsing, good enough to find command names and their flags.
- */
-export function tokenize(input) {
-    const segments = [];
-    let words = [];
-    let word = null; // null = no word in progress ('' = empty quoted word)
-    const pendingHeredocs = [];
-
-    let skip = null; // 'in' | 'out': the next word is a redirection target
-    let stdinFrom; // target of `< file` for the current segment
-    let hereString; // word of `<<< word` for the current segment
-    let pendingPipe = null; // previous segment when this one is the right side of `|`
-    const endWord = () => {
-        if (word !== null) {
-            if (skip === 'in') stdinFrom = word;
-            else if (skip === 'here') hereString = word;
-            else if (skip === null) words.push(word);
-            skip = null;
-        }
-        word = null;
-    };
-    const endSegment = (pipe = false) => {
-        endWord();
-        skip = null;
-        if (words.length || stdinFrom !== undefined) {
-            words.stdinFrom = stdinFrom;
-            words.hereString = hereString;
-            words.pipedFrom = pendingPipe;
-            segments.push(words);
-            pendingPipe = pipe ? words : null;
-        }
-        stdinFrom = undefined;
-        hereString = undefined;
-        words = [];
-    };
-    const append = (ch) => {
-        word = (word ?? '') + ch;
-    };
-
-    let i = 0;
-    while (i < input.length) {
-        const c = input[i];
-
-        if (c === "'") {
-            const end = input.indexOf("'", i + 1);
-            const stop = end === -1 ? input.length : end;
-            append(input.slice(i + 1, stop));
-            i = stop + 1;
-        } else if (c === '"') {
-            i++;
-            append('');
-            while (i < input.length && input[i] !== '"') {
-                if (input[i] === '$' && input[i + 1] === '(') {
-                    // A substitution body may contain quotes of its own; it is analysed separately.
-                    // Its text stays in the word (a `bash -c "$(cat x)"` script is re-analysed from it).
-                    const end = closeParen(input, i + 2);
-                    append(input.slice(i, end));
-                    i = end;
-                    continue;
-                }
-                if (input[i] === '\\' && i + 1 < input.length) {
-                    const next = input[i + 1];
-                    if ('"\\$`'.includes(next)) i++;
-                    else if (next === '\n') {
-                        i += 2;
-                        continue;
-                    }
-                }
-                append(input[i]);
-                i++;
-            }
-            i++;
-        } else if (c === '\\') {
-            if (input[i + 1] === '\n') {
-                i += 2; // line continuation
-            } else {
-                append(input[i + 1] ?? '');
-                i += 2;
-            }
-        } else if (c === '#' && word === null) {
-            while (i < input.length && input[i] !== '\n') i++; // comment
-        } else if (c === '\n') {
-            endSegment();
-            i++;
-            // Skip the bodies of heredocs started on the line that just ended.
-            // The body is kept on the segment that started the heredoc: a shell
-            // reading it runs it, so it is analysed as a command line.
-            while (pendingHeredocs.length) {
-                const { delim, seg } = pendingHeredocs.shift();
-                const bodyStart = i;
-                let bodyEnd = input.length;
-                while (i < input.length) {
-                    let eol = input.indexOf('\n', i);
-                    if (eol === -1) eol = input.length;
-                    const lineStart = i;
-                    const line = input.slice(i, eol).replace(/^\t+/, '');
-                    i = eol + 1;
-                    if (line === delim) {
-                        bodyEnd = lineStart;
-                        break;
-                    }
-                }
-                seg.heredocBody = (seg.heredocBody ?? '') + input.slice(bodyStart, bodyEnd);
-            }
-        } else if (c === '<' && input[i + 1] === '<' && input[i + 2] !== '<') {
-            const { delim, next } = readHeredocStart(input, i);
-            i = next;
-            endWord();
-            if (delim) pendingHeredocs.push({ delim, seg: words });
-        } else if ((c === '<' || c === '>') && input[i + 1] === '(') {
-            // Process substitution `<(cmd)` / `>(cmd)`: an argument; its body is analysed separately.
-            append('/dev/fd/N');
-            i = closeParen(input, i + 2);
-        } else if ((c === '<' || c === '>' || c === '&') && REDIRECT.test(input.slice(i, i + 3))) {
-            // Redirections end the word and are not arguments: `./x.sh>log`, `2>&1`,
-            // `&>f`, `<file`. The target word is consumed (and remembered for `<`).
-            const op = REDIRECT.exec(input.slice(i, i + 3))[0];
-            if (word !== null && /^\d+$/.test(word)) word = null; // fd number: `2>`
-            endWord();
-            skip = op === '<<<' ? 'here' : op.startsWith('<') ? 'in' : 'out';
-            i += op.length;
-        } else if (c === ' ' || c === '\t') {
-            endWord();
-            i++;
-        } else if (c === '|') {
-            const dbl = input[i + 1] === '|';
-            endSegment(!dbl);
-            i += dbl || input[i + 1] === '&' ? 2 : 1;
-        } else if (c === '&' || c === ';' || c === '(' || c === ')') {
-            endSegment();
-            i++;
-        } else if (c === '`') {
-            // Substitution contents are analysed separately; the enclosing
-            // command line carries on after the closing backtick. The text stays
-            // in the word, as inside double quotes, so a `bash -c` / `eval` string
-            // built from a substitution can be checked for what it runs.
-            const end = input.indexOf('`', i + 1);
-            const stop = end === -1 ? input.length : end + 1;
-            append(input.slice(i, stop));
-            i = stop;
-        } else if (c === '$' && input[i + 1] === "'") {
-            // ANSI-C quoting: the shell decodes the escapes and runs what they
-            // spell, so `$'git'` and `$'\x67it'` are both git.
-            const { text, next } = readAnsiC(input, i + 2);
-            append(text);
-            i = next;
-        } else if (c === '$' && input[i + 1] === '"') {
-            // Locale quoting: `$"git"` is the double-quoted string "git".
-            i++;
-        } else if (c === '$' && input[i + 1] === '(') {
-            const end = closeParen(input, i + 2);
-            append(input.slice(i, end));
-            i = end;
-        } else {
-            append(c);
-            i++;
-        }
-    }
-    endSegment();
-    return segments;
-}
-
-// What each one-letter escape in `$'...'` stands for; see readAnsiC().
-const ANSI_C_ESCAPES = {
-    a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v',
-    '\\': '\\', "'": "'", '"': '"', '?': '?',
-};
-
-/**
- * Decode the body of an ANSI-C quoted string `$'...'` that starts at `i` (just
- * past the opening quote), as bash does: one-letter escapes, `\NNN` octal,
- * `\xHH`, `\uHHHH`, `\UHHHHHHHH` and `\cX`. Bash ends the string at a NUL. An
- * escape it does not know keeps its backslash. Returns { text, next } (next =
- * index after the closing quote).
- */
-function readAnsiC(input, i) {
-    let text = '';
-    let ended = false;
-    while (i < input.length && input[i] !== "'") {
-        let ch = input[i++];
-        if (ch === '\\' && i < input.length) {
-            const e = input[i++];
-            const digits = (re) => {
-                const m = re.exec(input.slice(i));
-                if (m) i += m[0].length;
-                return m?.[0];
-            };
-            let hex;
-            if (e in ANSI_C_ESCAPES) ch = ANSI_C_ESCAPES[e];
-            else if (/[0-7]/.test(e)) ch = String.fromCharCode(parseInt(e + (digits(/^[0-7]{1,2}/) ?? ''), 8) & 0xff);
-            else if (e === 'x' && (hex = digits(/^[0-9a-fA-F]{1,2}/))) ch = String.fromCharCode(parseInt(hex, 16));
-            else if (e === 'u' && (hex = digits(/^[0-9a-fA-F]{1,4}/))) ch = String.fromCodePoint(parseInt(hex, 16));
-            else if (e === 'U' && (hex = digits(/^[0-9a-fA-F]{1,8}/))) ch = String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff));
-            else if (e === 'c' && i < input.length) ch = String.fromCharCode(input.charCodeAt(i++) & 0x1f);
-            else ch = `\\${e}`;
-        }
-        if (ch === '\0') ended = true;
-        if (!ended) text += ch;
-    }
-    return { text, next: i + 1 };
-}
-
-/**
- * Find the bodies of $(...) and `...` substitutions, including ones inside
- * double quotes (but not single quotes), so they can be analysed as commands.
- */
-export function extractSubstitutions(input) {
-    const found = [];
-    let inSingle = false;
-    let inDouble = false;
-    // In `$'...'` a backslash escapes the next character, `\'` included, so
-    // `$'it\'s' $(cmd)` ends its quote before the substitution.
-    let ansiC = false;
-    let escaped = -1; // index of the last character a backslash escaped
-    const pending = []; // heredocs started on the current line
-    for (let i = 0; i < input.length; i++) {
-        const c = input[i];
-        if (c === '\\' && (!inSingle || ansiC)) {
-            escaped = ++i;
-        } else if (c === "'" && !inDouble) {
-            ansiC = !inSingle && input[i - 1] === '$' && escaped !== i - 1;
-            inSingle = !inSingle;
-        } else if (c === '"' && !inSingle) {
-            inDouble = !inDouble;
-        } else if (!inSingle && !inDouble && c === '<' && input[i + 1] === '<' && input[i + 2] !== '<') {
-            const h = readHeredocStart(input, i);
-            if (h.delim) pending.push(h);
-            i = h.next - 1;
-        } else if (!inSingle && !inDouble && c === '\n' && pending.length) {
-            // A quoted heredoc body is data (Markdown backticks in a PR body are not
-            // commands). An unquoted body is expanded by the shell, so it is scanned.
-            while (pending.length && pending[0].quoted) i = skipHeredocBody(input, i + 1, pending.shift().delim) - 1;
-            pending.length = 0;
-        } else if (!inSingle && (c === '$' || (!inDouble && (c === '<' || c === '>'))) && input[i + 1] === '(') {
-            const j = closeParen(input, i + 2);
-            found.push(input.slice(i + 2, j - 1));
-            i = j - 1; // nested substitutions are found by the recursive analysis
-        } else if (!inSingle && c === '`') {
-            const end = input.indexOf('`', i + 1);
-            const stop = end === -1 ? input.length : end;
-            found.push(input.slice(i + 1, stop));
-            i = stop;
-        }
-    }
-    return found;
-}
-
-/**
- * Index just past the `)` that closes a substitution whose body starts at `j`,
- * ignoring parens in quotes, escaped, or in heredoc bodies.
- */
-function closeParen(input, j) {
-    let depth = 1;
-    let q = null;
-    const inner = [];
-    for (; j < input.length && depth > 0; j++) {
-        const d = input[j];
-        if (d === '\\' && q !== "'") j++;
-        else if (q) {
-            if (d === q) q = null;
-        } else if (d === "'" || d === '"') q = d;
-        else if (d === '<' && input[j + 1] === '<' && input[j + 2] !== '<') {
-            const h = readHeredocStart(input, j);
-            if (h.delim) inner.push(h);
-            j = h.next - 1;
-        } else if (d === '\n' && inner.length) {
-            while (inner.length) j = skipHeredocBody(input, j + 1, inner.shift().delim) - 1;
-        } else if (d === '(') depth++;
-        else if (d === ')') depth--;
-    }
-    return j;
-}
-
-/** Parse `<<[-]['"]DELIM['"]` at input[i]; returns { delim, quoted, next } (next = index after it). */
-function readHeredocStart(input, i) {
-    i += 2;
-    if (input[i] === '-') i++;
-    while (input[i] === ' ' || input[i] === '\t') i++;
-    let delim = '';
-    let quote = null;
-    let quoted = false;
-    while (i < input.length) {
-        const d = input[i];
-        if (quote) {
-            if (d === quote) quote = null;
-            else delim += d;
-        } else if (d === "'" || d === '"') {
-            quote = d;
-            quoted = true;
-        } else if (d === '\\') {
-            quoted = true;
-            delim += input[i + 1] ?? '';
-            i++;
-        } else if (/[\s;&|()<>]/.test(d)) break;
-        else delim += d;
-        i++;
-    }
-    return { delim, quoted, next: i };
-}
-
-/** Index just past the line that closes a heredoc whose body starts at `i`. */
-function skipHeredocBody(input, i, delim) {
-    while (i < input.length) {
-        let eol = input.indexOf('\n', i);
-        if (eol === -1) eol = input.length;
-        const line = input.slice(i, eol).replace(/^\t+/, '');
-        i = eol + 1;
-        if (line === delim) break;
-    }
-    return i;
-}
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const isAssignment = (w) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 
 /** Normalise OWNER/REPO, HOST/OWNER/REPO, or a github URL to "owner/repo". */
 export function normalizeRepo(value) {
@@ -742,45 +401,6 @@ function checkPrCreate(args) {
 // git
 // ---------------------------------------------------------------------------
 
-// git config keys that can redirect where a push goes or how it authenticates.
-// (push.* keys such as push.default or push.autoSetupRemote cannot change the target.)
-const RISKY_GIT_CONFIG = /^(remote\.|url\.|credential\.|core\.sshcommand$)/i;
-// `-c` keys that make git run a program or read config from elsewhere
-// (`git -c diff.external=prog diff`, `-c core.pager=...`, `-c alias.x=!cmd`).
-const EXEC_GIT_CONFIG =
-    /^(core\.(pager|editor|fsmonitor|hookspath|askpass|gitproxy|attributesfile)$|diff\.|pager\.|alias\.|sequence\.editor$|gpg\.|filter\.|merge\.|interactive\.|include\.|includeif\.|uploadpack\.)/i;
-// Options that turn a read-only git command (`git diff|log|show`, allow-listed in
-// .claude/settings.json) into a file write (`--output=FILE`), a read of any path
-// on disk (`--no-index`) or a program run (`--ext-diff`, git grep's
-// `--open-files-in-pager`). git rejects abbreviations of these diff options
-// (`--outp=` exits 128/129 and writes nothing), so the full spelling is enough;
-// `--output-indicator-*` and `--no-ext-diff` do not match.
-const REFUSED_GIT_OPTION = /^--(?:output|no-index|ext-diff|open-files-in-pager)(?:=|$)/;
-
-// Environment variables git or node read to run a program, load code, write a
-// file or switch repository/config (`GIT_EXTERNAL_DIFF=prog git diff`,
-// `GIT_TRACE=FILE`, `GIT_DIR=...`, `NODE_OPTIONS=--import=...`,
-// `NODE_V8_COVERAGE=DIR`). Fail closed: every GIT_* / NODE_* name is refused
-// unless SAFE_ENV lists it.
-const WATCHED_ENV = /^(GIT_|NODE_|PAGER$|EDITOR$|VISUAL$|LESSOPEN$|LESSCLOSE$)/;
-const SAFE_ENV = new Set([
-    'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_DATE', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL',
-    'GIT_COMMITTER_DATE', 'GIT_TERMINAL_PROMPT', 'GIT_OPTIONAL_LOCKS', 'GIT_MERGE_AUTOEDIT', 'GIT_FLUSH',
-    'NODE_ENV', 'NODE_NO_WARNINGS', 'NODE_DISABLE_COLORS',
-]);
-// Program-valued variables that are harmless only with a no-op value (`GIT_PAGER=cat`).
-const PROGRAM_ENV = new Set(['GIT_PAGER', 'PAGER', 'GIT_EDITOR', 'GIT_SEQUENCE_EDITOR', 'EDITOR', 'VISUAL']);
-const NOOP_PROGRAMS = new Set(['', 'cat', 'true', ':']);
-
-/** Name of the first risky variable in an env map ({ NAME: value | null }), or undefined. */
-function riskyEnv(env) {
-    return Object.keys(env).find((k) => {
-        if (!WATCHED_ENV.test(k) || SAFE_ENV.has(k)) return false;
-        if (PROGRAM_ENV.has(k)) return !NOOP_PROGRAMS.has(env[k]);
-        return true;
-    });
-}
-
 function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
     let redirected = false;
     // Walk global options to find the subcommand, vetting `-c key=value`.
@@ -824,6 +444,20 @@ function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
             `Blocked: \`git ${sub ?? ''} ${refused}\` writes a file, reads outside the repository or runs a program. ` +
                 'Read the output on stdout instead (pipe it, or use the Write tool to save it).'
         );
+    }
+    if (GIT_UPLOAD_PACK_SUBCOMMANDS.has(sub)) {
+        const program = rest.find(
+            (a) =>
+                GIT_UPLOAD_PACK_OPTION.test(a) ||
+                ((sub === 'ls-remote' || sub === 'archive') && GIT_EXEC_OPTION.test(a)) ||
+                ((sub === 'clone' || sub === 'ls-remote') && GIT_SHORT_UPLOAD_PACK.test(a))
+        );
+        if (program !== undefined) {
+            return block(
+                `Blocked: \`git ${sub} ${program}\` runs the program it names (--upload-pack, --exec, clone/ls-remote -u). ` +
+                    'Use plain `git fetch origin`.'
+            );
+        }
     }
     if (sub === 'push') {
         if (redirected) return block('Blocked: `git push` with --git-dir/--work-tree; the repository being pushed cannot be verified.');
@@ -1136,6 +770,26 @@ function substitutesDownload(text) {
     );
 }
 
+// The shared reader leaves `$()` in a word in place of an unquoted `$(...)` or
+// backtick substitution and checks the body as a command line of its own (inside
+// double quotes the text stays in the word). The rules here that read what a
+// substitution holds, a download run as code (`bash -c $(curl URL)`,
+// ``eval `curl URL` ``, `$(curl URL)` as the command) and game data named by a
+// delete, read each `$()` as every substitution of the command line in turn
+// (those of the lines it is nested in included). That can only refuse more.
+let lineSubstitutions = [];
+
+/** The word, and the word with its `$()` marks read as each substitution of the command line. */
+function substitutionReadings(word) {
+    if (!word.includes('$()')) return [word];
+    return [word, ...lineSubstitutions.map((body) => word.replaceAll('$()', `$(${body})`))];
+}
+
+/** True if a word or command line runs a download client (curl, wget, ...) in a substitution. */
+function runsDownload(text) {
+    return substitutionReadings(text).some(substitutesDownload);
+}
+
 /**
  * Where a shell invocation (without -c) gets its program: { stdin, operand }.
  * `operand` is the script-file word, if any. The shell reads stdin with -s
@@ -1323,7 +977,7 @@ function globHitsGameData(operand) {
         let changed = false;
         const path = segs.map((s) => {
             if (!/[*?[]/.test(s) || (!top && /^\*+$/.test(s))) return s;
-            if (!globMatcher(s)(name)) return s;
+            if (!globMatches(s, name)) return s;
             changed = true;
             return name; // a segment that cannot be parsed is assumed to match (fail closed)
         });
@@ -1332,13 +986,13 @@ function globHitsGameData(operand) {
 }
 
 function checkDelete(cmd, args) {
-    const operands = args.filter((a) => !a.startsWith('-'));
+    const operands = args.filter((a) => !a.startsWith('-')).flatMap(substitutionReadings);
     const recursive = args.some((a) => a === '--recursive' || /^-[a-zA-Z]*[rR]/.test(a));
     if (cmd === 'rm' && recursive && operands.some(isRootTarget)) {
         return block('Blocked: recursive `rm` of /, ~, $HOME, the current directory, .. or * would delete far more than this repository.');
     }
     if (cmd === 'find') {
-        if (!args.some((a) => ['-delete', '-exec', '-execdir', '-ok', '-okdir'].includes(a))) return null;
+        if (!args.some((a) => a === '-delete' || FIND_EXEC.includes(a))) return null;
     }
     const normal = (a) => {
         const { abs, segs } = pathSegments(a);
@@ -1362,7 +1016,7 @@ function checkDelete(cmd, args) {
  */
 function checkFindExec(args, state) {
     for (let i = 0; i < args.length; i++) {
-        if (!['-exec', '-execdir', '-ok', '-okdir'].includes(args[i])) continue;
+        if (!FIND_EXEC.includes(args[i])) continue;
         let end = i + 1;
         while (end < args.length && args[end] !== ';' && !(args[end] === '+' && args[end - 1] === '{}')) end++;
         const r = checkSegment(args.slice(i + 1, end), Object.create(state));
@@ -1372,142 +1026,6 @@ function checkFindExec(args, state) {
     return null;
 }
 const DELETERS = new Set(['rm', 'rmdir', 'unlink', 'shred', 'mv', 'find']);
-
-// Options of wrapper commands that take a separate value word. Only options
-// with a required value belong here: listing a flag would skip the command word.
-const WRAPPER_VALUE_OPTS = {
-    timeout: ['-s', '--signal', '-k', '--kill-after'],
-    nice: ['-n', '--adjustment'],
-    xargs: ['-n', '-I', '-L', '-P', '-s', '-d', '-E', '-a', '--max-args', '--max-procs', '--max-chars', '--delimiter', '--arg-file', '--process-slot-var'],
-    stdbuf: ['-i', '-o', '-e', '--input', '--output', '--error'],
-    ionice: ['-c', '-n', '-p', '-P', '-u', '--class', '--classdata', '--pid', '--pgid', '--uid'],
-    time: ['-f', '--format', '-o', '--output'],
-    exec: ['-a'],
-    flock: ['-w', '--timeout', '--wait', '-E', '--conflict-exit-code', '--start', '--length'],
-    watch: ['-n', '--interval', '-q', '--equexit', '--eqexit', '-s', '--shotsdir'],
-    chrt: ['-T', '--sched-runtime', '-P', '--sched-period', '-D', '--sched-deadline'],
-    unshare: [
-        '-S', '--setuid', '-G', '--setgid', '-R', '--root', '-w', '--wd', '-l', '--load-interp', '--owner', '--propagation',
-        '--setgroups', '--monotonic', '--boottime', '--map-user', '--map-group', '--map-users', '--map-groups',
-    ],
-    // nsenter's -W/--wdns value is optional (`-W/path`, `--wdns=/path`), so the next word is never it.
-    nsenter: ['-t', '--target', '-S', '--setuid', '-G', '--setgid', '-N', '--net-socket'],
-    setpriv: [
-        '--ambient-caps', '--inh-caps', '--bounding-set', '--ruid', '--euid', '--rgid', '--egid', '--reuid', '--regid',
-        '--groups', '--securebits', '--pdeathsig', '--selinux-label', '--apparmor-profile', '--landlock-access',
-        '--landlock-rule', '--seccomp-filter', '--ptracer',
-    ],
-    chroot: ['--userspec', '--groups'],
-};
-// Operand words a wrapper takes before the command: timeout's duration,
-// taskset's CPU mask, flock's lock file, chroot's new root.
-const WRAPPER_OPERANDS = { timeout: 1, taskset: 1, flock: 1, chroot: 1 };
-// Options that make taskset/chrt act on a running process (-p) or only print
-// (chrt -m): the words after them are not a command.
-const NO_COMMAND_OPTS = {
-    taskset: /^(?:--pid$|-[a-zA-Z]*p)/,
-    chrt: /^(?:--pid$|--max$|-[a-zA-Z]*[pm])/,
-};
-
-// Each wrapper's options as getopt reads them: the short letters that take a
-// value, the ones whose value is optional (only the rest of the same word,
-// never the next word), and every long name (getopt_long accepts any
-// unambiguous prefix). env has its own parser, envOptions().
-const WRAPPER_GETOPT = {
-    timeout: { value: 'sk', long: ['signal', 'kill-after', 'foreground', 'preserve-status', 'verbose'] },
-    nice: { value: 'n', long: ['adjustment'] },
-    stdbuf: { value: 'ioe', long: ['input', 'output', 'error'] },
-    ionice: { value: 'cnpPu', long: ['class', 'classdata', 'pid', 'pgid', 'uid', 'ignore'] },
-    xargs: { value: 'adEILnPs', optional: 'eil', long: ['arg-file', 'delimiter', 'eof', 'replace', 'max-lines', 'max-args', 'max-procs', 'max-chars', 'process-slot-var', 'null', 'open-tty', 'interactive', 'no-run-if-empty', 'verbose', 'exit', 'show-limits'] },
-    time: { value: 'fo', long: ['format', 'output', 'append', 'verbose', 'portability', 'quiet'] },
-    exec: { value: 'a', long: [] },
-    flock: {
-        value: 'wE',
-        long: ['shared', 'exclusive', 'unlock', 'nonblocking', 'nb', 'timeout', 'wait', 'conflict-exit-code', 'close', 'no-fork', 'verbose', 'fcntl', 'start', 'length', 'help', 'version'],
-    },
-    watch: {
-        value: 'nqs',
-        optional: 'd',
-        long: ['color', 'no-color', 'differences', 'help', 'interval', 'beep', 'errexit', 'follow', 'chgexit', 'equexit', 'exec', 'precise', 'no-rerun', 'shotsdir', 'no-title', 'no-wrap', 'version'],
-    },
-    chrt: {
-        value: 'DPT',
-        long: ['all-tasks', 'batch', 'deadline', 'ext', 'fifo', 'idle', 'pid', 'help', 'max', 'other', 'rr', 'sched-runtime', 'sched-period', 'sched-deadline', 'reset-on-fork', 'verbose', 'version'],
-    },
-    taskset: { value: '', long: ['all-tasks', 'pid', 'cpu-list', 'help', 'version'] },
-    unshare: {
-        value: 'RwSGl',
-        long: [
-            'help', 'version', 'mount', 'uts', 'ipc', 'net', 'pid', 'user', 'cgroup', 'time', 'fork', 'kill-child', 'forward-signals', 'mount-proc',
-            'mount-binfmt', 'map-user', 'map-users', 'map-group', 'map-groups', 'map-root-user', 'map-current-user', 'map-auto', 'map-subids',
-            'owner', 'propagation', 'setgroups', 'keep-caps', 'monotonic', 'boottime', 'load-interp', 'setuid', 'setgid', 'root', 'wd',
-        ],
-    },
-    nsenter: {
-        value: 'tNSG',
-        optional: 'muinpCUTrwW',
-        long: [
-            'all', 'help', 'version', 'target', 'mount', 'uts', 'ipc', 'net', 'net-socket', 'pid', 'user', 'cgroup', 'time', 'setuid', 'setgid',
-            'root', 'wd', 'wdns', 'env', 'no-fork', 'join-cgroup', 'preserve-credentials', 'keep-caps', 'user-parent', 'follow-context',
-        ],
-    },
-    setpriv: {
-        value: '',
-        long: [
-            'dump', 'nnp', 'no-new-privs', 'inh-caps', 'ambient-caps', 'list-caps', 'ruid', 'euid', 'rgid', 'egid', 'reuid', 'regid', 'clear-groups',
-            'keep-groups', 'init-groups', 'groups', 'bounding-set', 'securebits', 'pdeathsig', 'ptracer', 'selinux-label', 'apparmor-profile',
-            'landlock-access', 'landlock-rule', 'seccomp-filter', 'help', 'reset-env', 'version',
-        ],
-    },
-    chroot: { value: '', long: ['groups', 'userspec', 'skip-chdir', 'help', 'version'] },
-};
-
-/**
- * Rewrite a wrapper's leading options into the one-option-per-word, full-name
- * form wrapperTarget() matches: `timeout -vk 5` -> `timeout -v -k 5`,
- * `nice --adj 5` -> `nice --adjustment 5`. Otherwise the value of a packed or
- * abbreviated option is taken for the command the wrapper runs.
- */
-function expandWrapperOptions(cmd, w) {
-    const spec = WRAPPER_GETOPT[cmd];
-    if (!spec) return w;
-    const takesValue = WRAPPER_VALUE_OPTS[cmd] ?? [];
-    const out = [w[0]];
-    let k = 1;
-    for (; k < w.length; k++) {
-        const a = w[k];
-        if (a === '--' || a === '-' || !a.startsWith('-')) break;
-        if (a.startsWith('--')) {
-            const eq = a.indexOf('=');
-            const name = a.slice(2, eq === -1 ? undefined : eq);
-            const hits = spec.long.filter((l) => l.startsWith(name));
-            const full = `--${spec.long.includes(name) || hits.length !== 1 ? name : hits[0]}`;
-            if (eq !== -1) out.push(full + a.slice(eq));
-            else {
-                out.push(full);
-                if (takesValue.includes(full) && k + 1 < w.length) out.push(w[++k]);
-            }
-            continue;
-        }
-        for (let i = 1; i < a.length; i++) {
-            // `xargs -iE cmd`: E is -i's replace string, not a packed -E.
-            if (spec.optional?.includes(a[i])) {
-                out.push(`-${a[i]}${a.slice(i + 1)}`);
-                break;
-            }
-            if (!spec.value.includes(a[i])) {
-                out.push(`-${a[i]}`);
-            } else if (i + 1 < a.length) {
-                out.push(`-${a[i]}${a.slice(i + 1)}`);
-                break;
-            } else {
-                out.push(`-${a[i]}`);
-                if (k + 1 < w.length) out.push(w[++k]);
-            }
-        }
-    }
-    return [...out, ...w.slice(k)];
-}
 
 // GNU env's long options; getopt accepts any unambiguous prefix (`--sp` is --split-string).
 const ENV_LONG = [
@@ -1561,250 +1079,57 @@ function envOptions(w) {
     return { target: -1, script: null, rest: w.length };
 }
 
-// fish's long options (getopt accepts any unambiguous prefix) and the ones taking a value.
-const FISH_LONG = [
-    'command', 'debug', 'debug-output', 'debug-stack-frames', 'features', 'help', 'init-command', 'interactive', 'login',
-    'no-config', 'no-execute', 'print-debug-categories', 'print-rusage-self', 'private', 'profile', 'profile-startup', 'version',
-];
-const FISH_LONG_VALUE = new Set(['command', 'init-command', 'debug', 'debug-output', 'debug-stack-frames', 'features', 'profile', 'profile-startup']);
-// fish's short options taking a value: the rest of the word, or else the next word.
-const FISH_SHORT_VALUE = 'cCdDfop';
-
-/**
- * Every code string a fish invocation runs: the values of -c/--command and
- * -C/--init-command, attached (`-cCMD`, `--command=CMD`) or in the next word,
- * in a short cluster (`-ic CMD`) or behind an abbreviated long name (`--comm`).
- * Words that are not options are skipped rather than ending the scan, so an
- * option after a script name is still inspected.
- */
-function fishScripts(args) {
-    const scripts = [];
-    for (let k = 0; k < args.length; k++) {
-        const a = args[k];
-        if (a === '--') break;
-        if (!a.startsWith('-') || a === '-') continue;
-        if (a.startsWith('--')) {
-            const eq = a.indexOf('=');
-            const name = a.slice(2, eq === -1 ? undefined : eq);
-            const hits = FISH_LONG.filter((o) => o.startsWith(name));
-            const opt = hits.includes(name) ? name : hits.length === 1 ? hits[0] : null;
-            if (!FISH_LONG_VALUE.has(opt)) continue;
-            const value = eq === -1 ? args[++k] : a.slice(eq + 1);
-            if ((opt === 'command' || opt === 'init-command') && value !== undefined) scripts.push(value);
-            continue;
-        }
-        for (let j = 1; j < a.length; j++) {
-            if (!FISH_SHORT_VALUE.includes(a[j])) continue;
-            const value = j + 1 < a.length ? a.slice(j + 1) : args[++k];
-            if ((a[j] === 'c' || a[j] === 'C') && value !== undefined) scripts.push(value);
-            break;
-        }
-    }
-    return scripts;
-}
-
-/** Index of the command a wrapper (env, timeout, xargs, ...) runs, or -1 if there is none to analyse. */
-function wrapperTarget(w) {
-    const cmd = basename(w[0]);
-    if (cmd === 'command' && w.some((a) => /^-[a-zA-Z]*[vV]/.test(a))) return -1; // lookup only
-    if (cmd === 'env') return envOptions(w).target;
-    const valueOpts = WRAPPER_VALUE_OPTS[cmd] ?? [];
-    let operands = WRAPPER_OPERANDS[cmd] ?? 0;
-    let priority = cmd === 'chrt'; // chrt's scheduling priority may be left out
-    // After `--` every word is an operand or the command, even one starting with `-`
-    // (`flock -- -lock CMD`: -lock is the lock file).
-    let options = true;
-    for (let k = 1; k < w.length; k++) {
-        const a = w[k];
-        // flock reads no options after its lock file: `flock FILE -c CMD` is its command form.
-        if (cmd === 'flock' && operands === 0) return k;
-        if (isAssignment(a)) continue;
-        if (options && a === '--') {
-            options = false;
-            continue;
-        }
-        if (options && a.startsWith('-') && a.length > 1) {
-            if (NO_COMMAND_OPTS[cmd]?.test(a)) return -1;
-            if (valueOpts.includes(a)) k++;
-            continue;
-        }
-        if (operands > 0) {
-            operands--;
-            continue;
-        }
-        // chrt reads the priority with strtol, so leading blanks and a sign are
-        // part of it: `chrt -o +0 CMD` and `chrt -o -- -0 CMD` run CMD.
-        if (priority && /^[ \t\n\v\f\r]*[+-]?\d+$/.test(a)) {
-            priority = false;
-            continue;
-        }
-        return k;
-    }
-    return -1;
-}
-
 // Commands that systemd-run / flatpak-spawn may run and that this hook analyses.
 const ANALYSED = new Set([
     'gh', 'git', 'node', 'nodejs', 'eval', 'source', '.', 'systemd-run', 'flatpak-spawn', 'cmake', 'ninja', 'meson', 'checkinstall',
     'npm', 'pnpm', 'yarn', 'cargo', 'pip', 'pip3', ...SHELLS, ...MAKERS, ...NET_CLIENTS, ...PKG_MANAGERS, ...DELETERS,
 ]);
 
-/** Whether this word names a command checkSegment() checks or looks through. */
-function namesCheckedCommand(a) {
-    const name = basename(a);
-    return ANALYSED.has(name) || PRIVILEGE.has(name) || ['find', 'watch', 'flock'].includes(name) || spelledNames(a).names.length > 0;
-}
+// Every name checkSegment() checks or looks through (#257): the shell can build
+// one of them out of a word with brace groups or wildcards (`{git,}`,
+// `/usr/bin/g?t`, `g?t` beside a file named git); see commandNameReader() in
+// shell-reader.mjs. A name built from a variable stays out of scope, as in the header.
+const CHECKED_NAMES = new Set([...ANALYSED, ...PRIVILEGE, ...WRAPPERS, 'find', 'watch', 'flock']);
+const { builtCommandName, namesCheckedCommand } = commandNameReader(CHECKED_NAMES);
 
-// A command name the shell builds before it looks it up (#257). Bash expands
-// brace groups (`{git,}` is git, the empty alternative dropped; `{git,diff}` is
-// `git diff`; `{f..h}it` holds git) and, in a word with a `/`, globs
-// (`/usr/bin/g?t` is /usr/bin/git), so the word this hook reads is not the
-// program that runs. A glob with no `/` matches files in the working directory,
-// and an agent can create them (`touch git; g?t ...`); the name it expands to
-// is then looked up on PATH, so `g?t` is read as git too. A last part that is
-// only `*` matches whatever the directory holds, not one name, so it is not
-// read as a checked command here; checkSegment() refuses it as a command word.
-// A name built from a variable stays out of scope, as in the header.
-const SPELLABLE = new Set([...ANALYSED, ...PRIVILEGE, ...WRAPPERS, 'find', 'watch', 'flock']);
-const BRACE_GROUP = /\{([^{}]*,[^{}]*|[A-Za-z]\.\.[A-Za-z](?:\.\.-?\d+)?)\}/;
-const GLOB = /[*?[]/;
-// A word with more brace forms than this is read only as far as this many
-// forms and with its braces and commas taken out; the forms grow with the
-// product of the groups.
-const MAX_BRACE_FORMS = 32;
+// Bash also expands a letter sequence in braces (`{f..h}it` holds git), which
+// the shared reader does not read. This repository refused it before the
+// reader was shared, so a sequence is listed out as a comma group
+// (`{f,g,h}it`) before the reader sees the word.
+const LETTER_SEQUENCE = /\{([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?\}/g;
 
-/** The words one brace group stands for: its comma alternatives or its letter sequence. */
-function braceAlternatives(body) {
-    const seq = /^([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?$/.exec(body);
-    if (!seq) return body.split(',');
-    const [from, to] = [seq[1].charCodeAt(0), seq[2].charCodeAt(0)];
-    const step = Math.abs(Number(seq[3] ?? 1)) || 1;
-    const out = [];
-    for (let k = Math.min(from, to); k <= Math.max(from, to) && out.length < MAX_BRACE_FORMS; k += step) {
-        out.push(String.fromCharCode(k));
-    }
-    return out;
-}
-
-/** The word, the forms its brace groups expand to (at most MAX_BRACE_FORMS) and the word with braces and commas taken out. */
-function braceForms(word) {
-    const forms = [word, word.replace(/[{},]/g, '')];
-    const pending = [word];
-    while (pending.length && forms.length < MAX_BRACE_FORMS) {
-        const form = pending.pop();
-        const group = BRACE_GROUP.exec(form);
-        if (!group) continue;
-        for (const alt of braceAlternatives(group[1]).slice(0, MAX_BRACE_FORMS)) {
-            const expanded = form.slice(0, group.index) + alt + form.slice(group.index + group[0].length);
-            forms.push(expanded);
-            pending.push(expanded);
-        }
-    }
-    return forms;
+/** The word with each `{a..z}` letter sequence written as the comma group it expands to. */
+function listLetterSequences(word) {
+    if (!word.includes('..')) return word;
+    return word.replace(LETTER_SEQUENCE, (_, first, last, by) => {
+        const [from, to] = [first.charCodeAt(0), last.charCodeAt(0)];
+        const step = Math.abs(Number(by ?? 1)) || 1;
+        const letters = [];
+        for (let k = Math.min(from, to); k <= Math.max(from, to); k += step) letters.push(String.fromCharCode(k));
+        return letters.length > 1 ? `{${letters.join(',')}}` : letters.join('');
+    });
 }
 
 /**
- * A test for a glob pattern of one path part: `*`, `?` and `[...]` (`[!...]`,
- * `[^...]`); an unclosed `[` is literal, and a class JavaScript cannot read
- * matches any character. It keeps one position to go back to, the last `*`,
- * so a test costs at most the pattern's length times the name's. A regular
- * expression with `.*` for each `*` backtracks instead: `*****...*Z` takes
- * longer with every star, one test cannot be cut short by spend(), and past
- * the hook timeout Claude Code runs the command unchecked.
+ * How the shell could build a checked command name out of this word (see
+ * builtCommandName() in shell-reader.mjs), letter sequences included:
+ * null, { braces: true } or { globs: [names] }.
  */
-function globMatcher(pattern) {
-    const parts = [];
-    for (let i = 0; i < pattern.length; i++) {
-        const c = pattern[i];
-        const close = c === '[' ? pattern.indexOf(']', i + 2) : -1;
-        if (c === '*') {
-            if (parts.at(-1) !== '*') parts.push('*');
-        } else if (c === '?') parts.push(() => true);
-        else if (close !== -1) {
-            let set = pattern.slice(i + 1, close);
-            if (set[0] === '!') set = `^${set.slice(1)}`;
-            let re;
-            try {
-                re = new RegExp(`^[${set.replace(/[\\\]]/g, '\\$&')}]$`);
-            } catch {
-                re = /^/;
-            }
-            parts.push((ch) => re.test(ch));
-            i = close;
-        } else parts.push((ch) => ch === c);
-    }
-    return (name) => {
-        let p = 0;
-        let n = 0;
-        let star = -1;
-        let mark = 0;
-        while (n < name.length) {
-            if (p < parts.length && parts[p] === '*') {
-                star = p++;
-                mark = n;
-            } else if (p < parts.length && parts[p](name[n])) {
-                p++;
-                n++;
-            } else if (star !== -1) {
-                p = star + 1;
-                n = ++mark;
-            } else return false;
-        }
-        while (parts[p] === '*') p++;
-        return p === parts.length;
-    };
+function spelledName(word, commandWord = false) {
+    return builtCommandName(listLetterSequences(word), commandWord);
 }
 
 /**
- * The commands this hook checks or looks through that the shell could run
- * from this command word once it expands it, and whether braces did it:
- * { braces, names }. `names` is empty for a word read as typed (`git`,
- * `./configure`, `{a,b}.txt`).
+ * Whether a word behind another program names a command this hook checks or
+ * looks through. Besides the shared reading, a word made only of wildcards
+ * with a `?` in it (`???`, `?*`) is read as each checked name it fits, as this
+ * repository did before the reader was shared; a word of only `*` matches
+ * whatever the directory holds and is left alone (`ls ./*`).
  */
-function spelledNames(word) {
-    const braces = BRACE_GROUP.test(word);
-    if (!braces && !GLOB.test(word)) return { braces: false, names: [] };
-    const names = new Set();
-    for (const form of braces ? braceForms(word) : [word]) {
-        if (/\s/.test(form)) continue; // a word with a space in it names no program
-        const name = basename(form);
-        if (name !== basename(word) && SPELLABLE.has(name)) names.add(name);
-        else if (GLOB.test(name) && !/^\*+$/.test(name)) {
-            const matches = globMatcher(name);
-            for (const n of SPELLABLE) if (matches(n)) names.add(n);
-        }
-    }
-    return { braces, names: [...names] };
-}
-
-/**
- * The word as the shell would look it up: quotes, backslashes and `$` removed.
- * A shell drops quotes and backslashes before it looks a name up, so `s""udo`,
- * `su\do` and `$'sudo'` inside a command string all run sudo. Removing more
- * can only refuse more.
- */
-function unquoted(a) {
-    return a.replace(/[$"'\\]/g, '');
-}
-
-/**
- * The command strings a word may hand to a shell: the word itself when it
- * holds more than one word of its own (`script -c 'git push --force'`), or a
- * value attached to an option in the same word: after the `=` of a long
- * option, or after any letter of a short-option cluster (`script -qc'sudo id'`).
- * Which letter takes a value is not modelled, so every one is tried. Yielded
- * one at a time: a long cluster has as many tails as letters, each nearly as
- * long as the word.
- */
-function* commandStrings(word) {
-    if (COMMAND_STRING_SEPARATORS.test(word)) yield word;
-    if (word.startsWith('--')) {
-        const eq = word.indexOf('=');
-        if (eq !== -1) yield word.slice(eq + 1);
-    } else {
-        const cluster = /^-[A-Za-z0-9]+/.exec(word);
-        if (cluster) for (let cut = 2; cut <= cluster[0].length; cut++) yield word.slice(cut);
-    }
+function namesChecked(word) {
+    if (namesCheckedCommand(listLetterSequences(word))) return true;
+    const name = basename(word);
+    return name.includes('?') && /^[*?]+$/.test(name) && builtCommandName(word, true) !== null;
 }
 
 /**
@@ -1825,7 +1150,7 @@ function checkUnlistedProgram(w, inlineEnv, state) {
     for (let n = 1; n < w.length; n++) {
         spend();
         let refusal = null;
-        if (namesCheckedCommand(w[n])) {
+        if (namesChecked(w[n])) {
             if (++checked > MAX_UNLISTED_INNER) {
                 return block(
                     `Blocked: more than ${MAX_UNLISTED_INNER} commands this hook checks behind \`${basename(cmd)}\`, ` +
@@ -1839,9 +1164,11 @@ function checkUnlistedProgram(w, inlineEnv, state) {
         if (!refusal) {
             for (const text of commandStrings(w[n])) {
                 spend();
-                const names = (t) => t.split(COMMAND_STRING_SEPARATORS).some((piece) => piece && namesCheckedCommand(piece));
-                // The words as the shell reads them too: `$'\x67it'` is git.
-                const read = () => tokenize(text).some((seg) => seg.some(namesCheckedCommand));
+                const names = (t) => t.split(COMMAND_STRING_SEPARATORS).some((piece) => piece && namesChecked(piece));
+                // The words as the shell reads them too: `$'\x67it'` is git, and the
+                // first word of each command in it is one the shell runs (`* push`).
+                const read = () =>
+                    tokenize(text).some((seg) => seg.some(namesChecked) || (seg.length > 0 && spelledName(seg[0], true) !== null));
                 if (!names(text) && !names(unquoted(text)) && !read()) continue;
                 refusal = checkCommand(text, state());
                 if (refusal) break;
@@ -1880,20 +1207,27 @@ function checkSegment(words, state) {
             w.shift();
         }
         if (!w.length) return null;
-        // A command word the shell expands into a checked command (#257).
-        // Braces are refused: `{git,diff} --no-index ...` is `git diff
-        // --no-index ...`, and the words they add are not modelled. A glob in
-        // a path is checked as each command it can match, then read on as
-        // typed below, so `/usr/bin/g?t status` and `g?t status` pass as `git
-        // status` does.
-        const spelled = spelledNames(w[0]);
-        if (spelled.braces && spelled.names.length) {
+        // `*` or `./*` as the command word runs the first file the directory
+        // holds, with the rest as its arguments, so it can be any program.
+        if (/^\*+$/.test(basename(w[0]))) {
             return block(
-                `Blocked: \`${w[0]}\` is a command name the shell expands with its braces before running it, and it can ` +
-                    `expand to \`${spelled.names[0]}\`, which this hook checks only when the name is spelled out. Spell the name out.`
+                `Blocked: \`${w[0]}\` as a command name runs whichever file the shell matches first, so this hook ` +
+                    'cannot tell which program it is. Spell the name out.'
             );
         }
-        for (const name of spelled.names) {
+        // A command word the shell expands into a checked command (#257).
+        // Braces are refused: `{git,diff} --no-index ...` is `git diff
+        // --no-index ...`, and the words they add are not modelled. A wildcard
+        // is checked as each command it can match, then read on as typed below,
+        // so `/usr/bin/g?t status` and `g?t status` pass as `git status` does.
+        const spelled = spelledName(w[0], true);
+        if (spelled?.braces) {
+            return block(
+                `Blocked: \`${w[0]}\` is a command name the shell expands with its braces before running it, and it can ` +
+                    'expand to a command this hook checks only when the name is spelled out. Spell the name out.'
+            );
+        }
+        for (const name of spelled?.globs ?? []) {
             const env = Object.entries(inlineEnv).map(([k, v]) => `${k}=${v}`);
             const respelled = Object.assign([...env, name, ...w.slice(1)], { pipedFrom, stdinFrom, hereString, heredocBody });
             const r = checkSegment(respelled, state);
@@ -1903,14 +1237,6 @@ function checkSegment(words, state) {
                     reason: `Blocked: \`${w[0]}\` is a word the shell can expand to \`${name}\`, so it is checked as \`${name}\`. ${r.reason.replace(/^Blocked: /, '')}`,
                 };
             }
-        }
-        // `*` or `./*` as the command word runs the first file the directory
-        // holds, with the rest as its arguments, so it can be any program.
-        if (/^\*+$/.test(basename(w[0]))) {
-            return block(
-                `Blocked: \`${w[0]}\` as a command name runs whichever file the shell matches first, so this hook ` +
-                    'cannot tell which program it is. Spell the name out.'
-            );
         }
         const cmd = basename(w[0]);
         if (PRIVILEGE.has(cmd)) {
@@ -1954,7 +1280,7 @@ function checkSegment(words, state) {
     }
 
     // `$(curl URL)` as the command word runs whatever the download returns.
-    if (substitutesDownload(w[0])) {
+    if (runsDownload(w[0])) {
         return block('Blocked: running the output of a download (`$(curl ...)`) as a command runs code that nobody reviewed.');
     }
     const cmd = basename(w[0]);
@@ -1984,10 +1310,11 @@ function checkSegment(words, state) {
         }
         return null;
     }
-    if (cmd === 'cd' || cmd === 'pushd' || cmd === 'popd') {
+    if (CHDIR.has(cmd)) {
         const target = args.find((a) => !a.startsWith('-'));
         const known = cmd !== 'popd' && target !== undefined && target !== '-' && state.cwd !== null && !/[$`~{*?[\\]/.test(target);
         state.cwd = known ? resolve(state.cwd ?? process.cwd(), target) : null;
+        followedCd.add(words);
         return null;
     }
     if (cmd === 'gh') {
@@ -2026,7 +1353,7 @@ function checkSegment(words, state) {
             const scripts = fishScripts(args);
             for (const s of scripts) {
                 // `fish -c "$(curl URL)"` runs whatever the download returns.
-                if (substitutesDownload(s)) {
+                if (runsDownload(s)) {
                     return block(`Blocked: \`${cmd} -c "$(curl ...)"\` runs downloaded code that nobody reviewed.`);
                 }
                 const r = checkCommand(s, nested());
@@ -2039,7 +1366,7 @@ function checkSegment(words, state) {
             const script = c === -1 ? undefined : args.slice(c + 1).find((a) => !a.startsWith('-'));
             if (script !== undefined) {
                 // `bash -c "$(curl URL)"` runs whatever the download returns.
-                if (substitutesDownload(script)) {
+                if (runsDownload(script)) {
                     return block(`Blocked: \`${cmd} -c "$(curl ...)"\` runs downloaded code that nobody reviewed.`);
                 }
                 return checkCommand(script, nested());
@@ -2072,7 +1399,7 @@ function checkSegment(words, state) {
         return null;
     }
     if (cmd === 'eval') {
-        if (substitutesDownload(args.join(' '))) {
+        if (runsDownload(args.join(' '))) {
             return block('Blocked: `eval "$(curl ...)"` runs downloaded code that nobody reviewed.');
         }
         return checkCommand(args.join(' '), nested());
@@ -2085,15 +1412,29 @@ function checkSegment(words, state) {
     return checkUnlistedProgram(w, inlineEnv, nested);
 }
 
+// Segments whose directory change checkSegment() followed (a spelled-out cd,
+// pushd or popd, also behind a wrapper such as `builtin cd`).
+const followedCd = new WeakSet();
+
 /** Analyse a command line. Returns null if allowed, else { blocked, reason }. */
 export function checkCommand(command, state = {}) {
-    for (const sub of extractSubstitutions(command)) {
+    const substitutions = extractSubstitutions(command);
+    for (const sub of substitutions) {
         const r = checkCommand(sub, state);
         if (r) return r;
     }
-    for (const words of tokenize(command)) {
-        const r = checkSegment(words, state);
-        if (r) return r;
+    const outer = lineSubstitutions;
+    lineSubstitutions = [...outer, ...substitutions];
+    try {
+        for (const words of tokenize(command)) {
+            const r = checkSegment(words, state);
+            if (r) return r;
+            // Any other way the shell may change directory (`eval cd DIR`, `{cd,} DIR`,
+            // `c? DIR`, `$X DIR`) leaves the directory of a later `git push` unknown.
+            if (!followedCd.has(words) && changesDirectory(words)) state.cwd = null;
+        }
+    } finally {
+        lineSubstitutions = outer;
     }
     return null;
 }
@@ -2117,7 +1458,7 @@ export function main(check = checkCommand, budgetMs = BUDGET_MS) {
         const command = payload?.tool_input?.command;
         if (typeof command !== 'string' || !command.trim()) process.exit(0);
 
-        deadline = Date.now() + budgetMs;
+        startBudget(budgetMs);
         const result = check(command, typeof payload?.cwd === 'string' ? { cwd: payload.cwd } : {});
         if (result) {
             process.stderr.write(`guard-bash: ${result.reason}\n`);

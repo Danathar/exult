@@ -173,6 +173,10 @@ const allowed = [
     `echo $'a\\tb'`,
     `git log --format=$'%h\\t%s' -3`,
     `script -qc "$'\\x67it' status" /dev/null`,
+    // git network reads without a program to run (#268)
+    'git fetch origin',
+    'git fetch --update-head-ok origin',
+    'git ls-remote --exit-code origin',
 ];
 
 const blocked = [
@@ -704,6 +708,21 @@ const blocked = [
     './* push --force origin master',
     'nice * id',
     'env FOO=1 * id',
+    // read through the shared shell reader (#268): git options that run the
+    // program they name, protocol.* config, a directory change this hook cannot
+    // follow before a push, a wrapper behind another program, and a command
+    // string whose command word is only wildcards
+    "git fetch --upload-pack='touch /tmp/x' origin",
+    'git fetch --upl=sh origin',
+    'git ls-remote --exec=sh origin',
+    'git clone -u sh /tmp/r',
+    'git -c protocol.ext.allow=always fetch origin',
+    'eval cd /tmp; git push origin feature',
+    '{cd,} /tmp && git push origin feature',
+    'setarch x86_64 xargs git log',
+    "script -qc '* id' /dev/null",
+    // an unquoted `$(...)` is still read for what it holds
+    'rm -rf $(echo ./gamedat/)',
 ];
 
 for (const command of allowed) {
