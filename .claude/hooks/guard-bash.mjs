@@ -1310,27 +1310,6 @@ const GAME_DATA_NAMES = [
     'forgeofvirtue',
 ];
 
-/** Regular expression for one glob path segment (`*`, `?`, `[...]`); null if it cannot be built. */
-function globSegment(seg) {
-    let re = '';
-    for (let i = 0; i < seg.length; i++) {
-        const c = seg[i];
-        const close = c === '[' ? seg.indexOf(']', i + 2) : -1;
-        if (c === '*') re += '.*';
-        else if (c === '?') re += '.';
-        else if (close !== -1) {
-            const body = seg.slice(i + 1, close);
-            re += `[${body.replace(/^!/, '^').replace(/\\/g, '\\\\')}]`;
-            i = close;
-        } else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-    }
-    try {
-        return new RegExp(`^${re}$`);
-    } catch {
-        return null;
-    }
-}
-
 /**
  * True if a glob operand could match game data (`rm -rf gam*`, `g?medat`, `mv ./* x`).
  * A bare `*` segment below a named directory (`build/*`) is not expanded: it only
@@ -1344,8 +1323,7 @@ function globHitsGameData(operand) {
         let changed = false;
         const path = segs.map((s) => {
             if (!/[*?[]/.test(s) || (!top && /^\*+$/.test(s))) return s;
-            const re = globSegment(s);
-            if (re !== null && !re.test(name)) return s;
+            if (!globMatcher(s)(name)) return s;
             changed = true;
             return name; // a segment that cannot be parsed is assumed to match (fail closed)
         });
@@ -1725,26 +1703,56 @@ function braceForms(word) {
     return forms;
 }
 
-/** A RegExp for a glob pattern of one path part: `*`, `?` and `[...]` (`[!...]`, `[^...]`); an unclosed `[` is literal. */
-function globRegExp(pattern) {
-    let src = '';
+/**
+ * A test for a glob pattern of one path part: `*`, `?` and `[...]` (`[!...]`,
+ * `[^...]`); an unclosed `[` is literal, and a class JavaScript cannot read
+ * matches any character. It keeps one position to go back to, the last `*`,
+ * so a test costs at most the pattern's length times the name's. A regular
+ * expression with `.*` for each `*` backtracks instead: `*****...*Z` takes
+ * longer with every star, one test cannot be cut short by spend(), and past
+ * the hook timeout Claude Code runs the command unchecked.
+ */
+function globMatcher(pattern) {
+    const parts = [];
     for (let i = 0; i < pattern.length; i++) {
         const c = pattern[i];
         const close = c === '[' ? pattern.indexOf(']', i + 2) : -1;
-        if (c === '*') src += '.*';
-        else if (c === '?') src += '.';
+        if (c === '*') {
+            if (parts.at(-1) !== '*') parts.push('*');
+        } else if (c === '?') parts.push(() => true);
         else if (close !== -1) {
             let set = pattern.slice(i + 1, close);
             if (set[0] === '!') set = `^${set.slice(1)}`;
-            src += `[${set.replace(/[\\\]]/g, '\\$&')}]`;
+            let re;
+            try {
+                re = new RegExp(`^[${set.replace(/[\\\]]/g, '\\$&')}]$`);
+            } catch {
+                re = /^/;
+            }
+            parts.push((ch) => re.test(ch));
             i = close;
-        } else src += c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+        } else parts.push((ch) => ch === c);
     }
-    try {
-        return new RegExp(`^${src}$`);
-    } catch {
-        return /^/; // a class JavaScript cannot read: assume it matches anything
-    }
+    return (name) => {
+        let p = 0;
+        let n = 0;
+        let star = -1;
+        let mark = 0;
+        while (n < name.length) {
+            if (p < parts.length && parts[p] === '*') {
+                star = p++;
+                mark = n;
+            } else if (p < parts.length && parts[p](name[n])) {
+                p++;
+                n++;
+            } else if (star !== -1) {
+                p = star + 1;
+                n = ++mark;
+            } else return false;
+        }
+        while (parts[p] === '*') p++;
+        return p === parts.length;
+    };
 }
 
 /**
@@ -1762,8 +1770,8 @@ function spelledNames(word) {
         const name = basename(form);
         if (name !== basename(word) && SPELLABLE.has(name)) names.add(name);
         else if (GLOB.test(name) && !/^\*+$/.test(name)) {
-            const re = globRegExp(name);
-            for (const n of SPELLABLE) if (re.test(n)) names.add(n);
+            const matches = globMatcher(name);
+            for (const n of SPELLABLE) if (matches(n)) names.add(n);
         }
     }
     return { braces, names: [...names] };

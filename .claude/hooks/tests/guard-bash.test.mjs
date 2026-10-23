@@ -768,6 +768,36 @@ test('a glob with no path is checked as the command it matches', () => {
     assert.match(r.stderr, /can expand to `git`, so it is checked as `git`/);
 });
 
+test('a wildcard name with many stars is read in time, not left to the hook timeout', () => {
+    // Each `*` used to become `.*` in a regular expression, which backtracks:
+    // 18 stars took over a minute in one test the budget cannot interrupt, and
+    // Claude Code runs the command when the hook times out.
+    const stars = '*'.repeat(40);
+    for (const command of [
+        `${stars}Z; git push --force origin master`,
+        `rm -rf ${stars}Z; git push --force origin master`,
+    ]) {
+        const r = spawnSync(process.execPath, [HOOK], {
+            input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+            encoding: 'utf8',
+            timeout: 4000,
+        });
+        assert.equal(r.status, 2, command);
+        assert.match(r.stderr, /`git push --force`: force push/, command);
+    }
+});
+
+test('a wildcard name with many stars still matches what it names', () => {
+    const stars = '*'.repeat(40);
+    let r = run(`setarch x86_64 ${stars}g?t push --force origin master`);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /can expand to `git`, so it is checked as `git`/);
+    r = run(`rm -rf ${stars}g[a]m${stars}dat`);
+    assert.equal(r.status, 2);
+    r = run(`rm -rf ${stars}x[!a]m${stars}dat`);
+    assert.equal(r.status, 0, r.stderr);
+});
+
 test('a command word of only `*` is refused with the reason', () => {
     const r = run('* push --force origin master');
     assert.equal(r.status, 2);
