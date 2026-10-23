@@ -26,8 +26,8 @@
 # `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'` strips credentials from subprocess
 # environments. What is enforced today: a pre-push hook in the checkout rejects
 # pushes to master, and a comment on a plain issue starts on a
-# `claude/issue-<number>` branch. The branch ruleset for master (issue #39) is
-# not in place yet; once it is, it is the real server-side control.
+# `claude/issue-<number>` branch. The master branch ruleset (issue #39,
+# docs/branch-protection.md) is the real server-side control.
 #
 # No `pull_request_target`: with write permissions it is the classic
 # privilege-escalation shape. `issue_comment` runs the default branch's copy of
@@ -193,9 +193,10 @@ jobs:
           sed -i 's/^          //' "$RUNNER_TEMP/gh-review-read.sh"
           chmod 0755 "$RUNNER_TEMP/gh-review-read.sh"
 
-      # Agents must never push to master. Until the repository ruleset lands
-      # (issue #39) nothing server-side stops it, so a local pre-push hook
-      # rejects any push to refs/heads/master from this checkout. This covers
+      # Agents must never push to master. The master ruleset (issue #39,
+      # docs/branch-protection.md) refuses it server-side; this local pre-push
+      # hook also rejects any push to refs/heads/master from this checkout, so
+      # the agent gets a clear message before the push leaves. This covers
       # `git push` run by the agent. It is not a sandbox: code the agent writes
       # itself could still push with the workflow token, which has
       # contents: write.
