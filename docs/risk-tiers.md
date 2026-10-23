@@ -37,7 +37,9 @@ its `hive-serialized` strategy once the checks are green.
 The required commands name these entry points: `tests/run-unit-tests.sh` and
 `tests/e2e/run.sh` (the test suites), and the `CI`, `Coverage gate`,
 `policy-check` and `agent-tooling` workflows. `actionlint` is the workflow
-linter and is run only when a `.github/workflows/` file changed. The `master`
+linter: run it when a `.github/workflows/` file changed. The `policy-check`
+workflow also runs it on every pull request, over the fork-added workflows
+that `policies/workflow-permissions.json` covers. The `master`
 ruleset requires those six check jobs for every merge; see
 [branch-protection.md](branch-protection.md).
 

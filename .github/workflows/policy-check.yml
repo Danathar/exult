@@ -3,11 +3,12 @@ name: Policy check
 # Runs scripts/check-policies.mjs: the repo-target, workflow-permissions,
 # agent-guardrails, credential-safety and game-data policies in policies/, the
 # drift check between docs/risk-tiers.md and risk-config.json, and CODEOWNERS
-# coverage of owner-review paths; then the checker's own tests. The workflow
-# policy applies to fork-added workflows only; upstream exult workflows are
-# excluded (see policies/README.md). Node built-ins only, so there is no npm
-# install. No path filter: this job runs on every pull request so it can be a
-# required check.
+# coverage of owner-review paths; then the checker's own tests; then actionlint,
+# the Tier 3 workflow linter (docs/risk-tiers.md), on the same fork-added
+# workflows. The workflow policy and actionlint apply to fork-added workflows
+# only; upstream exult workflows are excluded (see policies/README.md). Node
+# built-ins only, so there is no npm install. No path filter: this job runs on
+# every pull request so it can be a required check.
 
 on:
   pull_request:
@@ -39,3 +40,26 @@ jobs:
 
       - name: Test the policy checker
         run: node --test scripts/tests/check-policies.test.mjs
+
+      # The file list is policies/workflow-permissions.json's, so the
+      # upstream workflows it excludes are not linted. shellcheck, which
+      # actionlint runs on each run: block, is on the ubuntu-latest image.
+      - name: Lint fork-added workflows (actionlint)
+        run: |
+          version=1.7.12
+          sum=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          tgz="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSL -o "$tgz" "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz"
+          echo "$sum  $tgz" | sha256sum -c -
+          tar -xzf "$tgz" -C "$RUNNER_TEMP" actionlint
+          mapfile -t files < <(node --input-type=module -e '
+            import { readFileSync, readdirSync } from "node:fs";
+            import { matchesAny } from "./scripts/check-policies.mjs";
+            const p = JSON.parse(readFileSync("policies/workflow-permissions.json", "utf8"));
+            for (const f of readdirSync(".github/workflows").map((n) => ".github/workflows/" + n).sort()) {
+              if (matchesAny(p.workflowGlobs, f) && !matchesAny(p.excludeGlobs ?? [], f)) console.log(f);
+            }
+          ')
+          test "${#files[@]}" -gt 0
+          echo "actionlint ${version} on ${#files[@]} fork-added workflow(s)"
+          "$RUNNER_TEMP/actionlint" "${files[@]}"
