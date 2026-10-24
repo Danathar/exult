@@ -50,6 +50,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <system_error>
 
 #ifdef _WIN32
 #	include <io.h>
@@ -1065,7 +1066,7 @@ static bool Save_level1(zipFile zipfile, const char* fname) {
 	IFileDataSource ds(fname);
 	if (!ds.good()) {
 		if (Game::is_editing()) {
-			return false;    // Newly developed game.
+			return true;    // Newly developed game: nothing to save.
 		}
 		throw file_read_exception(fname);
 	}
@@ -1073,11 +1074,14 @@ static bool Save_level1(zipFile zipfile, const char* fname) {
 	const size_t size = ds.getSize();
 	const auto   buf  = ds.readN(size);
 
-	zipOpenNewFileInZip(zipfile, remove_dir(fname), nullptr, nullptr, 0, nullptr, 0, nullptr, Z_DEFLATED, Z_BEST_COMPRESSION);
+	if (zipOpenNewFileInZip(zipfile, remove_dir(fname), nullptr, nullptr, 0, nullptr, 0, nullptr, Z_DEFLATED, Z_BEST_COMPRESSION)
+		!= ZIP_OK) {
+		return false;
+	}
 
-	zipWriteInFileInZip(zipfile, buf.get(), size);
-
-	return zipCloseFileInZip(zipfile) == ZIP_OK;
+	const bool wrote = zipWriteInFileInZip(zipfile, buf.get(), size) == ZIP_OK;
+	// Always close the entry, even after a failed write.
+	return zipCloseFileInZip(zipfile) == ZIP_OK && wrote;
 }
 
 // Level 2 Compression
@@ -1100,7 +1104,7 @@ static bool Save_level2(zipFile zipfile, const char* fname) {
 	IFileDataSource ds(fname);
 	if (!ds.good()) {
 		if (Game::is_editing()) {
-			return false;    // Newly developed game.
+			return true;    // Newly developed game: nothing to save.
 		}
 		throw file_read_exception(fname);
 	}
@@ -1171,84 +1175,116 @@ bool Game_window::save_gamedat_zip(
 		savefiles = sisavefiles;
 	}
 
+	// Write to a temporary file next to the slot and only replace the slot
+	// once everything has been written, so a failed save (disk full, quota)
+	// never destroys the previous save.
+	const std::string tmpname = std::string(fname) + ".tmp";
+
 	// Name
 	{
-		auto out = U7open_out(fname);
+		auto out = U7open_out(tmpname.c_str());
 		if (out) {
 			std::string title(savename);
 			title.resize(0x50, '\0');
 			out->write(title.data(), title.size());
-		}
-	}
-
-	const std::string filestr = get_system_path(fname);
-	zipFile           zipfile = zipOpen(filestr.c_str(), 1);
-
-	// We need to explicitly save these as they are no longer included in
-	// savefiles and they should always be stored first and as level 1
-	// Screenshot may not exist so only include it if it exists
-	if (U7exists(GSCRNSHOT)) {
-		Save_level1(zipfile, GSCRNSHOT);
-	}
-	Save_level1(zipfile, GSAVEINFO);
-	Save_level1(zipfile, IDENTITY);
-
-	// Level 1 Compression
-	if (save_compression != 2) {
-		for (const auto* savefile : savefiles) {
-			Save_level1(zipfile, savefile);
-		}
-
-		// Now the Ireg's.
-		for (auto* map : maps) {
-			if (!map) {
-				continue;
+			out->flush();
+			if (!out->good()) {
+				out.reset();
+				U7remove(tmpname.c_str());
+				throw file_write_exception(fname);
 			}
-			for (int schunk = 0; schunk < 12 * 12; schunk++) {
-				// Check to see if the ireg exists before trying to
-				// save it; prevents crash when creating new maps
-				// for existing games
-				if (U7exists(map->get_schunk_file_name(U7IREG, schunk, iname))) {
-					Save_level1(zipfile, iname);
+		}
+	}
+
+	const std::string tmppath = get_system_path(tmpname);
+	zipFile           zipfile = zipOpen(tmppath.c_str(), 1);
+	if (zipfile == nullptr) {
+		U7remove(tmpname.c_str());
+		throw file_write_exception(fname);
+	}
+
+	bool ok = true;
+	try {
+		// We need to explicitly save these as they are no longer included in
+		// savefiles and they should always be stored first and as level 1
+		// Screenshot may not exist so only include it if it exists
+		if (U7exists(GSCRNSHOT)) {
+			ok = Save_level1(zipfile, GSCRNSHOT);
+		}
+		ok = ok && Save_level1(zipfile, GSAVEINFO);
+		ok = ok && Save_level1(zipfile, IDENTITY);
+
+		// Level 1 Compression
+		if (save_compression != 2) {
+			for (const auto* savefile : savefiles) {
+				ok = ok && Save_level1(zipfile, savefile);
+			}
+
+			// Now the Ireg's.
+			for (auto* map : maps) {
+				if (!map) {
+					continue;
+				}
+				for (int schunk = 0; ok && schunk < 12 * 12; schunk++) {
+					// Check to see if the ireg exists before trying to
+					// save it; prevents crash when creating new maps
+					// for existing games
+					if (U7exists(map->get_schunk_file_name(U7IREG, schunk, iname))) {
+						ok = Save_level1(zipfile, iname);
+					}
 				}
 			}
 		}
-	}
-	// Level 2 Compression
-	else {
-		// Start the GAMEDAT file.
-		Begin_level2(zipfile, 0);
+		// Level 2 Compression
+		else {
+			// Start the GAMEDAT file.
+			ok = Begin_level2(zipfile, 0);
 
-		for (const char* savefilename : savefiles) {
-			Save_level2(zipfile, savefilename);
-		}
+			for (const char* savefilename : savefiles) {
+				ok = ok && Save_level2(zipfile, savefilename);
+			}
 
-		// Now the Ireg's.
-		for (auto* map : maps) {
-			if (!map) {
-				continue;
-			}
-			if (map->get_num() != 0) {
-				// Finish the open file (GAMEDAT or mapXX).
-				End_level2(zipfile);
-				// Start the next file (mapXX).
-				Begin_level2(zipfile, map->get_num());
-			}
-			for (int schunk = 0; schunk < 12 * 12; schunk++) {
-				// Check to see if the ireg exists before trying to
-				// save it; prevents crash when creating new maps
-				// for existing games
-				if (U7exists(map->get_schunk_file_name(U7IREG, schunk, iname))) {
-					Save_level2(zipfile, iname);
+			// Now the Ireg's.
+			for (auto* map : maps) {
+				if (!map) {
+					continue;
+				}
+				if (map->get_num() != 0) {
+					// Finish the open file (GAMEDAT or mapXX).
+					ok = ok && End_level2(zipfile);
+					// Start the next file (mapXX).
+					ok = ok && Begin_level2(zipfile, map->get_num());
+				}
+				for (int schunk = 0; ok && schunk < 12 * 12; schunk++) {
+					// Check to see if the ireg exists before trying to
+					// save it; prevents crash when creating new maps
+					// for existing games
+					if (U7exists(map->get_schunk_file_name(U7IREG, schunk, iname))) {
+						ok = Save_level2(zipfile, iname);
+					}
 				}
 			}
-		}
 
-		End_level2(zipfile);
+			ok = ok && End_level2(zipfile);
+		}
+	} catch (...) {
+		// Release the zip and drop the partial file; the old slot is untouched.
+		zipClose(zipfile, savename);
+		U7remove(tmpname.c_str());
+		throw;
 	}
 
-	// ++++Better error system needed??
-	if (zipClose(zipfile, savename) != ZIP_OK) {
+	// zipClose() also reports a failure to flush the file to disk.
+	if (zipClose(zipfile, savename) != ZIP_OK || !ok) {
+		U7remove(tmpname.c_str());
+		throw file_write_exception(fname);
+	}
+
+	// Replace the slot with the finished file.
+	std::error_code ec;
+	std::filesystem::rename(tmppath, get_system_path(fname), ec);
+	if (ec) {
+		U7remove(tmpname.c_str());
 		throw file_write_exception(fname);
 	}
 
