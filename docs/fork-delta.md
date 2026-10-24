@@ -69,3 +69,4 @@ It exists for two jobs:
 | [#227](https://github.com/Danathar/exult/pull/227) | `usecode/ucinternal.cc` | Drop surplus indirect-call arguments instead of writing past the callee's locals | not reported |
 | [#229](https://github.com/Danathar/exult/pull/229) | `audio/midi_drivers/timidity/timidity_instrum.cpp`, `audio/midi_drivers/timidity/timidity_resample.cpp` | Pad pre-resampled TiMidity drum buffers with two zeroed samples so the resamplers do not read past the end | not reported |
 | [#233](https://github.com/Danathar/exult/pull/233) | `files/utils.cc` | Escape glob wildcards in the directory name before `U7rmdir` lists it, so a mod folder named `*` cannot delete other mods' files | not reported |
+| [#306](https://github.com/Danathar/exult/pull/306) | `audio/midi_drivers/FMOplMidiDriver.cpp` | Always program the carrier, feedback and 0xBD registers for FM OPL timbres, since #206 stopped clearing the U7 percussion number and no rhythm mode exists | not reported |
