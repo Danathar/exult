@@ -54,7 +54,15 @@ public:
 		return this;
 	}
 
+	// Is this a spell number a book can hold (0-71)?
+	static bool valid_spell(int spell) {
+		return spell >= 0 && spell < 9 * 8;
+	}
+
 	bool has_spell(int spell) {    // Has a spell.
+		if (!valid_spell(spell)) {
+			return false;
+		}
 		const int circle = spell / 8;
 		const int num    = spell % 8;    // # within circle.
 		return (circles[circle] & (1 << num)) != 0;
