@@ -70,6 +70,12 @@ constexpr inline int DECR_CHUNK(int x) {
 	return (x - 1 + c_num_chunks) % c_num_chunks;
 }
 
+// Number of chunks from 'first' to 'last' inclusive, stepping with
+//   INCR_CHUNK, so a range that wraps past the map edge (191..0) is 2 long.
+constexpr inline int CHUNK_SPAN(int first, int last) {
+	return (last - first + c_num_chunks) % c_num_chunks + 1;
+}
+
 constexpr inline int INCR_TILE(int x) {
 	return (x + 1) % c_num_tiles;
 }
