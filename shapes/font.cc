@@ -166,6 +166,9 @@ int Font::paint_text_box(
 		const bool ucase_next = *text == '^';
 		if (ucase_next) {    // Skip it.
 			text++;
+			if (Pass_word(text) == text) {
+				continue;    // No word follows the '^', so just drop it.
+			}
 		}
 		// Pass word & get its width.
 		const char* ewrd = Pass_word(text);
@@ -178,13 +181,13 @@ int Font::paint_text_box(
 		}
 		if (curx + width - hor_lead > endx) {
 			// Word-wrap.
-			if (ucase_next) {
-				text--;    // Put the '^' back.
-			}
 			curx = x;
 			cur_line++;
 			cury += height;
 			if (cur_line >= max_lines) {
+				if (ucase_next) {
+					text--;    // Put the '^' back.
+				}
 				break;    // No more room.
 			}
 		}
@@ -228,7 +231,8 @@ int Font::paint_text_box(
 			len = last_punct_offset;
 		}
 		if (center) {
-			center_text(win, x + w / 2, cury, str, trans);
+			const string shown(str, len);
+			center_text(win, x + w / 2, cury, shown.c_str(), trans);
 		} else {
 			paint_text(win, str, len, x, cury, trans);
 		}
@@ -402,18 +406,21 @@ int Font::paint_text_box_fixedwidth(
 		const bool ucase_next = *text == '^';
 		if (ucase_next) {    // Skip it.
 			text++;
+			if (Pass_word(text) == text) {
+				continue;    // No word follows the '^', so just drop it.
+			}
 		}
 		// Pass word & get its width.
 		const char* ewrd  = Pass_word(text);
 		const int   width = static_cast<int>(ewrd - text) * char_width;
 		if (curx + width - hor_lead > endx) {
 			// Word-wrap.
-			if (ucase_next) {
-				text--;    // Put the '^' back.
-			}
 			curx = x;
 			cur_line++;
 			if (cur_line >= max_lines) {
+				if (ucase_next) {
+					text--;    // Put the '^' back.
+				}
 				break;    // No more room.
 			}
 		}
@@ -687,6 +694,9 @@ int Font::find_cursor(
 		const bool ucase_next = *text == '^';
 		if (ucase_next) {    // Skip it.
 			text++;
+			if (Pass_word(text) == text) {
+				continue;    // No word follows the '^', so just drop it.
+			}
 		}
 		// Pass word & get its width.
 		const char* ewrd = Pass_word(text);
