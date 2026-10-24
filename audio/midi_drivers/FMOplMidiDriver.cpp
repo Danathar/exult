@@ -605,18 +605,19 @@ void FMOplMidiDriver::midi_fm_instrument(int voice, xinstrument& inst) {
 	midi_write_adlib(OPL_REG_SR_M + adlib_opadd[voice], inst.mod_sr);
 	midi_write_adlib(OPL_REG_WAVE_M + adlib_opadd[voice], inst.mod_ws);
 
-	if (!(inst.perc_voice & 0x7f)) {
-		midi_write_adlib(OPL_REG_AVEKM_C + adlib_opadd[voice], inst.car_avekm);
-		midi_write_adlib(OPL_REG_KSLTL_C + adlib_opadd[voice], inst.car_ksl_tl);
-		midi_write_adlib(OPL_REG_AD_C + adlib_opadd[voice], inst.car_ad);
-		midi_write_adlib(OPL_REG_SR_C + adlib_opadd[voice], inst.car_sr);
-		midi_write_adlib(OPL_REG_WAVE_C + adlib_opadd[voice], inst.car_ws);
-		midi_write_adlib(OPL_REG_FB_C + voice, inst.fb_c);
-		midi_write_adlib(0xbd, 0);
+	// Percussion (rhythm) mode is not implemented by this driver, so the low
+	// bits of perc_voice (the U7 percussion number) must not stop the carrier
+	// from being programmed: every timbre is played as a full two-operator voice.
+	midi_write_adlib(OPL_REG_AVEKM_C + adlib_opadd[voice], inst.car_avekm);
+	midi_write_adlib(OPL_REG_KSLTL_C + adlib_opadd[voice], inst.car_ksl_tl);
+	midi_write_adlib(OPL_REG_AD_C + adlib_opadd[voice], inst.car_ad);
+	midi_write_adlib(OPL_REG_SR_C + adlib_opadd[voice], inst.car_sr);
+	midi_write_adlib(OPL_REG_WAVE_C + adlib_opadd[voice], inst.car_ws);
+	midi_write_adlib(OPL_REG_FB_C + voice, inst.fb_c);
+	midi_write_adlib(0xbd, 0);
 
-		if (!inst.perc_voice) {
-			PERR("Tried setting an instruement that wasnt loaded");
-		}
+	if (!inst.perc_voice) {
+		PERR("Tried setting an instruement that wasnt loaded");
 	}
 }
 
