@@ -22,5 +22,5 @@ Fix the bug described in ${input:bug:issue number or description}.
 7. Commit with `git commit -s`; open the PR with
    `gh pr create --repo Danathar/exult --base master --head <branch>`, using the
    PR template, with `Closes #N` if there is an issue. State what you could not
-   verify. A change to an upstream-owned file adds its row to
-   `docs/fork-delta.md` in the same PR.
+   verify. A change to an upstream-owned file adds its entry,
+   `docs/fork-delta/<PR>.md`, in the same PR (format in `docs/fork-delta.md`).
