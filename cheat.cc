@@ -475,12 +475,14 @@ void Cheat::set_edit_mode(Map_editor_mode md) {
 
 void Cheat::clear_chunksel() {
 	if (chunksel_right >= 0 && chunksel_bottom >= 0) {
-		const int startx = chunksel_left;
-		const int stopx  = chunksel_right + 1;
-		const int starty = chunksel_top;
-		const int stopy  = chunksel_bottom + 1;
-		for (int cy = starty; cy != stopy; cy = INCR_CHUNK(cy)) {
-			for (int cx = startx; cx != stopx; cx = INCR_CHUNK(cx)) {
+		// Count the chunks instead of looking for a stop value, so a
+		//   selection that is the full map width or height ends.
+		const int ncols = CHUNK_SPAN(chunksel_left, chunksel_right);
+		const int nrows = CHUNK_SPAN(chunksel_top, chunksel_bottom);
+		int       cy    = chunksel_top;
+		for (int row = 0; row < nrows; row++, cy = INCR_CHUNK(cy)) {
+			int cx = chunksel_left;
+			for (int col = 0; col < ncols; col++, cx = INCR_CHUNK(cx)) {
 				Map_chunk* chunk = gmap->get_chunk(cx, cy);
 				chunk->set_selected(false);
 			}
@@ -532,8 +534,11 @@ void Cheat::move_chunk(Map_chunk* chunk, int dx, int dy) {
 		it->remove_this();
 	}
 	tmplist.clear();
-	// Copy terrain into new chunk.
-	tochunk->set_terrain(chunk->get_terrain());
+	// Copy terrain into new chunk.  Go through the map, so the terrain
+	//   number is saved and the map is marked as modified.
+	const int cx = chunk->get_cx();
+	const int cy = chunk->get_cy();
+	gmap->set_chunk_terrain(tox, toy, gmap->get_terrain_num(cx, cy));
 	{
 		Object_iterator fromiter(chunk->get_objects());
 		Game_object*    obj = nullptr;
@@ -551,40 +556,26 @@ void Cheat::move_chunk(Map_chunk* chunk, int dx, int dy) {
 		obj->move((t.tx + dx + c_num_tiles) % c_num_tiles, (t.ty + dy + c_num_tiles) % c_num_tiles, t.tz);
 	}
 	// For now, set terrain to #0.
-	chunk->set_terrain(Game_map::get_terrain(0));
+	gmap->set_chunk_terrain(cx, cy, 0);
 	chunk->set_selected(false);
 	tochunk->set_selected(true);
 }
 
 /*  Move all the selected chunks. */
 void Cheat::move_selected_chunks(int dx, int dy) {
-	int startx;
-	int stopx;
-	int dirx;
-	int starty;
-	int stopy;
-	int diry;
-
-	if (dx <= 0) {
-		startx = chunksel_left;
-		stopx  = chunksel_right + 1;
-		dirx   = 1;
-	} else {
-		startx = chunksel_right;
-		stopx  = chunksel_left - 1;
-		dirx   = -1;
+	if (chunksel_right < 0 || chunksel_bottom < 0) {
+		return;    // Nothing selected.
 	}
-	if (dy <= 0) {
-		starty = chunksel_top;
-		stopy  = chunksel_bottom + 1;
-		diry   = 1;
-	} else {
-		starty = chunksel_bottom;
-		stopy  = chunksel_top - 1;
-		diry   = -1;
-	}
-	for (int cy = starty; cy != stopy; cy += diry) {
-		for (int cx = startx; cx != stopx; cx += dirx) {
+	// The selection may wrap past the map edge (left > right), so step
+	//   with INCR_CHUNK/DECR_CHUNK and count the chunks.  Start at the
+	//   side we move towards, so no chunk is overwritten before it moves.
+	const int ncols  = CHUNK_SPAN(chunksel_left, chunksel_right);
+	const int nrows  = CHUNK_SPAN(chunksel_top, chunksel_bottom);
+	const int startx = dx <= 0 ? chunksel_left : chunksel_right;
+	int       cy     = dy <= 0 ? chunksel_top : chunksel_bottom;
+	for (int row = 0; row < nrows; row++, cy = dy <= 0 ? INCR_CHUNK(cy) : DECR_CHUNK(cy)) {
+		int cx = startx;
+		for (int col = 0; col < ncols; col++, cx = dx <= 0 ? INCR_CHUNK(cx) : DECR_CHUNK(cx)) {
 			Map_chunk* chunk = gmap->get_chunk(cx, cy);
 			if (chunk->is_selected()) {
 				move_chunk(chunk, dx, dy);
