@@ -192,6 +192,9 @@ void Game_clock::set_light_source_level(int lev) {
 
 void Game_clock::set_overcast(bool onoff) {
 	overcast += (onoff ? 1 : -1);
+	if (overcast < 0) {
+		overcast = 0;    // Never let the count go negative.
+	}
 	set_time_palette(false);    // Update palette.
 }
 
@@ -203,6 +206,9 @@ void Game_clock::set_fog(bool onoff) {
 	fog += (onoff ? 1 : -1);
 	if (hour < 6 || hour > 20) {
 		fog = 0;    // Disable fog at night???
+	}
+	if (fog < 0) {
+		fog = 0;    // E.g. fog begun at night ending in daytime.
 	}
 	set_time_palette(false);    // Update palette.
 }

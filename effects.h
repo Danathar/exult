@@ -100,6 +100,11 @@ public:
 	virtual bool is_sprite() const {
 		return false;
 	}
+
+	// True for a sprite that loops until it leaves the screen.
+	virtual bool is_open_ended() const {
+		return false;
+	}
 };
 
 /*
@@ -119,6 +124,8 @@ protected:
 	void             add_dirty(int frnum);
 
 	bool pause_while_faded(unsigned long time, uintptr udata);
+	// Screen position where the sprite is drawn.
+	void get_screen_pos(int& sx, int& sy) const;
 
 public:
 	Sprites_effect(int num, const Tile_coord& p, int dx = 0, int dy = 0, int delay = 0, int frm = 0, int rps = -1);
@@ -130,6 +137,10 @@ public:
 
 	bool is_sprite() const override {
 		return true;
+	}
+
+	bool is_open_ended() const override {
+		return reps == -2;
 	}
 };
 
