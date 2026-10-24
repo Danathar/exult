@@ -132,6 +132,18 @@ public:
 		const int diff = to - from;
 		return diff >= c_num_tiles / 2 ? (diff - c_num_tiles) : (diff <= -c_num_tiles / 2 ? (diff + c_num_tiles) : diff);
 	}
+
+	// Path finder cost estimate from 'from' to 'to', going the short way
+	// round the world: 2 per straight step, 3 per diagonal step.
+	static int path_estimate(const Tile_coord& from, const Tile_coord& to) {
+		const int dx      = delta(from.tx, to.tx);
+		const int dy      = delta(from.ty, to.ty);
+		const int adx     = dx < 0 ? -dx : dx;
+		const int ady     = dy < 0 ? -dy : dy;
+		const int larger  = ady <= adx ? adx : ady;
+		const int smaller = ady <= adx ? ady : adx;
+		return 2 * larger + smaller;
+	}
 };
 
 // Add two coords.
