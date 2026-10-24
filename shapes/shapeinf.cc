@@ -53,6 +53,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "warminf.h"
 #include "weaponinf.h"
 
+#include <algorithm>
 #include <vector>
 
 using std::cerr;
@@ -479,14 +480,15 @@ int Shape_info::get_object_warmth(int frame) const {
 void Shape_info::set_3d(
 		int xt, int yt, int zt    // In tiles.
 ) {
-	xt = (xt - 1) & 7;    // Force legal values.
-	yt = (yt - 1) & 7;
+	// Force legal values.  X and Y are 1..8 tiles, stored on disk as 0..7.
+	xt = std::clamp(xt, 1, 8);
+	yt = std::clamp(yt, 1, 8);
 	zt &= 7;
-	tfa[2]  = (tfa[2] & ~63) | xt | (yt << 3);
+	tfa[2]  = (tfa[2] & ~63) | (xt - 1) | ((yt - 1) << 3);
 	tfa[0]  = (tfa[0] & ~(7 << 5)) | (zt << 5);
-	dims[0] = (xt + 1) & 7;
-	dims[1] = (yt + 1) & 7;
-	dims[2] = zt;
+	dims[0] = static_cast<unsigned char>(xt);
+	dims[1] = static_cast<unsigned char>(yt);
+	dims[2] = static_cast<unsigned char>(zt);
 }
 
 /*
