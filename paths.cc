@@ -158,28 +158,7 @@ int Actor_pathfinder_client::get_step_cost(
  */
 
 int Actor_pathfinder_client::estimate_cost(const Tile_coord& from, const Tile_coord& to) const {
-	int dx = to.tx - from.tx;
-	if (dx < -c_num_tiles / 2) {    // Wrap around the world.
-		dx += c_num_tiles;
-	} else if (dx < 0) {
-		dx = -dx;
-	}
-	int dy = to.ty - from.ty;
-	if (dy < -c_num_tiles / 2) {
-		dy += c_num_tiles;
-	} else if (dy < 0) {
-		dy = -dy;
-	}
-	int larger;
-	int smaller;    // Start with larger.
-	if (dy <= dx) {
-		larger  = dx;
-		smaller = dy;
-	} else {
-		larger  = dy;
-		smaller = dx;
-	}
-	return 2 * larger + smaller;    // Straight = 2, diag = 3.
+	return Tile_coord::path_estimate(from, to);
 }
 
 /*
@@ -200,21 +179,9 @@ int Onecoord_pathfinder_client::estimate_cost(
 ) const {
 	if (to.tx == -1) {    // Just care about Y?
 		// Cost = 2/tile.
-		int dy = to.ty - from.ty;
-		if (dy < -c_num_tiles / 2) {
-			dy += c_num_tiles;
-		} else if (dy < 0) {
-			dy = -dy;
-		}
-		return 2 * dy;
+		return 2 * std::abs(Tile_coord::delta(from.ty, to.ty));
 	} else if (to.ty == -1) {
-		int dx = to.tx - from.tx;
-		if (dx < -c_num_tiles / 2) {
-			dx += c_num_tiles;
-		} else if (dx < 0) {
-			dx = -dx;
-		}
-		return 2 * dx;
+		return 2 * std::abs(Tile_coord::delta(from.tx, to.tx));
 	} else {    // Shouldn't get here.
 		return Actor_pathfinder_client::estimate_cost(from, to);
 	}
