@@ -2665,15 +2665,15 @@ class Sit_actor_action : public Frames_actor_action, public Game_singletons {
 	Game_object_weak chair;       // Chair.
 	Tile_coord       chairloc;    // Original chair location.
 	Tile_coord       sitloc;      // Actually where NPC sits.
-	signed char      frames[2];
 	static short     offsets[8];    // Offsets where NPC should sit.
 
-	signed char* init(Game_object* chairobj, Actor* actor) {
+	// Bow and sit frames. Static, because the constructor calls it before the
+	// base class exists.
+	static std::array<signed char, 2> sit_frames(Game_object* chairobj, Actor* actor) {
 		// Frame 0 faces N, 1 E, etc.
 		const int dir = 2 * (chairobj->get_framenum() % 4);
-		frames[0]     = actor->get_dir_framenum(dir, Actor::bow_frame);
-		frames[1]     = actor->get_dir_framenum(dir, Actor::sit_frame);
-		return frames;
+		return {static_cast<signed char>(actor->get_dir_framenum(dir, Actor::bow_frame)),
+				static_cast<signed char>(actor->get_dir_framenum(dir, Actor::sit_frame))};
 	}
 
 	static bool is_occupied(const Tile_coord& sitloc, Actor* actor) {
@@ -2698,7 +2698,7 @@ class Sit_actor_action : public Frames_actor_action, public Game_singletons {
 	}
 
 public:
-	Sit_actor_action(Game_object* o, Actor* actor) : Frames_actor_action(init(o, actor), 2), chair(weak_from_obj(o)) {
+	Sit_actor_action(Game_object* o, Actor* actor) : Frames_actor_action(sit_frames(o, actor).data(), 2), chair(weak_from_obj(o)) {
 		sitloc = chairloc = o->get_tile();
 		// Frame 0 faces N, 1 E, etc.
 		const int nsew = o->get_framenum() % 4;
