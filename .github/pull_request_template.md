@@ -32,7 +32,7 @@
 ## Fork rule
 
 - [ ] This PR targets `Danathar/exult` `master`. It is not an upstream `exult/exult` PR.
-- [ ] Changes an upstream-owned file: row added to `docs/fork-delta.md`
+- [ ] Changes an upstream-owned file: entry added as `docs/fork-delta/<PR>.md`
 
 ## Not verified
 
