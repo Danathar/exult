@@ -343,13 +343,15 @@ void SI_Game::play_intro() {
 
 		// Start Music
 		if (extended_intro) {
-			const auto* midi_driver = audio->get_midi();
-			if (midi_driver->get_ogg_enabled()) {
-				audio->start_music(EXULT_SI_FLX_EXT_INTRO_SI01_OGG, false, MyMidiPlayer::Force_None, EXULT_SI_FLX);
-			} else if (midi_driver->is_mt32()) {
-				audio->start_music(EXULT_SI_FLX_EXT_INTRO_R_XMI, false, MyMidiPlayer::Force_None, EXULT_SI_FLX);
-			} else {
-				audio->start_music(EXULT_SI_FLX_EXT_INTRO_A_XMI, false, MyMidiPlayer::Force_None, EXULT_SI_FLX);
+			// There is no MIDI player when audio is disabled.
+			if (const auto* midi_driver = audio->get_midi()) {
+				if (midi_driver->get_ogg_enabled()) {
+					audio->start_music(EXULT_SI_FLX_EXT_INTRO_SI01_OGG, false, MyMidiPlayer::Force_None, EXULT_SI_FLX);
+				} else if (midi_driver->is_mt32()) {
+					audio->start_music(EXULT_SI_FLX_EXT_INTRO_R_XMI, false, MyMidiPlayer::Force_None, EXULT_SI_FLX);
+				} else {
+					audio->start_music(EXULT_SI_FLX_EXT_INTRO_A_XMI, false, MyMidiPlayer::Force_None, EXULT_SI_FLX);
+				}
 			}
 		} else {
 			audio->start_music(R_SINTRO, 0, false);
