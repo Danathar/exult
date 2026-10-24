@@ -243,7 +243,8 @@ int Effects_manager::get_weather() {
 
 bool Effects_manager::has_active_sprites() const {
 	return std::any_of(effects.cbegin(), effects.cend(), [](const auto& ef) {
-		return ef->is_sprite();
+		// Sprites that loop until they leave the screen may never end.
+		return ef->is_sprite() && !ef->is_open_ended();
 	});
 }
 
@@ -368,6 +369,16 @@ inline void Sprites_effect::add_dirty(int frnum) {
 											  .enlarge((3 * c_tilesize) / 2)));
 }
 
+/**
+ *  Get the screen position at which the sprite is drawn.
+ */
+
+void Sprites_effect::get_screen_pos(int& sx, int& sy) const {
+	const int lp = pos.tz / 2;    // Account for lift.
+	sx           = xoff + (pos.tx - lp - gwin->get_scrolltx()) * c_tilesize - gwin->get_scrolltx_lo();
+	sy           = yoff + (pos.ty - lp - gwin->get_scrollty()) * c_tilesize - gwin->get_scrollty_lo();
+}
+
 bool Sprites_effect::pause_while_faded(unsigned long curtime, uintptr udata) {
 	const bool faded = Game_window::get_instance()->get_pal()->is_faded_out();
 	if (faded) {
@@ -404,7 +415,12 @@ void Sprites_effect::handle_event(unsigned long curtime, uintptr udata) {
         case -2:    // Loop through all frames until sprite goes offscreen.
             ++new_frame_num;
             new_frame_num %= frames;
-            return gwin->get_game_rect().intersects(gwin->get_shape_rect(sprite.get_shape(), xoff, yoff));
+            {
+                int sx;
+                int sy;
+                get_screen_pos(sx, sy);    // Same spot paint() draws at.
+                return gwin->get_game_rect().intersects(gwin->get_shape_rect(sprite.get_shape(), sx, sy));
+            }
         case -3:    // Go through all frames *once* in reverse order.
             // This is originally SI-only, but we are allowing it for BG too.
             if (old_frame_num == 0) {
@@ -453,10 +469,10 @@ void Sprites_effect::paint() {
 	if (sprite.get_framenum() >= frames) {
 		return;
 	}
-	const int lp = pos.tz / 2;    // Account for lift.
-	sprite.paint_shape(
-			xoff + (pos.tx - lp - gwin->get_scrolltx()) * c_tilesize - gwin->get_scrolltx_lo(),
-			yoff + (pos.ty - lp - gwin->get_scrollty()) * c_tilesize - gwin->get_scrollty_lo());
+	int sx;
+	int sy;
+	get_screen_pos(sx, sy);
+	sprite.paint_shape(sx, sy);
 }
 
 static inline int get_explosion_shape(int weap, int proj) {
@@ -592,7 +608,7 @@ void Projectile_effect::init(
 		if (att_obj) {
 			// Getprojectile  out of shooter's volume.
 			const Block vol = att_obj->get_block();
-			Tile_coord  t;
+			Tile_coord  t = pos;    // Stay here if the path has no steps.
 			bool        done;
 			while (path->GetNextStep(t, done)) {
 				if (!vol.has_world_point(t.tx, t.ty, t.tz)) {
@@ -1751,8 +1767,6 @@ Clouds_effect::Clouds_effect(
 	Game_clock* gclock = Game_window::get_instance()->get_clock();
 	if (overcast) {
 		gclock->set_overcast(true);
-	} else {
-		gclock->set_overcast(false);
 	}
 
 	num_clouds = 2 + rand() % 5;    // Pick #.
