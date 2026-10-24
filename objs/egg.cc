@@ -1597,6 +1597,9 @@ void Field_object::activate(int event) {
 		Ireg_game_object::activate(event);
 		return;
 	}
+	// hatch() can remove (and so free) this field; keep it alive until we return.
+	const Game_object_shared keep = shared_from_this();
+
 	Actor_vector npcs;    // Find all nearby NPC's.
 	gwin->get_nearby_npcs(npcs);
 	npcs.push_back(gwin->get_main_actor());    // Include Avatar.
@@ -1611,6 +1614,9 @@ void Field_object::activate(int event) {
 		}
 		if (actor->get_footprint().intersects(eggfoot)) {
 			Field_object::hatch(actor);
+			if (!get_chunk() && !get_owner()) {
+				break;    // The field took effect and removed itself.
+			}
 		}
 	}
 }
