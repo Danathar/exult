@@ -603,10 +603,11 @@ bool Dragging_info::drop_on_gump(
 	if (!on_gump->add(to_drop, gx, gy, paintx, painty, false, true)) {
 		// Failed.
 		if (to_drop != obj.get()) {
-			// Watch for partial drop.
+			// Watch for partial drop:  what was merged into the target
+			//   has to come off the source, or it would exist twice.
 			const int nq = to_drop->get_quantity();
 			if (nq < quantity) {
-				obj->modify_quantity(quantity - nq);
+				obj->modify_quantity(-(quantity - nq));
 			}
 		}
 		Mouse::mouse()->flash_shape(Mouse::wontfit);

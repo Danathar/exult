@@ -148,7 +148,7 @@ U7multiobject::U7multiobject(const std::vector<File_spec>& files, int objnum) : 
 	}
 }
 
-U7multiobject::U7multiobject(const U7multiobject& other) : buffer(nullptr), length(0), object(other.object) {
+U7multiobject::U7multiobject(const U7multiobject& other) : buffer(nullptr), length(other.length), object(other.object) {
 	buffer = make_unique<unsigned char[]>(other.length);
 	std::copy_n(other.buffer.get(), other.length, buffer.get());
 }
