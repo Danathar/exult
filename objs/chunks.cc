@@ -655,8 +655,9 @@ void Chunk_cache::unhatch_eggs(
 					  // DON'T use an iterator here, since
 					  //   the list can change as eggs are
 					  //   activated, causing a CRASH!
+		// Continue from egg 15, as activate_eggs() does: eggs 0-14 were
+		//   handled by the loop above.
 		const size_t sz = egg_objects.size();
-		i               = 0;    // Go through eggs.
 		for (; i < sz; i++) {
 			Egg_object* egg = egg_objects[i];
 			if (egg && egg->test_unhatch(obj, tx, ty, tz, from_tx, from_ty)) {
@@ -986,17 +987,21 @@ void Map_chunk::remove(Game_object* remove) {
 	const int frame = remove->get_framenum();
 	const int tx    = remove->get_tx();
 	const int ty    = remove->get_ty();
-	/* Let's try boundary. YES.  Helps with statues through roofs. */
-	const bool ext_left  = (tx - info.get_3d_xtiles(frame)) < 0 && cx > 0;
-	const bool ext_above = (ty - info.get_3d_ytiles(frame)) < 0 && cy > 0;
-	if (ext_left) {
-		gmap->get_chunk(cx - 1, cy)->from_below_right--;
-		if (ext_above) {
-			gmap->get_chunk(cx - 1, cy - 1)->from_below_right--;
+	// Undo exactly what add() counted: only non-flat objects, and the
+	//   same neighbour counters.
+	if (remove->get_lift() || info.get_3d_height()) {
+		/* Let's try boundary. YES.  Helps with statues through roofs. */
+		const bool ext_left  = (tx - info.get_3d_xtiles(frame)) < 0 && cx > 0;
+		const bool ext_above = (ty - info.get_3d_ytiles(frame)) < 0 && cy > 0;
+		if (ext_left) {
+			gmap->get_chunk(cx - 1, cy)->from_right--;
+			if (ext_above) {
+				gmap->get_chunk(cx - 1, cy - 1)->from_below_right--;
+			}
 		}
-	}
-	if (ext_above) {
-		gmap->get_chunk(cx, cy - 1)->from_below--;
+		if (ext_above) {
+			gmap->get_chunk(cx, cy - 1)->from_below--;
+		}
 	}
 	if (info.get_object_light(frame) > 0) {    // Count light sources.
 		if (dungeon_levels && is_dungeon(tx, ty)) {
