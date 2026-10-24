@@ -26,6 +26,7 @@
 
 #include "endianio.h"
 #include "exceptions.h"
+#include "ucfunction_header.h"
 
 #include <iomanip>
 #include <iostream>
@@ -73,6 +74,11 @@ Usecode_function::Usecode_function(istream& file) : orig(nullptr) {
 	code = new unsigned char[len];    // Allocate buffer & read it in.
 	file.read(reinterpret_cast<char*>(code), len);
 	if (!file || file.gcount() != len) {
+		delete[] code;
+		throw_truncated_function(id);
+	}
+	// Stack_frame reads the header without checking 'len'.
+	if (!usecode_function_header_fits(code, static_cast<size_t>(len), extended)) {
 		delete[] code;
 		throw_truncated_function(id);
 	}
