@@ -71,6 +71,7 @@
 #include "ucsched.h"
 #include "ucscriptop.h"
 #include "ucsymtbl.h"
+#include "uctimers.h"
 #include "useval.h"
 #include "virstone.h"
 
@@ -89,8 +90,8 @@ using std::strchr;
 
 extern Usecode_value no_ret;
 
-static Game_object* sailor = nullptr;    // The current barge captain.  Maybe
-//   this needs to be saved/restored.
+static Game_object_weak sailor;    // The current barge captain.  Maybe
+//   this needs to be saved/restored.  Weak, so it never outlives the object.
 
 #define USECODE_INTRINSIC(NAME) Usecode_value Usecode_internal::UI_##NAME(tcb::span<Usecode_value> parms)
 
@@ -2274,7 +2275,11 @@ USECODE_INTRINSIC(get_timer) {
 
 USECODE_INTRINSIC(set_timer) {
 	const int tnum = parms[0].get_int_value();
-	timers[tnum]   = gclock->get_total_hours();
+	if (!is_saveable_usecode_timer(tnum)) {
+		cerr << "set_timer: invalid timer #: " << tnum << endl;
+		return no_ret;
+	}
+	timers[tnum] = gclock->get_total_hours();
 	return no_ret;
 }
 
@@ -3110,7 +3115,7 @@ USECODE_INTRINSIC(get_item_flag) {
 		return Usecode_value(obj == gwin->get_main_actor() && gwin->is_in_dungeon());
 	} else if (fnum == Obj_flags::active_sailor) {
 		// Must be the sailor, as this is used to check for Ferryman.
-		return Usecode_value(sailor);
+		return Usecode_value(sailor.lock());
 	}
 	Usecode_value u(obj->get_flag(fnum));
 	return u;
@@ -3159,7 +3164,7 @@ USECODE_INTRINSIC(set_item_flag) {
 		break;
 	case Obj_flags::active_sailor:
 		// The sailor (Ferryman or sails).
-		sailor = obj;
+		sailor = weak_from_obj(obj);
 		break;
 	default:
 		obj->set_flag(flag);
@@ -3207,7 +3212,7 @@ USECODE_INTRINSIC(clear_item_flag) {
 			}
 		} else if (flag == Obj_flags::active_sailor) {
 			// Handles Ferryman and sails
-			sailor = nullptr;
+			sailor.reset();
 		}
 	}
 	return no_ret;

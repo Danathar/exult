@@ -166,13 +166,13 @@ void CheatScreen::show_screen() {
 	pal.apply();
 
 	const int remaps[] = {
-			5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5 - 1,
+			5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, -1,
 	};
 
 	pal.Generate_remap_xformtable(highlighttable.colors, remaps);
 
 	const int hoverremaps[] = {
-			1, 1, 1, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 - 1,
+			1, 1, 1, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1,
 	};
 
 	pal.Generate_remap_xformtable(hovertable.colors, hoverremaps);

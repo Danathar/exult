@@ -63,6 +63,7 @@
 #include "ucfunction.h"
 #include "ucsched.h"
 #include "ucsymtbl.h"
+#include "uctimers.h"
 #include "usefuns.h"
 #include "useval.h"
 #include "utils.h"
@@ -491,6 +492,14 @@ inline Usecode_value Usecode_internal::pop() {
 }
 
 inline Usecode_value Usecode_internal::peek() {
+	if (sp <= stack) {
+		// Same handling as pop(): do not read before the stack.
+		cerr << "Stack underflow (peek) on function ";
+		print_usecode_function(symtbl, call_stack.front()->function->id);
+		cerr << " at IP ";
+		cout << hex << setw(4) << setfill('0') << (frame->ins_ip - frame->code) << dec << setfill(' ') << std::endl;
+		return Usecode_value(0);
+	}
 	return sp[-1];
 }
 
@@ -3250,14 +3259,7 @@ void Usecode_internal::write() {
 		}
 		// Timers.
 		out.write4(0xffffffffU);
-		for (auto& timer : timers) {
-			if (!timer.second) {    // Don't write unused timers.
-				continue;
-			}
-			out.write2(timer.first);
-			out.write4(timer.second);
-		}
-		out.write2(0xffff);
+		write_usecode_timers(out, timers);
 		out.write2(saved_pos.tx);    // Write saved pos.
 		out.write2(saved_pos.ty);
 		out.write2(saved_pos.tz);
@@ -3350,10 +3352,7 @@ void Usecode_internal::read() {
 	// Timers.
 	const int cnt = little_endian::Read4(in);
 	if (cnt == -1) {
-		int tmr = 0;
-		while ((tmr = little_endian::Read2(in)) != 0xffff) {
-			timers[tmr] = little_endian::Read4(in);
-		}
+		read_usecode_timers(in, timers);
 	} else {
 		timers[0] = cnt;
 		for (size_t t = 1; t < 20; t++) {
