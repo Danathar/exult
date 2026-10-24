@@ -164,7 +164,9 @@ void Conversation::remove_answer(Usecode_value& val) {
 		}
 	} else {
 		str = val.get_str_value();
-		remove_answer(str);
+		if (str) {
+			remove_answer(str);
+		}
 	}
 }
 
@@ -782,10 +784,9 @@ void Conversation::show_avatar_choices(int num_choices, char** choices) {
 	}
 	// First pass: determine positions and draw all backgrounds.
 	for (int i = 0; i < num_choices; i++) {
-		char text[256];
-		text[0] = 127;    // A circle.
-		strcpy(&text[1], choices[i]);
-		const int width = sman->get_text_width(0, text);
+		string text(1, static_cast<char>(127));    // A circle.
+		text += choices[i];
+		const int width = sman->get_text_width(0, text.c_str());
 		if (x > 0 && x + width >= tbox.w) {
 			// Start a new line.
 			x = 0;
@@ -814,10 +815,9 @@ void Conversation::show_avatar_choices(int num_choices, char** choices) {
 	}
 	// Second pass: draw all text on top of backgrounds.
 	for (int i = 0; i < num_choices; i++) {
-		char text[256];
-		text[0] = 127;    // A circle.
-		strcpy(&text[1], choices[i]);
-		sman->paint_text(0, text, conv_choices[i].x, conv_choices[i].y);
+		string text(1, static_cast<char>(127));    // A circle.
+		text += choices[i];
+		sman->paint_text(0, text.c_str(), conv_choices[i].x, conv_choices[i].y);
 	}
 	avatar_face.enlarge((3 * c_tilesize) / 4);    // Encloses entire area.
 	avatar_face = avatar_face.intersect(sbox);

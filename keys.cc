@@ -461,26 +461,25 @@ void KeyBinder::ShowBrowserKeys() const {
 		}
 		scroll->add_text(text);
 	}
-	char returned_key[200];
+	std::string returned_key;
 	if (last_created_key.empty()) {
-		strcpy(returned_key, get_text_msg(0x87D - msg_file_start));    // "Error: No key assigned"
+		returned_key = get_text_msg(0x87D - msg_file_start);    // "Error: No key assigned"
 	} else {
-		strcpy(returned_key, "");    // prevent garbage text
 		int extra_keys = 0;
 		for (const auto& iter : last_created_key) {
 			if (extra_keys >= 5) {
 				continue;
 			} else if (extra_keys > 0) {
-				strcat(returned_key, get_text_msg(0x87E - msg_file_start));    // " or "
+				returned_key += get_text_msg(0x87E - msg_file_start);    // " or "
 			}
-			strcat(returned_key, iter.c_str());
+			returned_key += iter;
 			extra_keys += 1;
 		}
 	}
 
-	strcat(returned_key, get_text_msg(0x87F - msg_file_start));    // " - when pressed in game will create the last shape
-																   // viewed in shapes.vga."
-	scroll->add_text(returned_key);
+	returned_key += get_text_msg(0x87F - msg_file_start);    // " - when pressed in game will create the last shape
+															 // viewed in shapes.vga."
+	scroll->add_text(returned_key.c_str());
 	scroll->paint();
 	do {
 		int x;
@@ -520,7 +519,7 @@ static void skipspace(string& s) {
 void KeyBinder::ParseLine(char* line, int lineNumber) {
 	size_t     i;
 	ExultKey   k;
-	ActionType a;
+	ActionType a{};
 	k.key    = SDLK_UNKNOWN;
 	k.mod    = SDL_KMOD_NONE;
 	string s = line;

@@ -284,11 +284,14 @@ public:
 	}
 
 	void add_back(Search_node* nd) {    // Add an existing node back to 'open'.
+		// Must be checked before add_open() can grow 'open': 'best' is only
+		// "past the end" until the vector is resized.
+		const bool   was_empty  = best >= static_cast<int>(open.size()) || open[best] == nullptr;
 		const int    total_cost = nd->get_total_cost();
 		Search_node* last       = total_cost < static_cast<int>(open.size()) ? open[total_cost] : nullptr;
 		nd->add_to_chain(last);    // Add node to this chain.
 		add_open(total_cost, last);
-		if (total_cost < best) {
+		if (was_empty || total_cost < best) {
 			best = total_cost;
 		}
 	}
