@@ -26,9 +26,11 @@
 
 #include "endianio.h"
 #include "ucfunction.h"
+#include "ucfunction_header.h"
 #include "ucinternal.h"
 #include "useval.h"
 
+#include <cassert>
 #include <iomanip>
 #include <iostream>
 
@@ -38,6 +40,8 @@ Stack_frame::Stack_frame(Usecode_function* fun, int event, Game_object* caller, 
 		: function(fun), ins_ip(nullptr), ip(nullptr), data(nullptr), externs(nullptr), code(nullptr), endp(nullptr),
 		  line_number(-1), call_chain(chain), call_depth(depth), num_externs(0), num_args(0), num_vars(0), locals(nullptr),
 		  eventid(event), caller_item(shared_from_obj(caller)), save_sp(nullptr) {
+	// Usecode_function rejects bodies too short for this header.
+	assert(usecode_function_header_fits(function->code, static_cast<size_t>(function->len), function->extended));
 	ip   = function->code;
 	endp = ip + function->len;
 
