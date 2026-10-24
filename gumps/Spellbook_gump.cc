@@ -392,7 +392,7 @@ void Spellbook_gump::change_page(int delta) {
  */
 
 void Spellbook_gump::select_spell(int spell) {
-	if (spells[spell]) {
+	if (Spellbook_object::valid_spell(spell) && spells[spell]) {
 		book->bookmark = spell;
 		bookmark->set();    // Update bookmark's position/frame.
 		paint();
