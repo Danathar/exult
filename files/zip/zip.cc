@@ -505,6 +505,11 @@ extern int ZEXPORT zipWriteInFileInZip(zipFile file, voidpc buf, unsigned len) {
 			file->ci.stream.next_out      = file->ci.buffered_data;
 		}
 
+		// A failed write must not be overwritten by the result of deflate().
+		if (err != ZIP_OK) {
+			break;
+		}
+
 		if (file->ci.method == Z_DEFLATED) {
 			const uLong uTotalOutBefore = file->ci.stream.total_out;
 			err                         = deflate(&file->ci.stream, Z_NO_FLUSH);
@@ -530,7 +535,7 @@ extern int ZEXPORT zipWriteInFileInZip(zipFile file, voidpc buf, unsigned len) {
 		}
 	}
 
-	return 0;
+	return err;
 }
 
 extern int ZEXPORT zipCloseFileInZip(zipFile file) {
@@ -555,6 +560,10 @@ extern int ZEXPORT zipCloseFileInZip(zipFile file) {
 				file->ci.pos_in_buffered_data = 0;
 				file->ci.stream.avail_out     = Z_BUFSIZE;
 				file->ci.stream.next_out      = file->ci.buffered_data;
+			}
+			// A failed write must not be overwritten by the result of deflate().
+			if (err != ZIP_OK) {
+				break;
 			}
 			uTotalOutBefore = file->ci.stream.total_out;
 			err             = deflate(&file->ci.stream, Z_FINISH);
@@ -690,7 +699,10 @@ extern int ZEXPORT zipClose(zipFile file, const char* global_comment) {
 			err = ZIP_ERRNO;
 		}
 	}
-	fclose(file->filezip);
+	// Buffered data reaches the disk here, so this is where a full disk shows up.
+	if (fclose(file->filezip) != 0 && err == ZIP_OK) {
+		err = ZIP_ERRNO;
+	}
 	delete file;
 
 	return err;
