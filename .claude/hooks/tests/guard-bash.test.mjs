@@ -723,6 +723,13 @@ const blocked = [
     "script -qc '* id' /dev/null",
     // an unquoted `$(...)` is still read for what it holds
     'rm -rf $(echo ./gamedat/)',
+    // the shell drops a backslash-newline inside an extended glob group
+    // before it reads the word, so these name git, sudo and gh
+    "bash -O extglob -c '/usr/bin/g@\\\n(i)t push --force origin master'",
+    "bash -O extglob -c 'g@\\\n(i)t push --force origin master'",
+    "bash -c 'shopt -s extglob\n/usr/bin/g@\\\n(i)t push --force origin master'",
+    "bash -O extglob -c 's@\\\n(u)do id'",
+    "bash -O extglob -c 'gh@\\\n() pr merge 1'",
 ];
 
 for (const command of allowed) {
