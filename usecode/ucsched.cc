@@ -350,10 +350,20 @@ int Usecode_script::exec(
 	int          delay      = gwin->get_std_delay();    // Start with default delay.
 	bool         do_another = true;                     // Flag to keep going.
 	int          opcode;
+	// Safety net against scripts that loop without ever yielding.
+	constexpr int max_opcodes = 100000;
+	int           num_opcodes = 0;
 	// If a 1 follows, keep going.
 	for (; i < cnt && ((opcode = code->get_elem(i).get_int_value()) == 0x1 || do_another); i++) {
 		const Game_object_shared optr = obj.lock();
 		if (!optr) {
+			i = cnt;
+			return delay;
+		}
+		if (++num_opcodes > max_opcodes) {
+			std::cerr << "Usecode script ran " << max_opcodes << " opcodes in one step; ending it: ";
+			print(std::cerr);
+			std::cerr << endl;
 			i = cnt;
 			return delay;
 		}
@@ -381,7 +391,8 @@ int Usecode_script::exec(
 			do_another                 = true;
 			Usecode_value& cntval      = code->get_elem(i + 2);
 			const int      num_repeats = cntval.get_int_value();
-			if (num_repeats <= 0) {
+			// A count of 255 loops forever, so finishing never follows it.
+			if (num_repeats <= 0 || (finish && num_repeats == 255)) {
 				// Done.
 				if (opcode == repeat2) {
 					cntval = code->get_elem(i + 3);    // restore counter

@@ -71,6 +71,7 @@
 #include "ucsched.h"
 #include "ucscriptop.h"
 #include "ucsymtbl.h"
+#include "uctimers.h"
 #include "useval.h"
 #include "virstone.h"
 
@@ -2274,7 +2275,11 @@ USECODE_INTRINSIC(get_timer) {
 
 USECODE_INTRINSIC(set_timer) {
 	const int tnum = parms[0].get_int_value();
-	timers[tnum]   = gclock->get_total_hours();
+	if (!is_saveable_usecode_timer(tnum)) {
+		cerr << "set_timer: invalid timer #: " << tnum << endl;
+		return no_ret;
+	}
+	timers[tnum] = gclock->get_total_hours();
 	return no_ret;
 }
 
