@@ -703,10 +703,10 @@ void Palette::Generate_remap_xformtable(uint8 table[256], const int* remaps) {
 		table[i] = i;
 	}
 
-	for (unsigned int r = 0; remaps[r] >= 0; r++) {
+	for (unsigned int r = 0; r < num_ramps && remaps[r] >= 0; r++) {
 		unsigned int to = remaps[r];
 		// Do nothing is invalid ramp or remap to self
-		if (to > num_ramps || to == r) {
+		if (to >= num_ramps || to == r) {
 			continue;
 		}
 		auto fromramp = ramps[r];
