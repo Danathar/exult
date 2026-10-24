@@ -133,7 +133,7 @@ Spellbook_object::Spellbook_object(
 		unsigned char* c,       // Circle spell flags.
 		unsigned char  bmark    // Spell bookmark.
 		)
-		: Ireg_game_object(shapenum, framenum, shapex, shapey, lft), bookmark(bmark == 255 ? -1 : bmark) {
+		: Ireg_game_object(shapenum, framenum, shapex, shapey, lft), bookmark(valid_spell(bmark) ? bmark : -1) {
 	memcpy(circles, c, sizeof(circles));
 	// Point to reagent table.
 	reagents = GAME_SI ? si_reagents : bg_reagents;
@@ -147,6 +147,9 @@ Spellbook_object::Spellbook_object(
 
 int Spellbook_object::add_spell(int spell    // 0-71
 ) {
+	if (!valid_spell(spell)) {
+		return 0;
+	}
 	const int circle = spell / 8;
 	const int num    = spell % 8;    // # within circle.
 	if (circles[circle] & (1 << num)) {
@@ -172,6 +175,9 @@ void Spellbook_object::clear_spells() {
 
 int Spellbook_object::remove_spell(int spell    // 0-71
 ) {
+	if (!valid_spell(spell)) {
+		return 0;
+	}
 	const int circle = spell / 8;
 	const int num    = spell % 8;    // # within circle.
 	if ((circles[circle] & (1 << num)) == 0) {
@@ -186,6 +192,9 @@ int Spellbook_object::remove_spell(int spell    // 0-71
  */
 
 bool Spellbook_object::can_do_spell(Actor* act, int spell) {
+	if (!valid_spell(spell)) {
+		return false;
+	}
 	if (cheat.in_wizard_mode()) {
 		return true;    // Cheating.
 	}
@@ -228,6 +237,9 @@ bool Spellbook_object::do_spell(
 		bool can_do,      // Already checked.
 		bool in_combat    // Being used in combat.
 ) {
+	if (!valid_spell(spell)) {
+		return false;
+	}
 	if (can_do || can_do_spell(act, spell)) {
 		int circle = spell / 8;    // Figure/subtract mana.
 		if (cheat.in_wizard_mode()) {

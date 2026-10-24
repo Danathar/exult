@@ -4007,8 +4007,8 @@ void ExultStudio::open_shape_window(
 	warmth_frame_single = nullptr;
 
 	// set legal range for tile spinbuttons
-	gtk_spin_button_set_range(GTK_SPIN_BUTTON(get_widget("shinfo_xtiles")), 0, 7);
-	gtk_spin_button_set_range(GTK_SPIN_BUTTON(get_widget("shinfo_ytiles")), 0, 7);
+	gtk_spin_button_set_range(GTK_SPIN_BUTTON(get_widget("shinfo_xtiles")), 1, 8);
+	gtk_spin_button_set_range(GTK_SPIN_BUTTON(get_widget("shinfo_ytiles")), 1, 8);
 	gtk_spin_button_set_range(GTK_SPIN_BUTTON(get_widget("shinfo_ztiles")), 0, 7);
 
 	if (palbuf) {
