@@ -523,7 +523,7 @@ USECODE_INTRINSIC(create_new_object2) {
 	// Pretty sure this is for creating monsters with equipment!
 
 	const int shapenum = parms[0].get_int_value();
-	const int frame    = (parms.size() >= 3) ? parms[2].get_int_value() : -1;
+	const int frame    = (intrinsic_argc >= 3) ? parms[2].get_int_value() : -1;
 
 	// Create regular object, and equip if monster.
 	const Game_object_shared obj = create_object(shapenum, true);
@@ -559,8 +559,8 @@ USECODE_INTRINSIC(create_new_egg) {
 	//   button(10):  [distance]
 	//   intermap(11): [dest_x, dest_y, dest_z, mapnum]
 
-	if (parms.size() != 7) {
-		cerr << "create_new_egg: Expected 7 arguments, got " << parms.size() << endl;
+	if (intrinsic_argc != 7) {
+		cerr << "create_new_egg: Expected 7 arguments, got " << intrinsic_argc << endl;
 		return Usecode_value(static_cast<Game_object*>(nullptr));
 	}
 
@@ -1261,7 +1261,7 @@ USECODE_INTRINSIC(move_object) {
 	modified_map  = true;
 	if (parms[0].get_int_value() == -357) {
 		// Move whole party.
-		gwin->teleport_party(tile, false, map, parms.size() > 2 ? parms[2].get_int_value() : false);
+		gwin->teleport_party(tile, false, map, intrinsic_argc > 2 ? parms[2].get_int_value() : false);
 		return no_ret;
 	}
 	Game_object* obj = get_item(parms[0]);
@@ -2032,7 +2032,7 @@ USECODE_INTRINSIC(book_mode_ex) {
 	Text_gump* gump;
 	const bool is_scroll = parms[0].get_int_value() != 0;
 	const int  fnt       = parms[1].get_int_value();
-	const int  gumpshp   = parms.size() >= 3 ? parms[2].get_int_value() : -1;
+	const int  gumpshp   = intrinsic_argc >= 3 ? parms[2].get_int_value() : -1;
 
 	if (is_scroll) {
 		gump = new Scroll_gump(fnt, gumpshp);
@@ -2180,7 +2180,7 @@ USECODE_INTRINSIC(recall_virtue_stone) {
 		}
 		const Tile_coord t = vs->get_target_pos();
 		if (t.tx > 0 || t.ty > 0) {
-			gwin->teleport_party(t, false, vs->get_target_map(), parms.size() > 1 ? parms[1].get_int_value() : false);
+			gwin->teleport_party(t, false, vs->get_target_map(), intrinsic_argc > 1 ? parms[1].get_int_value() : false);
 		}
 	}
 	return no_ret;
@@ -2826,7 +2826,7 @@ namespace {
 }    // namespace
 
 USECODE_INTRINSIC(get_shape_flag) {
-	if (parms.size() < 2) {
+	if (intrinsic_argc < 2) {
 		return Usecode_value(0);
 	}
 	const int flag_id = parms[1].get_int_value();
@@ -2974,7 +2974,7 @@ USECODE_INTRINSIC(path_run_usecode) {
 	// Think it should have Avatar walk path to loc, return 0
 	//  if he can't get there (and return), 1 if he can.
 	Usecode_value ava(gwin->get_main_actor());
-	const bool    simode = parms.size() > 4 ? parms[4].get_int_value() != 0 : GAME_SI;
+	const bool    simode = intrinsic_argc > 4 ? parms[4].get_int_value() != 0 : GAME_SI;
 	return Usecode_value(path_run_usecode(
 			ava, parms[0], parms[1], parms[2], parms[3],
 			// SI:  Look for free spot. (Guess).
@@ -3342,7 +3342,7 @@ USECODE_INTRINSIC(get_dead_party) {
 }
 
 USECODE_INTRINSIC(play_sound_effect) {
-	if (parms.size() < 1) {
+	if (intrinsic_argc < 1) {
 		return no_ret;
 	}
 	// Play music(isongnum).
@@ -3353,7 +3353,7 @@ USECODE_INTRINSIC(play_sound_effect) {
 }
 
 USECODE_INTRINSIC(play_sound_effect2) {
-	if (parms.size() < 2) {
+	if (intrinsic_argc < 2) {
 		return no_ret;
 	}
 	// Play music(songnum, item).
@@ -3366,7 +3366,7 @@ USECODE_INTRINSIC(play_sound_effect2) {
 }
 
 USECODE_INTRINSIC(play_scene) {
-	if (parms.size() < 1) {
+	if (intrinsic_argc < 1) {
 		return no_ret;
 	}
 
@@ -3376,8 +3376,8 @@ USECODE_INTRINSIC(play_scene) {
 	}
 
 	// Optional fade_out and fade_in parameters (default: true)
-	bool fade_out = parms.size() > 1 ? parms[1].get_int_value() != 0 : true;
-	bool fade_in  = parms.size() > 2 ? parms[2].get_int_value() != 0 : true;
+	bool fade_out = intrinsic_argc > 1 ? parms[1].get_int_value() != 0 : true;
+	bool fade_in  = intrinsic_argc > 2 ? parms[2].get_int_value() != 0 : true;
 
 	std::string scene_name(scene_name_str);
 	if (scene_available(scene_name)) {
@@ -3530,7 +3530,7 @@ USECODE_INTRINSIC(error_message) {
 	// exec(array)
 	// Output everything to stdout
 
-	for (auto& parm : parms) {
+	for (auto& parm : parms.first(intrinsic_argc)) {
 		if (parm.is_int()) {
 			std::cout << parm.get_int_value();
 		} else if (parm.is_ptr()) {
@@ -3578,8 +3578,8 @@ USECODE_INTRINSIC(set_new_schedules) {
 	// Number of unrecoverable errors.
 	int num_errors = 0;
 
-	if (parms.size() < 4) {
-		cerr << "set_new_schedules: insufficient parameters! Got " << parms.size() << " parameters, need at least 4." << endl;
+	if (intrinsic_argc < 4) {
+		cerr << "set_new_schedules: insufficient parameters! Got " << intrinsic_argc << " parameters, need at least 4." << endl;
 		return no_ret;
 	}
 
@@ -3589,7 +3589,7 @@ USECODE_INTRINSIC(set_new_schedules) {
 		num_errors++;
 	}
 
-	const bool   have_3d_positions   = parms.size() > 4 && parms[4].need_int_value() != 0;
+	const bool   have_3d_positions   = intrinsic_argc > 4 && parms[4].need_int_value() != 0;
 	const size_t num_coords          = parms[3].get_array_size();
 	const size_t coords_per_schedule = have_3d_positions ? 3 : 2;
 	if (num_coords < count * coords_per_schedule) {
@@ -4052,7 +4052,7 @@ USECODE_INTRINSIC(teleport_to_saved_pos) {
 			// Fix old games.  Send to Monitor.
 			saved_pos = Tile_coord(719, 2608, 1);
 		}
-		gwin->teleport_party(saved_pos, false, saved_map, parms.size() > 1 ? parms[1].get_int_value() : false);
+		gwin->teleport_party(saved_pos, false, saved_map, intrinsic_argc > 1 ? parms[1].get_int_value() : false);
 	}
 	return no_ret;
 }
@@ -4119,7 +4119,7 @@ USECODE_INTRINSIC(begin_casting_mode) {
 	if (npc) {
 		// Have custom casting frames been specified?
 		// TODO: Need to de-hard-code.
-		const int cframes = parms.size() > 1 ? parms[1].need_int_value() : 859;
+		const int cframes = intrinsic_argc > 1 ? parms[1].need_int_value() : 859;
 		npc->begin_casting(cframes);
 	}
 	return no_ret;
@@ -4195,13 +4195,13 @@ USECODE_INTRINSIC(can_avatar_reach_pos) {
 USECODE_INTRINSIC(create_barge_object) {
 	// create_barge_object (width, height, dir(0-7)).   Stores it in
 	// 'last_created'.
-	if (parms.size() < 2) {
+	if (intrinsic_argc < 2) {
 		return Usecode_value(0);
 	}
 
 	auto b = std::make_shared<Barge_object>(
 			961, 0, 0, 0, 0, parms[0].get_int_value(), parms[1].get_int_value(),
-			parms.size() >= 3 ? ((parms[2].get_int_value() >> 1) & 3) : 0);
+			intrinsic_argc >= 3 ? ((parms[2].get_int_value() >> 1) & 3) : 0);
 	b->set_invalid();    // Not in world yet.
 	b->set_flag(Obj_flags::okay_to_take);
 	last_created.push_back(b);
