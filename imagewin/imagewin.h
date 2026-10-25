@@ -535,8 +535,13 @@ protected:
 	// Create new SDL surface.
 	void create_surface(unsigned int w, unsigned int h);
 	void free_surface();    // Free it.
-	bool create_scale_surfaces(int w, int h, int bpp);
-	bool try_scaler(int w, int h);
+	// fs_w x fs_h is the fullscreen size in pixels the game area was laid out
+	// for, or 0 x 0 when it is not known (see get_fullscreen_pixel_size()).
+	bool create_scale_surfaces(int w, int h, int bpp, int fs_w, int fs_h);
+	bool try_scaler(int w, int h, int fs_w, int fs_h);
+	// The size in pixels the window has, or will have, in fullscreen. Sets w
+	// and h and returns true when it is known; leaves them alone otherwise.
+	bool get_fullscreen_pixel_size(int& w, int& h) const;
 
 	static void static_init();
 
