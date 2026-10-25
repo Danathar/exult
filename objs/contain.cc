@@ -225,7 +225,8 @@ int Container_game_object::add_quantity(
 
 	int cant_add  = 0;                   // # we can't add due to weight.
 	int maxweight = get_max_weight();    // Check weight.
-	if (maxweight) {
+	// Hack-mover lifts weight limits, as it does for dragging (see drag.cc).
+	if (maxweight && !cheat.in_hack_mover()) {
 		maxweight *= 10;    // Work in .1 stones.
 		const int avail     = maxweight - get_outermost()->get_weight();
 		const int objweight = Ireg_game_object::get_weight(shapenum, delta);
