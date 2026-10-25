@@ -50,6 +50,7 @@
 #include "warminf.h"
 #include "weaponinf.h"
 
+#include <array>
 #include <iomanip>
 #include <map>
 #include <vector>
@@ -328,9 +329,23 @@ void Shapes_vga_file::Write_Gumpinf_text_data_file(Exult_Game game) {
 		}
 	}
 
+	// Shortcut-bar entries are kept per slot, outside Gump_info.
+	const auto icon_from_patch = [](const Shortcutbar_icon_info& icon) {
+		return (icon.normal.valid && icon.normal.from_patch) || (icon.translucent.valid && icon.translucent.from_patch)
+			   || (icon.found.valid && icon.found.from_patch);
+	};
+	bool any_icons = false;
+	for (const auto& [slot, icon] : Gump_info::shortcutbar_icon_map) {
+		any_icons = any_icons || icon_from_patch(icon);
+	}
+	bool any_actions = false;
+	for (const auto& [slot, cmd] : Gump_info::shortcutbar_action_map) {
+		any_actions = any_actions || (cmd.valid && cmd.from_patch);
+	}
+
 	if (container_data.empty() && checkmark_data.empty() && special_data.empty() && snapzones_data.empty()
 		&& dynbuttons_data.empty() && dyntexts_data.empty() && dynshapes_data.empty() && dynsliders_data.empty()
-		&& gumpname_data.empty()) {
+		&& gumpname_data.empty() && !any_icons && !any_actions) {
 		return;
 	}
 
@@ -446,6 +461,40 @@ void Shapes_vga_file::Write_Gumpinf_text_data_file(Exult_Game game) {
 		out << "%%section gump_name" << std::endl;
 		for (const auto& [shapenum, info] : gumpname_data) {
 			out << ":" << shapenum << "/" << info->gump_name << std::endl;
+		}
+		out << "%%endsection" << std::endl;
+	}
+
+	// shortcutbar_icon: one line per variant (0 normal, 1 translucent, 2 found)
+	if (any_icons) {
+		out << "%%section shortcutbar_icon" << std::endl;
+		for (const auto& [slot, icon] : Gump_info::shortcutbar_icon_map) {
+			const std::array<const Shortcutbar_icon_entry*, 3> variants{&icon.normal, &icon.translucent, &icon.found};
+			for (size_t transparent = 0; transparent < variants.size(); transparent++) {
+				const Shortcutbar_icon_entry& entry = *variants[transparent];
+				if (!entry.valid || !entry.from_patch) {
+					continue;
+				}
+				out << ":" << slot << "/" << transparent << "/" << entry.shapefile_type << "/" << entry.shape << "/" << entry.frame
+					<< "/" << entry.extra_frame << "/" << (entry.check_party_item ? 1 : 0) << "/" << entry.fallback_vga << "/"
+					<< entry.fallback_shape << "/" << entry.fallback_frame << "/" << entry.fallback_extra_frame << std::endl;
+			}
+		}
+		out << "%%endsection" << std::endl;
+	}
+
+	// shortcutbar_action
+	if (any_actions) {
+		out << "%%section shortcutbar_action" << std::endl;
+		for (const auto& [slot, cmd] : Gump_info::shortcutbar_action_map) {
+			if (!cmd.valid || !cmd.from_patch) {
+				continue;
+			}
+			out << ":" << slot << "/" << cmd.primary_cmd << "/" << (cmd.primary_cheat ? 1 : 0);
+			if (!cmd.secondary_cmd.empty()) {
+				out << "/" << cmd.secondary_cmd << "/" << (cmd.secondary_cheat ? 1 : 0);
+			}
+			out << std::endl;
 		}
 		out << "%%endsection" << std::endl;
 	}
