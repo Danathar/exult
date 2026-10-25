@@ -79,6 +79,7 @@
 #endif
 
 #include <algorithm>    // STL function things
+#include <array>
 #include <cstdio>       /* Debugging.           */
 #include <cstdlib>
 #include <cstring>
@@ -1828,6 +1829,43 @@ void Usecode_internal::read_usecode() {
 }
 
 /*
+ *  The original gang plank usecode (BG 0x82C, SI 0x913) tests the solid flag
+ *  on the plank instead of on the object in its way, so any object counts as
+ *  blocking it. At the start of Serpent Isle, surf beside the ship then keeps
+ *  the plank from lowering and the party cannot leave the ship. Apply the fix
+ *  from docs/usecode_bugs.txt (also in SI Fixes): test the object in the way.
+ *  Only an exact match of the original code is changed.
+ */
+
+static void Fix_gang_plank_check(Usecode_function* fun) {
+	const int id = GAME_BG ? 0x82c : (GAME_SI ? 0x913 : -1);
+	if (fun->id != id || fun->extended) {
+		return;
+	}
+	// push [0007]; callis get_item_shape; push [0000]; in; not;
+	// pushi 0x18; push [0003]; callis get_item_flag. -1 is any byte.
+	static constexpr std::array<int, 22> pattern{0x21, 0x07, 0x00, 0x38, -1,   0x00, 0x01, 0x21, 0x00, 0x00, 0x30,
+												 0x10, 0x1f, 0x18, 0x00, 0x21, 0x03, 0x00, 0x38, -1,   0x00, 0x02};
+	constexpr size_t plank_operand = 16;    // The 03 of 'push [0003]'.
+	const auto       len           = static_cast<size_t>(fun->len);
+	size_t           found         = 0;
+	size_t           where         = 0;
+	for (size_t i = 0; i + pattern.size() <= len; i++) {
+		size_t j = 0;
+		while (j < pattern.size() && (pattern[j] < 0 || fun->code[i + j] == pattern[j])) {
+			j++;
+		}
+		if (j == pattern.size()) {
+			found++;
+			where = i;
+		}
+	}
+	if (found == 1) {
+		fun->code[where + plank_operand] = 0x07;
+	}
+}
+
+/*
  *  Read in usecode functions.  These may override previously read
  *  functions.
  */
@@ -1848,6 +1886,9 @@ void Usecode_internal::read_usecode(
 	while (file.tellg() < size) {
 		auto*              fun     = new Usecode_function(file);
 		const unsigned int slotnum = fun->id / 0x100;
+		if (!patch) {
+			Fix_gang_plank_check(fun);
+		}
 		if (slotnum >= funs.size()) {
 			funs.resize(slotnum < 10 ? 10 : slotnum + 1);
 		}
