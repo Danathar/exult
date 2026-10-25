@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <cstdio>
@@ -293,6 +294,86 @@ static void switch_slashes(string& name) {
 #endif
 }
 
+#ifndef _WIN32
+static bool equal_ignoring_case(const char* a, const char* b) {
+	for (; *a != '\0' && *b != '\0'; ++a, ++b) {
+		if (std::tolower(static_cast<unsigned char>(*a)) != std::tolower(static_cast<unsigned char>(*b))) {
+			return false;
+		}
+	}
+	return *a == *b;
+}
+
+/*
+ *  Look for an existing file or directory whose name matches 'name' when
+ *  the case of each part of the path is ignored, for example
+ *  "mods/u6/patch/u7ifix3f" when the mod ships "U7IFIX3f", or
+ *  "STATIC/mainshp.flx". The exact and all-uppercase names are tried first
+ *  by the callers; this handles the mixed cases they miss on case-sensitive
+ *  file systems. If a directory holds several names that differ only in
+ *  case, the first one in sorted order is used and a warning is printed.
+ *
+ *  Output: true and 'name' replaced by the real path if found.
+ */
+
+static bool find_ignoring_case(string& name) {
+	if (name.empty()) {
+		return false;
+	}
+	string resolved;
+	size_t pos = 0;
+	if (name[0] == '/') {
+		resolved = "/";
+		pos      = 1;
+	}
+	while (pos <= name.size()) {
+		size_t end = name.find('/', pos);
+		if (end == string::npos) {
+			end = name.size();
+		}
+		const string part = name.substr(pos, end - pos);
+		pos               = end + 1;
+		if (part.empty() || part == "." || part == "..") {
+			if (!part.empty()) {
+				resolved += part + "/";
+			}
+			continue;
+		}
+		const string exact = resolved + part;
+		struct stat  sbuf;
+		if (stat(exact.c_str(), &sbuf) == 0) {
+			resolved = exact;
+		} else {
+			DIR* dir = opendir(resolved.empty() ? "." : resolved.c_str());
+			if (dir == nullptr) {
+				return false;
+			}
+			std::vector<string> matches;
+			while (const dirent* entry = readdir(dir)) {
+				if (equal_ignoring_case(entry->d_name, part.c_str())) {
+					matches.emplace_back(entry->d_name);
+				}
+			}
+			closedir(dir);
+			if (matches.empty()) {
+				return false;
+			}
+			std::sort(matches.begin(), matches.end());
+			if (matches.size() > 1) {
+				std::cerr << "Warning: '" << exact << "' matches " << matches.size() << " names that differ only in case; using '"
+						  << matches[0] << "'" << std::endl;
+			}
+			resolved += matches[0];
+		}
+		if (pos <= name.size()) {
+			resolved += "/";
+		}
+	}
+	name = resolved;
+	return true;
+}
+#endif
+
 void U7set_istream_factory(U7IstreamFactory factory) {
 	istream_factory = std::move(factory);
 }
@@ -331,6 +412,19 @@ std::unique_ptr<std::istream> U7open_in(
 			return in;    // found it!
 		}
 	} while (base_to_uppercase(name, ++uppercasecount));
+
+#ifndef _WIN32
+	name = get_system_path(fname);
+	if (find_ignoring_case(name)) {
+		try {
+			in = istream_factory(name.c_str(), mode);
+		} catch (std::exception&) {
+		}
+		if (in && in->good() && !in->fail()) {
+			return in;
+		}
+	}
+#endif
 
 	// file not found.
 	throw file_open_exception(get_system_path(fname));
@@ -389,6 +483,12 @@ DIR* U7opendir(const char* fname    // May be converted to upper-case.
 			return dir;    // found it!
 		}
 	} while (base_to_uppercase(name, ++uppercasecount));
+#ifndef _WIN32
+	name = get_system_path(fname);
+	if (find_ignoring_case(name)) {
+		return opendir(name.c_str());
+	}
+#endif
 	return nullptr;
 }
 
