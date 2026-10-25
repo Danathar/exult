@@ -49,6 +49,7 @@ protected:
 	Drop_callback  drop_callback;    // Called when a shape is dropped here.
 	void*          drop_user_data;
 	bool           dragging;    // Dragging from here.
+	bool           drag_end_connected = false;    // "drag-end" handlers set up.
 
 	int animation_frame = 0;    // Current animation frame
 
@@ -174,7 +175,9 @@ public:
 	gulong enable_drop(Drop_callback callback, void* udata);
 	void   set_drag_icon(GdkDragContext* context, Shape_frame* shape);
 	// Start/end dragging from here.
-	void start_drag(const char* target, int id, GdkEvent* event);
+	void            start_drag(const char* target, int id, GdkEvent* event);
+	static void     drag_end(GtkWidget* widget, GdkDragContext* context, gpointer data);
+	static gboolean drag_failed(GtkWidget* widget, GdkDragContext* context, GtkDragResult result, gpointer data);
 
 	void mouse_up() {
 		dragging = false;
