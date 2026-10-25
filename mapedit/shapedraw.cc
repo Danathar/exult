@@ -514,7 +514,8 @@ void Shape_draw::set_drag_icon(
 /*
  *  Start dragging from here.
  *
- *  Note:   Sets 'dragging', which is only cleared by 'mouse_up()'.
+ *  Note:   Sets 'dragging', which is cleared by 'drag_end()' when GTK
+ *      ends the drag, or by 'mouse_up()' on a button release here.
  */
 
 void Shape_draw::start_drag(
@@ -526,6 +527,13 @@ void Shape_draw::start_drag(
 		return;
 	}
 	dragging = true;
+	if (!drag_end_connected) {
+		// The button release that ends a drag goes to the drop target, not
+		// here, so 'mouse_up()' never sees it.
+		g_signal_connect(G_OBJECT(draw), "drag-end", G_CALLBACK(drag_end), this);
+		g_signal_connect(G_OBJECT(draw), "drag-failed", G_CALLBACK(drag_failed), this);
+		drag_end_connected = true;
+	}
 	GtkTargetEntry tents[3];    // Set up for dragging.
 	tents[0].target      = const_cast<char*>(target);
 	tents[1].target      = const_cast<char*>(U7_TARGET_DROPTEXT_NAME_MIME);
@@ -537,8 +545,39 @@ void Shape_draw::start_drag(
 	tents[1].info        = id + 100;
 	tents[2].info        = id + 200;
 	GtkTargetList* tlist = gtk_target_list_new(&tents[0], 3);
-	gtk_drag_begin_with_coordinates(draw, tlist, static_cast<GdkDragAction>(GDK_ACTION_COPY | GDK_ACTION_MOVE), 1, event, -1, -1);
+	if (!gtk_drag_begin_with_coordinates(
+				draw, tlist, static_cast<GdkDragAction>(GDK_ACTION_COPY | GDK_ACTION_MOVE), 1, event, -1, -1)) {
+		dragging = false;    // No drag started, so no "drag-end" will come.
+	}
 	gtk_target_list_unref(tlist);
+}
+
+/*
+ *  A drag from here ended, whether dropped or cancelled.
+ */
+
+void Shape_draw::drag_end(
+		GtkWidget*      widget,     // The draw area.
+		GdkDragContext* context,    // The drag that ended.
+		gpointer        data        // ->Shape_draw.
+) {
+	ignore_unused_variable_warning(widget, context);
+	static_cast<Shape_draw*>(data)->mouse_up();
+}
+
+/*
+ *  A drag from here failed. "drag-end" follows, but clear 'dragging' now too.
+ */
+
+gboolean Shape_draw::drag_failed(
+		GtkWidget*      widget,     // The draw area.
+		GdkDragContext* context,    // The drag that failed.
+		GtkDragResult   result,     // Why it failed.
+		gpointer        data        // ->Shape_draw.
+) {
+	ignore_unused_variable_warning(widget, context, result);
+	static_cast<Shape_draw*>(data)->mouse_up();
+	return false;    // Let GTK run its default failure animation.
 }
 
 /*
