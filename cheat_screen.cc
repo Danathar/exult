@@ -221,9 +221,11 @@ void CheatScreen::show_screen() {
 		if (!gumpman->gump_mode()) {
 			touchui->showGameControls();
 		}
-		if (SDL_TextInputActive(window)) {
-			SDL_StopTextInput(window);
-		}
+	}
+	// Always turn text input off on exit, so an input method or screen
+	// keyboard is not left active for the rest of the session.
+	if (SDL_TextInputActive(window)) {
+		SDL_StopTextInput(window);
 	}
 }
 
@@ -866,11 +868,14 @@ SDL_Keycode CheatScreen::GetKey(const std::vector<Hotspot*>& hotspots, SDL_Keyco
 
 							// Touch on the cheat screen will bring up the
 							// keyboard but not if the tap was within a 20 pixel
-							// border on the edge of the cheat screen.
-							if (SDL_TextInputActive(window)) {
-								SDL_StopTextInput(window);
-							} else if (gx > 20 && gy > 20 && gx < (maxx - 20) && gy < (maxy - 20)) {
-								TouchUI::startTextInput(window);
+							// border on the edge of the cheat screen. Desktop
+							// typing arrives as key presses and needs none of this.
+							if (touchui != nullptr) {
+								if (SDL_TextInputActive(window)) {
+									SDL_StopTextInput(window);
+								} else if (gx > 20 && gy > 20 && gx < (maxx - 20) && gy < (maxy - 20)) {
+									TouchUI::startTextInput(window);
+								}
 							}
 						}
 					}
