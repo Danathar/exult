@@ -833,6 +833,7 @@ SDL_Keycode CheatScreen::GetKey(const std::vector<Hotspot*>& hotspots, SDL_Keyco
 					}
 				} break;
 				case SDL_EVENT_MOUSE_MOTION: {
+					SDL_ConvertEventToRenderCoordinates(renderer, &event);
 					CERR("SDL_EVENT_MOUSE_MOTION");
 					if (Mouse::use_touch_input && event.motion.which != EXSDL_TOUCH_MOUSEID) {
 						Mouse::use_touch_input = false;
