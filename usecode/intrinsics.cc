@@ -3120,7 +3120,16 @@ USECODE_INTRINSIC(get_item_flag) {
 		// block the gang-planck.
 		return Usecode_value(obj->get_info().is_solid());
 	} else if (fnum == static_cast<int>(Obj_flags::in_dungeon)) {
-		return Usecode_value(obj == gwin->get_main_actor() && gwin->is_in_dungeon());
+		if (obj == gwin->get_main_actor()) {
+			return Usecode_value(gwin->is_in_dungeon() != 0);
+		}
+		// The original usecode also asks this of items: the theft check run
+		// before food, drink or a potion is used (BG 0x8FA, SI 0x945) skips
+		// items in a dungeon. Answer for where the item (or whoever carries
+		// it) is, the same way the Avatar's dungeon state is worked out.
+		const Game_object* outer = obj->get_outermost();
+		Map_chunk*         chunk = outer->get_chunk();
+		return Usecode_value(chunk && chunk->has_dungeon() && chunk->is_dungeon(outer->get_tx(), outer->get_ty()) != 0);
 	} else if (fnum == Obj_flags::active_sailor) {
 		// Must be the sailor, as this is used to check for Ferryman.
 		return Usecode_value(sailor.lock());
