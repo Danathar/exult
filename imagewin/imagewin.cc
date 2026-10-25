@@ -387,7 +387,8 @@ void Image_window::static_init() {
 	Uint32                 Gmask;
 	Uint32                 Bmask;
 	Uint32                 Amask;
-	if (SDL_GetMasksForPixelFormat(dispmode->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
+	// SDL returns null when it has no display (for example a Wayland output that was unplugged)
+	if (dispmode != nullptr && SDL_GetMasksForPixelFormat(dispmode->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
 		desktop_displaymode = *dispmode;
 		desktop_depth       = bpp;
 	} else {
@@ -404,7 +405,7 @@ void Image_window::static_init() {
 
 	/* Get available fullscreen/hardware modes */
 	SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(SDL_GetPrimaryDisplay(), nullptr);
-	for (int j = 0; modes[j]; j++) {
+	for (int j = 0; modes != nullptr && modes[j]; j++) {
 		const Resolution res                          = {modes[j]->w, modes[j]->h};
 		p_resolutions[(res.width << 16) | res.height] = res;
 	}
@@ -2235,6 +2236,10 @@ int Image_window::VideoModeOK(int width, int height, bool fullscreen, int bpp) {
 		Uint32                 Gmask;
 		Uint32                 Bmask;
 		Uint32                 Amask;
+		if (mode == nullptr) {
+			// No display to measure against, so no mode is OK.
+			return 0;
+		}
 		if (SDL_GetMasksForPixelFormat(mode->format, &nbpp, &Rmask, &Gmask, &Bmask, &Amask) && mode->w >= width && mode->h >= height
 			&& ((bpp == nbpp) || (bpp == 0 && (nbpp == 16 || nbpp == 32)))) {
 			return nbpp;
@@ -2243,6 +2248,10 @@ int Image_window::VideoModeOK(int width, int height, bool fullscreen, int bpp) {
 	}
 
 	SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(SDL_GetPrimaryDisplay(), nullptr);
+	if (modes == nullptr) {
+		// No display, so no mode is OK.
+		return 0;
+	}
 	for (int j = 0; modes[j]; j++) {
 		int    nbpp;
 		Uint32 Rmask;
