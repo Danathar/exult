@@ -693,7 +693,7 @@
 #CYCLE_FRAMES_NEXT
 0x851:Cycle frames next
 #CYCLE_FRAMES_PREV
-0x852:Cycle frames previus
+0x852:Cycle frames previous
 #ROTATE_FRAMES
 0x853:Rotate frames
 #WRITE_MINIMAP
@@ -970,7 +970,7 @@
 #NPC Menu
 0x9F0:Business Activity
 0x9F1:Change Shape
-0x9F2:Exprience
+0x9F2:Experience
 0x9F3:Npc flags
 0x9F4:1 Name
 0x9F5:Stats
@@ -988,7 +988,7 @@
 0xA01:  Health: 
 0xA02:Training: 
 0xA03:Experience: 
-0xA04: (ununsed)
+0xA04: (unused)
 0xA05:Met
 0xA06:Not Met
 0xA07:Usecode item 
@@ -1002,7 +1002,7 @@
 
 0xA10:Dexterity....
 0xA11:Food Level...
-0xA12:Intellicence.
+0xA12:Intelligence.
 0xA13:Strength.....
 0xA14:Combat Skill.
 0xA15:Hit Points...
