@@ -34,6 +34,7 @@
 #include "ShortcutBar_gump.h"
 #include "Yesno_gump.h"
 #include "actors.h"
+#include "barge.h"
 #include "cheat.h"
 #include "combat_opts.h"
 #include "common_types.h"
@@ -582,60 +583,72 @@ int get_walking_speed(const int* params) {
 	return 200 * gwin->get_std_delay() / speed;
 }
 
-//  { ActionWalkWest, 0, "Walk west", normal_keys, NONE },
-void ActionWalkWest(const int* params) {
+/*
+ *  Keyboard walking aims 'dx', 'dy' pixels from the screen centre, which is
+ *  where the Avatar's tile is. A moving barge (ship, cart, carpet) is steered
+ *  by its centre instead, and Game_window::start_actor() adds the Avatar's
+ *  lift to the aim point as it must for a mouse click on a raised sprite. So
+ *  on a barge, aim from the barge's centre and take that lift back out;
+ *  otherwise every step also pulls the barge sideways (south and east when
+ *  the Avatar is above the ground), and it drifts.
+ */
+static void walk_by_key(int dx, int dy, const int* params) {
 	Game_window* gwin  = Game_window::get_instance();
 	const int    speed = get_walking_speed(params);
-	gwin->start_actor(gwin->get_width() / 2 - 50, gwin->get_height() / 2, speed);
+	int          x     = gwin->get_width() / 2;
+	int          y     = gwin->get_height() / 2;
+	if (const Barge_object* barge = gwin->get_moving_barge()) {
+		const Tile_coord center     = barge->get_center();
+		const int        liftpixels = 4 * gwin->get_main_actor()->get_lift();
+		// Tile offsets from the view's top-left, allowing for world wrap.
+		auto offset = [](int tile, int scroll) {
+			int delta = (tile - scroll + c_num_tiles) % c_num_tiles;
+			return delta >= c_num_tiles / 2 ? delta - c_num_tiles : delta;
+		};
+		x = offset(center.tx, gwin->get_scrolltx()) * c_tilesize + c_tilesize / 2 - liftpixels;
+		y = offset(center.ty, gwin->get_scrollty()) * c_tilesize + c_tilesize / 2 - liftpixels;
+	}
+	gwin->start_actor(x + dx, y + dy, speed);
+}
+
+//  { ActionWalkWest, 0, "Walk west", normal_keys, NONE },
+void ActionWalkWest(const int* params) {
+	walk_by_key(-50, 0, params);
 }
 
 //  { ActionWalkEast, 0, "Walk east", normal_keys, NONE },
 void ActionWalkEast(const int* params) {
-	Game_window* gwin  = Game_window::get_instance();
-	const int    speed = get_walking_speed(params);
-	gwin->start_actor(gwin->get_width() / 2 + 50, gwin->get_height() / 2, speed);
+	walk_by_key(50, 0, params);
 }
 
 //  { ActionWalkNorth, 0, "Walk north", normal_keys, NONE },
 void ActionWalkNorth(const int* params) {
-	Game_window* gwin  = Game_window::get_instance();
-	const int    speed = get_walking_speed(params);
-	gwin->start_actor(gwin->get_width() / 2, gwin->get_height() / 2 - 50, speed);
+	walk_by_key(0, -50, params);
 }
 
 //  { ActionWalkSouth, 0, "Walk south", normal_keys, NONE },
 void ActionWalkSouth(const int* params) {
-	Game_window* gwin  = Game_window::get_instance();
-	const int    speed = get_walking_speed(params);
-	gwin->start_actor(gwin->get_width() / 2, gwin->get_height() / 2 + 50, speed);
+	walk_by_key(0, 50, params);
 }
 
 //  { ActionWalkNorthEast, 0, "Walk north-east", normal_keys, NONE },
 void ActionWalkNorthEast(const int* params) {
-	Game_window* gwin  = Game_window::get_instance();
-	const int    speed = get_walking_speed(params);
-	gwin->start_actor(gwin->get_width() / 2 + 50, gwin->get_height() / 2 - 50, speed);
+	walk_by_key(50, -50, params);
 }
 
 //  { ActionWalkSouthEast, 0, "Walk south-east", normal_keys, NONE },
 void ActionWalkSouthEast(const int* params) {
-	Game_window* gwin  = Game_window::get_instance();
-	const int    speed = get_walking_speed(params);
-	gwin->start_actor(gwin->get_width() / 2 + 50, gwin->get_height() / 2 + 50, speed);
+	walk_by_key(50, 50, params);
 }
 
 //  { ActionWalkNorthWest, 0, "Walk north-west", normal_keys, NONE },
 void ActionWalkNorthWest(const int* params) {
-	Game_window* gwin  = Game_window::get_instance();
-	const int    speed = get_walking_speed(params);
-	gwin->start_actor(gwin->get_width() / 2 - 50, gwin->get_height() / 2 - 50, speed);
+	walk_by_key(-50, -50, params);
 }
 
 //  { ActionWalkSouthWest, 0, "Walk south-west", normal_keys, NONE },
 void ActionWalkSouthWest(const int* params) {
-	Game_window* gwin  = Game_window::get_instance();
-	const int    speed = get_walking_speed(params);
-	gwin->start_actor(gwin->get_width() / 2 - 50, gwin->get_height() / 2 + 50, speed);
+	walk_by_key(-50, 50, params);
 }
 
 //  { ActionStopWalking, 0, "Stop Walking", cheat_keys, NONE },
