@@ -549,14 +549,26 @@ void Image_window::create_surface(unsigned int w, unsigned int h) {
 		}
 	}
 
-	get_draw_dims(w, h, scale, fill_mode, game_width, game_height, inter_width, inter_height);
+	// In fullscreen the window takes the display's size, not the requested
+	// windowed size w x h. Lay the game area out for that size so it matches
+	// what create_scale_surfaces() presents; under a compositor fullscreen is
+	// applied asynchronously, so it cannot be read back from the window yet.
+	int fs_w = 0;
+	int fs_h = 0;
+	if (fullscreen) {
+		get_fullscreen_pixel_size(fs_w, fs_h);
+	}
+	const bool have_fs_size = fs_w > 0 && fs_h > 0;
+	const int  draw_w       = have_fs_size ? fs_w : static_cast<int>(w);
+	const int  draw_h       = have_fs_size ? fs_h : static_cast<int>(h);
+	get_draw_dims(draw_w, draw_h, scale, fill_mode, game_width, game_height, inter_width, inter_height);
 	saved_game_height = game_height;
 	saved_game_width  = game_width;
-	if (!try_scaler(w, h)) {
+	if (!try_scaler(w, h, fs_w, fs_h)) {
 		// Try fallback to point scaler if it failed, if it doesn't work, we
 		// probably can't run
 		scaler = point;
-		if (!try_scaler(w, h)) {
+		if (!try_scaler(w, h, fs_w, fs_h)) {
 			throw exult_exception("Failed to creat Display Sorfaces");
 		}
 	}
@@ -578,11 +590,51 @@ void Image_window::create_surface(unsigned int w, unsigned int h) {
 }
 
 /*
+ *   Size in pixels of the window in fullscreen.
+ *   Output: False if it is not known (w and h are left alone).
+ */
+
+bool Image_window::get_fullscreen_pixel_size(int& w, int& h) const {
+#if defined(SDL_PLATFORM_IOS) || defined(ANDROID)
+	// Mobile is always fullscreen; create_scale_surfaces() reads its size
+	// from the renderer as before.
+	ignore_unused_variable_warning(w, h);
+	return false;
+#else
+	// Already fullscreen (for example a video option changed while
+	// fullscreen, or the compositor resized the window): use its real size.
+	if (screen_window != nullptr && (SDL_GetWindowFlags(screen_window) & SDL_WINDOW_FULLSCREEN) != 0) {
+		int pw = 0;
+		int ph = 0;
+		if (SDL_GetWindowSizeInPixels(screen_window, &pw, &ph) && pw > 0 && ph > 0) {
+			w = pw;
+			h = ph;
+			return true;
+		}
+	}
+	// Going fullscreen: the window is given the desktop mode of its display
+	// (no exclusive fullscreen mode is set), in pixels.
+	SDL_DisplayID display = screen_window != nullptr ? SDL_GetDisplayForWindow(screen_window) : 0;
+	if (display == 0) {
+		display = SDL_GetPrimaryDisplay();
+	}
+	const SDL_DisplayMode* mode = display != 0 ? SDL_GetDesktopDisplayMode(display) : nullptr;
+	if (mode == nullptr || mode->w <= 0 || mode->h <= 0) {
+		return false;
+	}
+	const float density = mode->pixel_density > 0.0f ? mode->pixel_density : 1.0f;
+	w                   = static_cast<int>(mode->w * density + 0.5f);
+	h                   = static_cast<int>(mode->h * density + 0.5f);
+	return true;
+#endif
+}
+
+/*
  *   Set up surfaces for scaling.
  *   Output: False if error (reported).
  */
 
-bool Image_window::create_scale_surfaces(int w, int h, int bpp) {
+bool Image_window::create_scale_surfaces(int w, int h, int bpp, int fs_w, int fs_h) {
 	int    hwdepth = bpp;
 	uint32 flags   = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 	hwdepth        = Get_best_bpp(w, h, hwdepth);
@@ -649,8 +701,16 @@ bool Image_window::create_scale_surfaces(int w, int h, int bpp) {
 #ifdef SDL_PLATFORM_IOS
 		SDL_GetWindowSizeInPixels(screen_window, &dw, &dh);
 #endif
-		w                            = dw;
-		h                            = dh;
+		w = dw;
+		h = dh;
+		// Present at the size create_surface() laid the game area out for. If
+		// the compositor has not applied fullscreen yet, the output still has
+		// the windowed size and SDL letterboxes until it does; reading the
+		// output size here instead gave a stale size at startup (#325).
+		if (fs_w > 0 && fs_h > 0) {
+			w = fs_w;
+			h = fs_h;
+		}
 		const Resolution res         = {w, h};
 		p_resolutions[(w << 16) | h] = res;
 		// getting new native scale when highdpi is active
@@ -773,7 +833,7 @@ bool Image_window::create_scale_surfaces(int w, int h, int bpp) {
  *   Set up surfaces and scaler to call.
  */
 
-bool Image_window::try_scaler(int w, int h) {
+bool Image_window::try_scaler(int w, int h, int fs_w, int fs_h) {
 	const ScalerInfo* info;
 
 	if (scaler < 0 || scaler >= NumScalers || scale == 1) {
@@ -801,7 +861,7 @@ bool Image_window::try_scaler(int w, int h) {
 	}
 	// If both 16 and 32 bit supported allow create_scale_surfaces to select bpp
 	// otherwise try 16 or 32 as suppoprted by the scaler
-	return create_scale_surfaces(w, h, has16 && has32 ? 0 : has16 ? 16 : 32);
+	return create_scale_surfaces(w, h, has16 && has32 ? 0 : has16 ? 16 : 32, fs_w, fs_h);
 }
 
 /*
