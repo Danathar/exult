@@ -312,10 +312,12 @@ Notebook_gump::~Notebook_gump() {
 		if (!gumpman->gump_mode()) {
 			touchui->showGameControls();
 		}
-		SDL_Window* window = gwin->get_win()->get_screen_window();
-		if (SDL_TextInputActive(window)) {
-			SDL_StopTextInput(window);
-		}
+	}
+	// Always turn text input off on close, so an input method or screen
+	// keyboard is not left active for the rest of the session.
+	SDL_Window* window = gwin->get_win()->get_screen_window();
+	if (SDL_TextInputActive(window)) {
+		SDL_StopTextInput(window);
 	}
 }
 
@@ -443,7 +445,9 @@ Gump_button* Notebook_gump::on_button(
 		cursor.offset = offset + coff;
 		paint();
 		updnx = cursor.x - x - lpagex;
-		if (!SDL_TextInputActive(window)) {
+		// Typing arrives as key presses; only the touch UI needs text input
+		// (for its screen keyboard).
+		if (touchui != nullptr && !SDL_TextInputActive(window)) {
 			TouchUI::startTextInput(window);
 		}
 	} else {
@@ -466,7 +470,7 @@ Gump_button* Notebook_gump::on_button(
 			cursor.offset = offset + coff;
 			paint();
 			updnx = cursor.x - x - rpagex;
-			if (!SDL_TextInputActive(window)) {
+			if (touchui != nullptr && !SDL_TextInputActive(window)) {
 				TouchUI::startTextInput(window);
 			}
 		}
