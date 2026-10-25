@@ -46,8 +46,8 @@ namespace Obj_flags {
 		okay_to_land = 21,    // Used for flying-carpet.
 		bg_dont_move = 22,    // Exult-only: BG version of dont_move flag
 		dont_render  = 22,    // Exult-only: Non-BG version of bg_dont_render flag
-		in_dungeon   = 23,    // Pretty sure.  If set, you won't
-		//   be accused of stealing food.
+		in_dungeon   = 23,    // Object (or its carrier) is in a dungeon;
+		//   then using it is not stealing.
 		is_solid = 24,    // Used by gangplank usecode to determine if an object
 		//   is solid based on TFA data.
 		confused     = 25,    // ??Guessing.
