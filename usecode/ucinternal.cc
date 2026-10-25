@@ -3253,9 +3253,20 @@ void Usecode_internal::write() {
 	}
 	{
 		OFileDataSource out(USEDAT);
-		out.write2(partyman->get_count());    // Write party.
+		// Write party. Dead members go in the free slots after the living
+		// ones: link_party() moves them back to the dead list on reading,
+		// so UI_get_dead_party still finds them after a reload.
+		const int live  = partyman->get_count();
+		const int total = std::min(live + partyman->get_dead_count(), EXULT_PARTY_MAX);
+		out.write2(total);
 		for (int i = 0; i < EXULT_PARTY_MAX; i++) {
-			out.write2(partyman->get_member(i));
+			if (i < live) {
+				out.write2(partyman->get_member(i));
+			} else if (i < total) {
+				out.write2(partyman->get_dead_member(i - live));
+			} else {
+				out.write2(0);
+			}
 		}
 		// Timers.
 		out.write4(0xffffffffU);
