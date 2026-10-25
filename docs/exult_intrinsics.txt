@@ -1632,9 +1632,11 @@ int obj->get_item_flag(int flag)
                                    can land currently.
         BG_DONT_MOVE       = 22    BG: BG's version of DONT_MOVE.
         SI_DONT_RENDER     = 22    SI: SI's version of DONT_RENDER.
-        IN_DUNGEON         = 23    If set on PC or an NPC, they won't trigger
-                                   the stealing usecode if they take food
-                                   objects.
+        IN_DUNGEON         = 23    True if the object (or whoever carries
+                                   it) is inside a dungeon. The theft check
+                                   run before food, drink or a potion is
+                                   used tests it on the item, so using items
+                                   in a dungeon is not stealing.
         IS_SOLID           = 24    Used by gangplank usecode to determine if an
                                    object is solid.
         CONFUSED           = 25    This will be set if the avatar failed
