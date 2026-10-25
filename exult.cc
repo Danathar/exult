@@ -2110,6 +2110,19 @@ static void Handle_event(SDL_Event& event) {
 		gwin->set_painted();
 		break;
 	}
+	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
+		// Fullscreen is applied asynchronously under a compositor, and the
+		// display mode can change while fullscreen. Lay the game out again for
+		// the new size, but only in fullscreen and only when the size differs
+		// from what is presented, so the re-layout (which does not resize a
+		// fullscreen window) cannot feed back into another event (#325).
+		Image_window* win = gwin->get_win();
+		if (win->is_fullscreen()
+			&& (event.window.data1 != win->get_display_width() || event.window.data2 != win->get_display_height())) {
+			setup_video(true, TOGGLE_FULLSCREEN);
+		}
+		break;
+	}
 	case SDL_EVENT_WINDOW_FOCUS_GAINED:
 		gwin->get_focus();
 		break;
