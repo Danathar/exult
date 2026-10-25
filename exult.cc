@@ -191,6 +191,7 @@ static int  drag_cnknum = -1;
 static void BuildGameMap(BaseGameInfo* game, int mapnum);
 static void Handle_events();
 static void Handle_event(SDL_Event& event);
+static void Release_stale_mouse_grab();
 
 /*
  *  Statics:
@@ -1385,6 +1386,7 @@ static void Handle_events() {
 		while (!quitting_time && SDL_PollEvent(&event)) {
 			Handle_event(event);
 		}
+		Release_stale_mouse_grab();
 
 		// Animate unless dormant.
 		if (gwin->have_focus() && !dragging) {
@@ -1684,6 +1686,21 @@ bool Translate_keyboard(const SDL_Event& event, SDL_Keycode& chr, SDL_Keycode& u
 			&& event.key.key != SDLK_RCTRL && event.key.key != SDLK_LCTRL && event.key.key != SDLK_RALT
 			&& event.key.key != SDLK_LALT && event.key.key != SDLK_LGUI && event.key.key != SDLK_RGUI && event.key.key != SDLK_MODE
 			&& event.key.key != SDLK_NUMLOCKCLEAR);
+}
+
+/*
+ *  A button press grabs the mouse and its release lets go (see
+ *  Handle_event).  A modal loop opened while a button is held, such as the
+ *  game menu, eats that release, and the grab then stays on after it closes;
+ *  on Wayland that confines the pointer to the window.  So drop the grab once
+ *  no button is held.
+ */
+
+static void Release_stale_mouse_grab() {
+	SDL_Window* window = gwin->get_win()->get_screen_window();
+	if (SDL_GetWindowMouseGrab(window) && SDL_GetMouseState(nullptr, nullptr) == 0) {
+		SDL_SetWindowMouseGrab(window, false);
+	}
 }
 
 /*
