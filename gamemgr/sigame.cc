@@ -1531,6 +1531,12 @@ bool SI_Game::new_game(Vga_file& shapes) {
 				switch (event.key.key) {
 				case SDLK_SPACE:
 					if (selected == 0) {
+						// While text input is active, the TEXT_INPUT event for
+						// this key appends the space; adding one here too would
+						// double it.
+						if (SDL_TextInputActive(window)) {
+							break;
+						}
 						const int len = strlen(npc_name);
 						if (len < max_len) {
 							npc_name[len]     = ' ';
