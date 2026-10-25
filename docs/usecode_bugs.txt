@@ -346,9 +346,11 @@ Frame 2 is an invalid frame, while frame 1 is the correct Serpent Ring frame.
 (BG + SI) Gang planck is blocked by non-solids.
 ===============================================
 
-This is more of a theoretical bug because it can never be observed in the
-original games; but if you try to lower a ship's gang planck over an object
-which is not solid, it will still count as solid.
+If you try to lower a ship's gang planck over an object which is not solid,
+it will still count as solid. In Exult this shows at the very start of Serpent
+Isle (Silver Seed data): surf beside the ship blocks the planck, so the party
+cannot leave the ship. Exult now applies the fix below when it loads the
+original usecode (Fix_gang_plank_check in usecode/ucinternal.cc).
 
 The usecode in question determines if the gang planck is going to overlap with
 objects in a certain area when lowered. Then it checks if flag 24 is set;
