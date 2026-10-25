@@ -74,9 +74,11 @@ end-to-end tests, plus `git`.
 ## Coverage floor
 
 `.github/workflows/coverage-gate.yml` runs the unit tests with `COVERAGE=1` and
-uses `gcovr` to measure line coverage over the files named in
-`.coverage-thresholds.json` (`source_filter`), failing below
-`line_coverage_floor`. Raise the floor when coverage rises.
+uses `gcovr` to measure line coverage over every product file the unit tests
+compile or include (`source_filter` in `.coverage-thresholds.json` excludes
+only `tests/`), failing below `line_coverage_floor`. A product file a new unit
+test pulls in is counted without being listed anywhere. Raise the floor when
+coverage rises.
 
 ## CI
 
