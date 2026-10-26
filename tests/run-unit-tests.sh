@@ -17,7 +17,10 @@ cxx="${CXX:-g++}"
 # _GLIBCXX_ASSERTIONS turns an out-of-range std::string_view / std::vector
 # access into an abort instead of a silent out-of-bounds read, so a bounds bug
 # fails the test even when the bytes it reads happen to give the right answer.
-flags=(-DEXULT_DATADIR=\"/usr/share/exult\" -D_GLIBCXX_ASSERTIONS -std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter -Werror=return-type)
+# -MMD writes a .d file per object, listing the headers it includes; the
+# mutation check (tests/mutate_changed.py) reads them to know which files the
+# unit build sees.
+flags=(-DEXULT_DATADIR=\"/usr/share/exult\" -MMD -D_GLIBCXX_ASSERTIONS -std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter -Werror=return-type)
 if [ "${COVERAGE:-0}" = 1 ]; then
 	flags+=(--coverage)
 fi

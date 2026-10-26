@@ -1,0 +1,194 @@
+# Surviving mutants a reviewer has judged harmless.
+#
+# tests/mutate_changed.py makes small edits to the lines a branch changes in
+# product files the unit tests build - a comparison flipped, `&&` swapped with
+# `||`, an `if` forced true or false, a statement dropped - and rebuilds and
+# runs the unit tests after each one. An edit every test still passes with is
+# a survivor, and the check fails on any survivor that is not listed here.
+#
+# List a survivor only when no test should fail on it:
+#
+# - equivalent: the edit cannot change what the code returns or opens
+# - message-only: it changes only the wording of a warning or log line
+# - untestable here: the difference needs a condition the unit tests cannot
+#   set up (say why)
+#
+# A survivor that changes which file is found, or whether one is, needs a test
+# instead.
+#
+# Each entry is a block of six lines, and blank lines separate entries. The
+# check prints every unlisted survivor in this form with `reason:` empty; copy
+# the block here and write the reason after it.
+#
+#   file: the path of the mutated file, from the repository root
+#   line: the line number of the edit, for the reader only
+#   after: the nearest non-blank line above it, stripped
+#   original: the source line the edit replaces, stripped
+#   mutant: the source line after the edit, stripped
+#   reason: one line saying why no test should fail on it
+#
+# An entry matches on file, after, original and mutant together. The line
+# number is not part of the match, so an entry still matches after lines above
+# it move; `after` keeps an entry for a common line such as `return false;`
+# from excusing the same edit somewhere else.
+
+file: files/utils.cc
+line: 299
+after: static bool equal_ignoring_case(const char* a, const char* b) {
+original: for (; *a != '\0' && *b != '\0'; ++a, ++b) {
+mutant: for (; *a != '\0' || *b != '\0'; ++a, ++b) {
+reason: equivalent: the loop already stops at the first differing character, and a NUL against a non-NUL differs, so both versions return false at the same place
+
+file: files/utils.cc
+line: 320
+after: static bool find_ignoring_case(string& name) {
+original: if (name.empty()) {
+mutant: if (false) {
+reason: equivalent: an empty name walks to an empty path, and the caller's open of an empty path fails as before
+
+file: files/utils.cc
+line: 321
+after: if (name.empty()) {
+original: return false;
+mutant: return true;
+reason: equivalent: the name is left empty, and the caller's open of an empty path fails as before
+
+file: files/utils.cc
+line: 327
+after: resolved = "/";
+original: pos      = 1;
+mutant: pos      = 0;
+reason: equivalent: starting at 0 reads the empty part before the leading '/', which the empty-part check skips
+
+file: files/utils.cc
+line: 327
+after: resolved = "/";
+original: pos      = 1;
+mutant: ;
+reason: equivalent: starting at 0 reads the empty part before the leading '/', which the empty-part check skips
+
+file: files/utils.cc
+line: 329
+after: }
+original: while (pos <= name.size()) {
+mutant: while (pos < name.size()) {
+reason: equivalent: pos equals the size only after a trailing '/', and the empty part that iteration would read is skipped anyway
+
+file: files/utils.cc
+line: 336
+after: pos               = end + 1;
+original: if (part.empty() || part == "." || part == "..") {
+mutant: if (part.empty() && part == "." || part == "..") {
+reason: equivalent: an empty, '.' or '..' part that is not skipped goes through stat, which finds 'dir/', 'dir/.' and 'dir/..' whenever dir exists, so the same file is opened
+
+file: files/utils.cc
+line: 336
+after: pos               = end + 1;
+original: if (part.empty() || part == "." || part == "..") {
+mutant: if (part.empty() || part == "." && part == "..") {
+reason: equivalent: an empty, '.' or '..' part that is not skipped goes through stat, which finds 'dir/', 'dir/.' and 'dir/..' whenever dir exists, so the same file is opened
+
+file: files/utils.cc
+line: 336
+after: pos               = end + 1;
+original: if (part.empty() || part == "." || part == "..") {
+mutant: if (false) {
+reason: equivalent: an empty, '.' or '..' part that is not skipped goes through stat, which finds 'dir/', 'dir/.' and 'dir/..' whenever dir exists, so the same file is opened
+
+file: files/utils.cc
+line: 337
+after: if (part.empty() || part == "." || part == "..") {
+original: if (!part.empty()) {
+mutant: if (true) {
+reason: equivalent: an empty part then adds an extra '/', and 'a//b' names the same file as 'a/b'
+
+file: files/utils.cc
+line: 349
+after: if (dir == nullptr) {
+original: return false;
+mutant: return true;
+reason: equivalent: the name is left as the caller passed it, and the caller's open of it fails as before
+
+file: files/utils.cc
+line: 359
+after: if (matches.empty()) {
+original: return false;
+mutant: return true;
+reason: equivalent: the name is left as the caller passed it, and the caller's open of it fails as before
+
+file: files/utils.cc
+line: 362
+after: std::sort(matches.begin(), matches.end());
+original: if (matches.size() > 1) {
+mutant: if (matches.size() >= 1) {
+reason: message-only: decides whether the 'differ only in case' warning is printed; the file used is the same
+
+file: files/utils.cc
+line: 362
+after: std::sort(matches.begin(), matches.end());
+original: if (matches.size() > 1) {
+mutant: if (matches.size() > 2) {
+reason: message-only: decides whether the 'differ only in case' warning is printed; the file used is the same
+
+file: files/utils.cc
+line: 362
+after: std::sort(matches.begin(), matches.end());
+original: if (matches.size() > 1) {
+mutant: if (matches.size() > 0) {
+reason: message-only: decides whether the 'differ only in case' warning is printed; the file used is the same
+
+file: files/utils.cc
+line: 362
+after: std::sort(matches.begin(), matches.end());
+original: if (matches.size() > 1) {
+mutant: if (true) {
+reason: message-only: decides whether the 'differ only in case' warning is printed; the file used is the same
+
+file: files/utils.cc
+line: 362
+after: std::sort(matches.begin(), matches.end());
+original: if (matches.size() > 1) {
+mutant: if (false) {
+reason: message-only: decides whether the 'differ only in case' warning is printed; the file used is the same
+
+file: files/utils.cc
+line: 364
+after: std::cerr << "Warning: '" << exact << "' matches " << matches.size() << " names that differ only in case; using '"
+original: << matches[0] << "'" << std::endl;
+mutant: << matches[1] << "'" << std::endl;
+reason: message-only: changes only the 'differ only in case' warning text
+
+file: files/utils.cc
+line: 364
+after: std::cerr << "Warning: '" << exact << "' matches " << matches.size() << " names that differ only in case; using '"
+original: << matches[0] << "'" << std::endl;
+mutant: ;
+reason: message-only: changes only the 'differ only in case' warning text
+
+file: files/utils.cc
+line: 368
+after: }
+original: if (pos <= name.size()) {
+mutant: if (pos < name.size()) {
+reason: equivalent: differs only after a trailing '/', where it leaves that '/' off a directory path; opendir and open treat both the same
+
+file: files/utils.cc
+line: 423
+after: }
+original: if (in && in->good() && !in->fail()) {
+mutant: if (in || in->good() && !in->fail()) {
+reason: untestable here: the case-insensitive match has found the file, so the stream fails only for an unreadable file, and the unit tests run as root in CI containers, where permission bits do not stop reads
+
+file: files/utils.cc
+line: 423
+after: }
+original: if (in && in->good() && !in->fail()) {
+mutant: if (in && in->good() || !in->fail()) {
+reason: untestable here: the case-insensitive match has found the file, so the stream fails only for an unreadable file, and the unit tests run as root in CI containers, where permission bits do not stop reads
+
+file: files/utils.cc
+line: 423
+after: }
+original: if (in && in->good() && !in->fail()) {
+mutant: if (true) {
+reason: untestable here: the case-insensitive match has found the file, so the stream fails only for an unreadable file, and the unit tests run as root in CI containers, where permission bits do not stop reads
