@@ -41,6 +41,7 @@ struct Shortcutbar_icon_entry {
 	int  fallback_frame       = 0;
 	int  fallback_extra_frame = -1;
 	bool valid                = false;
+	bool from_patch           = false;    // Read from <PATCH> (Studio writes it back)
 
 	ShapeFile get_shapefile() const {
 		switch (shapefile_type) {
@@ -91,6 +92,7 @@ struct Shortcutbar_action_entry {
 	std::string secondary_cmd;
 	bool        secondary_cheat = false;
 	bool        valid           = false;
+	bool        from_patch      = false;    // Read from <PATCH> (Studio writes it back)
 };
 
 /**
