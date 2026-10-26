@@ -1606,6 +1606,12 @@ Game_object* Game_map::locate_shape(
 		cy   = c_num_chunks - 1;
 	}
 	Game_object* obj = nullptr;
+	// The selection can outlive the object's place in the world: a teleport
+	// caches out far superchunks and removes their objects. Such an object
+	// has no chunk (and reports chunk 255,255), so start from the beginning.
+	if (start && start->get_outermost()->is_pos_invalid()) {
+		start = nullptr;
+	}
 	if (start) {    // Start here.
 		Game_object* owner = start->get_outermost();
 		cx                 = owner->get_cx();
