@@ -80,6 +80,29 @@ only `tests/`), failing below `line_coverage_floor`. A product file a new unit
 test pulls in is counted without being listed anywhere. Raise the floor when
 coverage rises.
 
+## Mutation check: `tests/mutate_changed.py`
+
+Coverage says a line ran, not that a test would fail if it were wrong. This
+script makes small edits, one at a time, to the lines a branch changes in
+product files the unit tests compile or include (a comparison flipped, `&&`
+swapped with `||`, an `if` forced true or false, a statement dropped, ...),
+rebuilds and runs the unit tests after each, and fails when they still pass on
+an edit that `tests/mutation-equivalents.txt` does not list. Changed files the
+unit build never sees are skipped. It works on temporary copies and never edits
+the checkout.
+
+```sh
+python3 -B tests/mutate_changed.py                       # compare HEAD with origin/master
+python3 -B tests/mutate_changed.py --base master --list  # show the edits without running them
+python3 -B -m unittest discover -s tests -p 'test_mutate_changed.py'   # the script's own tests
+```
+
+When it reports a survivor, add a unit test that fails on it; only if no test
+should (the edit cannot change behaviour, or changes only a message) copy the
+printed entry into `tests/mutation-equivalents.txt` with a reason. Each mutant
+is a full unit-test rebuild (about 15 seconds), so `--jobs` copies run in
+parallel and `--budget-minutes` stops starting new ones after a time limit.
+
 ## CI
 
 `.github/workflows/ci.yml` (`CI`) runs `Unit tests (gcc)`, `Unit tests (clang)`,
