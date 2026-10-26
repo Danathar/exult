@@ -177,6 +177,10 @@ const allowed = [
     'git fetch origin',
     'git fetch --update-head-ok origin',
     'git ls-remote --exit-code origin',
+    // a case statement inside a substitution: its pattern's `)` does not end it
+    'echo "$(case a in a) echo hi;; esac) done"',
+    'x=$(case a in (a) echo hi;; b|c) echo no;& d) echo x;;& esac); echo "$x"',
+    'echo $(echo case a in a) git push --force origin master',
 ];
 
 const blocked = [
@@ -730,6 +734,19 @@ const blocked = [
     "bash -c 'shopt -s extglob\n/usr/bin/g@\\\n(i)t push --force origin master'",
     "bash -O extglob -c 's@\\\n(u)do id'",
     "bash -O extglob -c 'gh@\\\n() pr merge 1'",
+    // a case pattern's `)` inside a substitution is not the substitution's end
+    'echo $(case a in a) git push --force origin master;; esac)',
+    'echo "$(case a in a) sudo id;; esac)"',
+    'echo $(case a in (a) gh pr merge 1;; esac)',
+    'echo $(case a in b) true;; a|c) git push --force origin master;; esac)',
+    'echo $(case a in b) true;& a) sudo id;;& esac)',
+    'echo $(if true; then case a in a) sudo id;; esac; fi)',
+    'echo $(case a in a) case b in b) true;; esac; sudo id;; esac)',
+    'echo $(case $(echo a) in a) sudo id;; esac)',
+    // `esac` after `|` or `(` in a pattern list is a pattern, not the case's end
+    'echo $(case esac in a|esac) sudo id;; esac)',
+    'echo $(case esac in a | esac) git push --force origin master;; esac)',
+    'echo $(case esac in (a|esac) gh pr merge 1;; esac)',
 ];
 
 for (const command of allowed) {
