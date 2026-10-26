@@ -37,6 +37,8 @@ public:
 	int len;    // Length.
 
 	bool                       extended;    // is this an 'extented' function? (aka 32 bit function)
+	bool                       from_patch = false;    // Read from 'patch' (a mod or
+	//   Exult's own usecode), not from the original game.
 	unsigned char*             code;        // The code.
 	std::vector<Usecode_value> statics;     // Local statics.
 	// Create from file.
