@@ -103,6 +103,9 @@ class Usecode_internal : public Usecode_machine {
 	Usecode_value* sp;                                // Stack ptr.  Grows upwards.
 	// Set when push() finds 'stack' full; run() then aborts the function.
 	bool stack_overflow = false;
+	// Set when the player cancels click_on_item() in an original-game
+	// function; run() then aborts it.
+	bool target_cancelled = false;
 	void           push(const Usecode_value& val);    // Push/pop stack.
 	Usecode_value  pop();
 	Usecode_value  peek();

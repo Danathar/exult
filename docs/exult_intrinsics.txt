@@ -2991,6 +2991,11 @@ mixed[4] UI_click_on_item()
     if the player clicked a tile; the remaining 3 elements make up the (x, y, z)
     location of the object or tile clicked.
 
+    If the player cancels the prompt (Escape), it returns 0. A script read
+    from 'patch' (a mod, or Exult's own usecode) then carries on and must
+    check for it. A script from the original game's usecode is stopped
+    instead, because those scripts do not expect a cancelled prompt.
+
     If used after a 'set_intercept_item' intrinsic call, the preassigned object
     or tile is returned in the same manner as if the player had clicked it.
 
