@@ -1912,6 +1912,8 @@ void Usecode_internal::read_usecode(
 			}
 		}
 		vec[i] = fun;
+		// See UI_click_on_item: a cancelled target stops only original code.
+		fun->from_patch = patch;
 	}
 }
 
@@ -2000,6 +2002,16 @@ int Usecode_internal::run() {
 				// The last instruction pushed more than the stack holds.
 				stack_overflow = false;
 				Usecode_value msg("Usecode stack overflow!");
+				abort_function(msg);
+				frame_changed = true;
+				aborted       = true;
+				continue;
+			}
+			if (target_cancelled) {
+				// The player cancelled click_on_item() in an original-game
+				// function (see UI_click_on_item).
+				target_cancelled = false;
+				Usecode_value msg("Target cancelled");
 				abort_function(msg);
 				frame_changed = true;
 				aborted       = true;
@@ -3089,7 +3101,8 @@ int Usecode_internal::run() {
 		}
 	}
 
-	stack_overflow = false;
+	stack_overflow   = false;
+	target_cancelled = false;
 	if (call_stack.front() == nullptr) {
 		// pop the nullptr frame from the stack
 		call_stack.pop_front();

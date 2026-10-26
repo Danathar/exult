@@ -1083,6 +1083,14 @@ USECODE_INTRINSIC(click_on_item) {
 		int x;
 		int y;    // Allow dragging while here:
 		if (!Get_click(x, y, Mouse::greenselect, nullptr, true)) {
+			// The original games' scripts don't expect the target prompt to
+			// be cancelled: almost none check for an empty result, and some
+			// then act on tile (0, 0, 0). The Orb of the Moons, for example,
+			// opens a moongate there and walks the party toward it. Stop such
+			// a script instead. Mods and patches still get 0, as documented.
+			if (!frame->function->from_patch) {
+				target_cancelled = true;
+			}
 			return Usecode_value(0);
 		}
 		// Get abs. tile coords. clicked on.
