@@ -389,6 +389,10 @@ void Shapes_vga_file::Read_Gumpinf_text_data_file(bool editing, Exult_Game game_
 	if (Gump_info::was_any_modified()) {
 		return;
 	}
+	// Exult Studio reads this again when a gump's Info window is first
+	// opened. Start from empty so a second read replaces the entries
+	// instead of appending them again.
+	Gump_info::clear();
 	std::array sections{"container_area"sv,  "checkmark_pos"sv,    "special"sv,           "snap_zones"sv,
 						"dynamic_buttons"sv, "dynamic_texts"sv,    "dynamic_shapes"sv,    "dynamic_sliders"sv,
 						"gump_name"sv,       "shortcutbar_icon"sv, "shortcutbar_action"sv};
@@ -623,7 +627,7 @@ void Shapes_vga_file::Read_Gumpinf_text_data_file(bool editing, Exult_Game game_
 	//         [/fallback_frame[/fallback_extra_frame]]]]]]]
 	struct Shortcutbar_icon_functor {
 		bool operator()(std::istream& in, int version, bool patch, Exult_Game game, Shortcutbar_icon_info& sinfo) const {
-			ignore_unused_variable_warning(version, patch, game);
+			ignore_unused_variable_warning(version, game);
 			const int transparent    = ReadInt(in);
 			const int shapefile_type = ReadInt(in);
 			const int shape          = ReadInt(in);
@@ -648,6 +652,7 @@ void Shapes_vga_file::Read_Gumpinf_text_data_file(bool editing, Exult_Game game_
 			entry.fallback_frame       = fb_frame;
 			entry.fallback_extra_frame = fb_extra;
 			entry.valid                = true;
+			entry.from_patch           = patch;
 			if (transparent == 2) {
 				sinfo.found = entry;
 			} else if (transparent == 1) {
@@ -665,7 +670,7 @@ void Shapes_vga_file::Read_Gumpinf_text_data_file(bool editing, Exult_Game game_
 	// Format: :slot/primary_cmd/primary_cheat[/secondary_cmd/secondary_cheat]
 	struct Shortcutbar_action_functor {
 		bool operator()(std::istream& in, int version, bool patch, Exult_Game game, Shortcutbar_action_entry& cmd) const {
-			ignore_unused_variable_warning(version, patch, game);
+			ignore_unused_variable_warning(version, game);
 			std::getline(in, cmd.primary_cmd, '/');
 			cmd.primary_cheat = ReadInt(in) != 0;
 			auto has_more     = [&in]() {
@@ -675,7 +680,8 @@ void Shapes_vga_file::Read_Gumpinf_text_data_file(bool editing, Exult_Game game_
 				std::getline(in, cmd.secondary_cmd, '/');
 				cmd.secondary_cheat = ReadInt(in) != 0;
 			}
-			cmd.valid = true;
+			cmd.valid      = true;
+			cmd.from_patch = patch;
 			return true;
 		}
 	};
