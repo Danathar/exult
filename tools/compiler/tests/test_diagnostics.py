@@ -45,6 +45,197 @@ class Diagnostics(unittest.TestCase):
         self.assertTrue(self.output.exists())
         self.assertNotIn("\033[", result.stdout)
 
+    def assert_portrait_bytecode(self, sugar, expanded, game, declarations=''):
+        prefix = ('#game "' + game + '"\n' + declarations + '\n'
+            + 'const int top = 0;\nvoid example 0x900 (var npc, var frame) { const int bottom = 1; ')
+        result = self.compile(prefix + sugar + ' }', '-b')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        expected = self.output.read_bytes()
+        result = self.compile(prefix + expanded + ' }', '-b')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(self.output.read_bytes(), expected)
+
+    def test_portrait_sugar_bytecode(self):
+        cases = (
+            ('npc.show();', 'UI_show_npc_face(npc, 0);'),
+            ('npc->show(frame + 1);', 'UI_show_npc_face(npc, frame + 1);'),
+            ('npc.say();', 'UI_show_npc_face(npc, 0); say();'),
+            ('npc.hide();', 'UI_remove_npc_face(npc);'),
+        )
+        for slot, suffix in (('0', '0'), ('1', '1'), ('top', '0'), ('bottom', '1'), ('+0', '0'), ('0x1', '1')):
+            cases += (
+                ('npc.show@' + slot + '();', 'UI_show_npc_face' + suffix + '(npc, 0);'),
+                ('npc->show@' + slot + '(frame);', 'UI_show_npc_face' + suffix + '(npc, frame);'),
+                ('npc.say@' + slot + '();', 'UI_show_npc_face' + suffix + '(npc, 0); say();'),
+                ('npc->say@' + slot + '("Hello", " Avatar");',
+                 'UI_show_npc_face' + suffix + '(npc, 0); say("Hello", " Avatar");'),
+                ('hide@' + slot + '();', 'UI_remove_npc_face' + suffix + '();'),
+            )
+        for game in ('blackgate', 'serpentisle', 'serpentbeta'):
+            for sugar, expanded in cases:
+                with self.subTest(game=game, sugar=sugar):
+                    self.assert_portrait_bytecode(sugar, expanded, game)
+
+    def test_portrait_receiver_and_frame_evaluation(self):
+        declarations = 'extern var receiver 0x901 (); extern var getFrame 0x902 ();'
+        for game in ('blackgate', 'serpentisle', 'serpentbeta'):
+            for selector, suffix in (('', ''), ('@top', '0'), ('@bottom', '1')):
+                with self.subTest(game=game, selector=selector):
+                    self.assert_portrait_bytecode('receiver().show' + selector + '(getFrame());',
+                        'UI_show_npc_face' + suffix + '(receiver(), getFrame());', game, declarations)
+                    self.assert_portrait_bytecode('receiver().say' + selector + '("Hello");',
+                        'UI_show_npc_face' + suffix + '(receiver(), 0); say("Hello");', game, declarations)
+
+    def test_portrait_slot_constant_scope(self):
+        self.assert_portrait_bytecode('const int top = 1; npc.show@top(); hide@top();',
+            'const int top = 1; UI_show_npc_face1(npc, 0); UI_remove_npc_face1();', 'blackgate')
+        self.assert_portrait_bytecode('enum slots { other = 1 }; npc.say@other("Hello");',
+            'enum slots { other = 1 }; UI_show_npc_face1(npc, 0); say("Hello");', 'serpentisle')
+
+    def test_portrait_default_game(self):
+        for sugar, expanded in (
+            ('item.show();', 'UI_show_npc_face(item, 0);'),
+            ('item.say@0();', 'UI_show_npc_face0(item, 0); say();'),
+            ('hide@1();', 'UI_remove_npc_face1();'),
+        ):
+            with self.subTest(sugar=sugar):
+                result = self.compile('void example 0x900 () { ' + sugar + ' }', '-b')
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn('[-Wmissing-game]', result.stdout)
+                expected = self.output.read_bytes()
+                result = self.compile('void example 0x900 () { ' + expanded + ' }', '-b')
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(self.output.read_bytes(), expected)
+
+    def test_portrait_slot_diagnostics(self):
+        for statement in ('item.show@SLOT();', 'item.say@SLOT("Hello");', 'hide@SLOT();'):
+            for slot, setup, message in (
+                ('-1', '', 'portrait slot must be 0 or 1'),
+                ('2', '', 'portrait slot must be 0 or 1'),
+                ('bad', 'const int bad = 3;', 'portrait slot must be 0 or 1'),
+                ('runtime', 'var runtime = 0;', "portrait slot 'runtime' is not an integer constant"),
+                ('text', 'string text = "top";', "portrait slot 'text' is not an integer constant"),
+                ('missing', '', "use of undeclared identifier 'missing'"),
+                ('(0)', '', 'syntax error'),
+                ('0 + 1', '', 'syntax error'),
+            ):
+                with self.subTest(statement=statement, slot=slot):
+                    result = self.compile('#game "blackgate"\nvoid example 0x900 () { '
+                        + setup + statement.replace('SLOT', slot) + ' }')
+                    self.assert_failed(result, message)
+
+    def test_portrait_syntax_recovery(self):
+        for statement in ('item.show(0, 1);', 'item.hide@0();', 'hide();', 'say@0("Hello");'):
+            with self.subTest(statement=statement):
+                result = self.compile('void example 0x900 () { ' + statement
+                    + ' }\nvoid following 0x901 () { var x = unknown; }')
+                self.assert_failed(result, 'syntax error')
+                self.assertIn("use of undeclared identifier 'unknown'", result.stdout)
+
+    def test_tail_array_loop_break_matches_return(self):
+        source = '''#game "blackgate"
+void example 0x900 (var objects) {
+    declare var object;
+    for (object in objects) {
+        if (UI_get_item_quality(object) == 100) {
+            UI_set_item_quality(object, 1);
+            return;
+        }
+    }
+    for (object in objects) {
+        if (UI_get_item_quality(object) == 0) {
+            UI_set_item_quality(object, 2);
+            EXIT;
+        }
+    }
+    TAIL
+}
+'''
+        outputs = []
+        for tail in ('return;', ''):
+            for exit_statement in ('break', 'return'):
+                with self.subTest(tail=tail, exit_statement=exit_statement):
+                    result = self.compile(source.replace('EXIT', exit_statement).replace('TAIL', tail), '-b')
+                    self.assertEqual(result.returncode, 0, result.stdout)
+                    outputs.append(self.output.read_bytes())
+        for output in outputs[1:]:
+            self.assertEqual(output, outputs[0])
+
+    def test_breakable_exit_matches_return(self):
+        body = '''if (event == 2) {
+    var objects = [1, 2];
+    var index = 1;
+    declare var object;
+    forever {
+        object = objects[index];
+        if (!object) { EXIT; }
+        if (object == 2) { break; }
+        index += 1;
+    }
+    UI_set_item_quality(object, 3);
+}
+'''
+        for return_type, return_statement in (('void', 'return'), ('var', 'return 0')):
+            with self.subTest(return_statement=return_statement):
+                sources = (
+                    'function_exit: breakable { ' + body.replace('EXIT', 'break function_exit') + ' }',
+                    body.replace('EXIT', return_statement),
+                )
+                outputs = []
+                for tail in (return_statement + ';', ''):
+                    for source in sources:
+                        result = self.compile('#game "blackgate"\n' + return_type + ' example 0x900 () { '
+                            + source + ' ' + tail + ' }', '-b')
+                        self.assertEqual(result.returncode, 0, result.stdout)
+                        outputs.append(self.output.read_bytes())
+                for output in outputs[1:]:
+                    self.assertEqual(output, outputs[0])
+
+    def test_early_return_matches_guarded_tail(self):
+        for return_type, return_statement in (('void', 'return'), ('var', 'return 0')):
+            for condition in ('condition', '(condition && gflags[1])'):
+                with self.subTest(return_type=return_type, condition=condition):
+                    bodies = (
+                        'if (CONDITION) { RETURN; } UI_set_schedule_type(item, 3);',
+                        'if (!(CONDITION)) { UI_set_schedule_type(item, 3); }',
+                    )
+                    outputs = []
+                    for tail in ('', return_statement + ';'):
+                        for body in bodies:
+                            source = ('#game "blackgate"\n' + return_type
+                                + ' example 0x900 (var condition) { '
+                                + body.replace('CONDITION', condition).replace('RETURN', return_statement)
+                                + tail + ' }')
+                            result = self.compile(source, '-b')
+                            self.assertEqual(result.returncode, 0, result.stdout)
+                            outputs.append(self.output.read_bytes())
+                    for output in outputs[1:]:
+                        self.assertEqual(output, outputs[0])
+
+    def test_converging_returns_do_not_invert_conditions(self):
+        source = '''#game "blackgate"
+extern var attempt 0x901 (var target);
+var example 0x900 (var owner) {
+    if (event == 2) {
+        if (attempt(item)) { return 1; }
+    } else {
+        UI_flash_mouse(1);
+        if (owner) {
+            if (attempt(owner)) { return 0; }
+        } else if (attempt(item)) { return 0; }
+    }
+    TAIL
+}
+'''
+        for tail in ('return 0;', ''):
+            with self.subTest(tail=tail):
+                result = self.compile(source.replace('TAIL', tail), '-b')
+                self.assertEqual(result.returncode, 0, result.stdout)
+                code = self.output.read_bytes()
+                # All three calls still feed JNE directly, without an added NOT.
+                self.assertEqual(code.count(b'\x24\x00\x00\x05'), 3)
+                self.assertNotIn(b'\x24\x00\x00\x10\x05', code)
+
     def test_plain_failure(self):
         result = self.compile("void example 0x900 () { var x = ; }\n")
         self.assert_failed(result, "syntax error")

@@ -59,7 +59,7 @@ EXTRA_DIST =		\
 	art.txt		\
 	bgitems.txt	\
 	exult2.txt	\
-	exult_intrinsics.txt	\
+	exult_intrinsics.md	\
 	exult_studio.txt	\
 	FLI.txt 	\
 	interview	\
