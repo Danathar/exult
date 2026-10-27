@@ -1590,7 +1590,7 @@ Usecode_value Usecode_internal::Execute_Intrinsic(
 	ignore_unused_variable_warning(name, intrinsic);
 #else
 	if (intrinsic_trace) {
-		Usecode_Trace(name, intrinsic, parms.first(intrinsic_argc));
+		Usecode_Trace(name, intrinsic, parms);
 		cout.flush();
 		Usecode_value u = (this->*func)(parms);
 		Usecode_TraceReturn(u);
@@ -1662,22 +1662,6 @@ Usecode_value Usecode_internal::call_intrinsic(
 			cerr << name << ": Expected at least " << table_entry.min_args << " arguments, got " << num_parms << endl;
 			return no_ret;
 		}
-		// parms stays padded so fixed-index reads of missing arguments are
-		// safe; intrinsics that need the real count read intrinsic_argc.
-		// Restore it afterwards in case this call ran inside another intrinsic.
-		struct Argc_setter {
-			size_t& argc;
-			size_t  saved;
-
-			Argc_setter(size_t& a, size_t n) : argc(a), saved(a) {
-				argc = n;
-			}
-
-			~Argc_setter() {
-				argc = saved;
-			}
-		} argc_setter(intrinsic_argc, static_cast<size_t>(num_parms));
-
 		return Execute_Intrinsic(func, name, intrinsic, parms);
 	}
 	return no_ret;

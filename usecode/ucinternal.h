@@ -90,9 +90,6 @@ class Usecode_internal : public Usecode_machine {
 	int        saved_map       = -1;              // Improvements for these intrinsics.
 	char*      String          = nullptr;         // The single string register.
 	int        telekenesis_fun = -1;              // For next Usecode call from spell.
-	// Number of arguments the script passed to the running intrinsic. The
-	//   parms span is padded to at least 13 values, so its size() is not it.
-	size_t intrinsic_argc = 0;
 
 	void append_string(const uint8* txt) {
 		append_string(reinterpret_cast<const char*>(txt));
