@@ -48,7 +48,7 @@ thread either way.
       `ucc` compiler keep results for original BG and SI scripts unchanged,
       or the PR says exactly what differs and why.
 - [ ] Intrinsic numbering and argument counts match what the shipped usecode
-      and mods call (see `docs/exult_intrinsics.txt`).
+      and mods call (see `docs/exult_intrinsics.md`).
 - [ ] Gameplay changes that are not bug fixes are optional via `exult.cfg`
       and default to original behaviour.
 
