@@ -1611,7 +1611,7 @@ using UsecodeIntrinsicFn = Usecode_value (Usecode_internal::*)(tcb::span<Usecode
 #	endif
 #endif
 
-#define USECODE_INTRINSIC_PTR(NAME) {&Usecode_internal::UI_##NAME, TO_STRING(NAME)}
+#define USECODE_INTRINSIC_PTR(NAME) {&Usecode_internal::UI_##NAME, TO_STRING(NAME), Usecode_internal::min_args_##NAME}
 
 // Black Gate Intrinsic Function Table
 Usecode_internal::IntrinsicTableEntry Usecode_internal::intrinsics_bg[] = {
@@ -1658,6 +1658,10 @@ Usecode_value Usecode_internal::call_intrinsic(
 		auto&                    table_entry = table[intrinsic];
 		const UsecodeIntrinsicFn func        = table_entry.func;
 		const char*              name        = table_entry.name;
+		if (static_cast<size_t>(num_parms) < table_entry.min_args) {
+			cerr << name << ": Expected at least " << table_entry.min_args << " arguments, got " << num_parms << endl;
+			return no_ret;
+		}
 		// parms stays padded so fixed-index reads of missing arguments are
 		// safe; intrinsics that need the real count read intrinsic_argc.
 		// Restore it afterwards in case this call ran inside another intrinsic.

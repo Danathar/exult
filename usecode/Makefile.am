@@ -49,3 +49,5 @@ libusecode_la_SOURCES += \
 endif
 
 CLEANFILES = *~
+
+EXTRA_DIST = tests/README.md tests/test_intrinsic_args.py
