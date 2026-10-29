@@ -365,7 +365,6 @@ void Shapes_vga_file::Write_Gumpinf_text_data_file(Exult_Game game) {
 		for (const auto& [shapenum, info] : container_data) {
 			out << ":" << shapenum << "/" << info->container_x << "/" << info->container_y << "/" << info->container_w << "/"
 				<< info->container_h;
-			// Optional debug_flags field: written only when it was set.
 			if (info->debug_flags != 0) {
 				out << "/" << info->debug_flags;
 			}
