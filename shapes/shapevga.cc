@@ -389,9 +389,6 @@ void Shapes_vga_file::Read_Gumpinf_text_data_file(bool editing, Exult_Game game_
 	if (Gump_info::was_any_modified()) {
 		return;
 	}
-	// Exult Studio reads this again when a gump's Info window is first
-	// opened. Start from empty so a second read replaces the entries
-	// instead of appending them again.
 	Gump_info::clear();
 	std::array sections{"container_area"sv,  "checkmark_pos"sv,    "special"sv,           "snap_zones"sv,
 						"dynamic_buttons"sv, "dynamic_texts"sv,    "dynamic_shapes"sv,    "dynamic_sliders"sv,
