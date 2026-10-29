@@ -9,7 +9,8 @@
 #      the extracted bytes must equal the inputs. A truncated archive must not
 #      round-trip.
 #   3. tests/e2e/tool-regressions.sh checks expack -i response files, textpack -x
-#      and ipack (blank lines, long names, tiled updates) on synthetic input.
+#      and ipack (blank lines, long names, tiled updates) on synthetic input, and
+#      that ucxt disassembles ucc's output and fails cleanly on missing input.
 #
 # Usage:
 #   tests/e2e/run.sh                      # configure + build ucc and expack, then test
@@ -41,6 +42,8 @@ if [ -n "${EXULT_BIN_DIR:-}" ]; then
 	expack="$(find_tool expack "$d" "$d/tools")" || { echo "expack not found under $d" >&2; exit 2; }
 	textpack="$(find_tool textpack "$d" "$d/tools")" || textpack=""
 	ipack="$(find_tool ipack "$d" "$d/tools")" || ipack=""
+	ucxt="$(find_tool ucxt "$d" "$d/tools/ucxt/src")" || ucxt=""
+	ucxt_gen="$d/tools/ucxt/data"
 else
 	build="${BUILD_DIR:-${TMPDIR:-/tmp}/exult-e2e-build}"
 	mkdir -p "$build"
@@ -48,18 +51,27 @@ else
 		(cd "$root" && autoreconf -i)
 	fi
 	if [ ! -f "$build/Makefile" ]; then
-		# Only the tools are needed: no game binary, audio, data files or zip saves.
+		# Only the tools are needed: no game binary, audio or data files. Zip support
+		# stays on because ucxt links the game manager, which needs it to compile.
 		(cd "$build" && "$root/configure" --disable-exult --enable-compiler \
 			--disable-fluidsynth --disable-alsa --disable-timidity-midi --disable-mt32emu \
-			--disable-data --disable-zip-support)
+			--disable-data)
 	fi
 	make -C "$build/files" -j"$jobs" libu7file.la
 	make -C "$build/usecode" -j"$jobs" libusecode.la
 	make -C "$build/tools" -j"$jobs" expack textpack
 	make -C "$build/tools/compiler" -j"$jobs" ucc
+	make -C "$build/conf" -j"$jobs" libconf.la
+	make -C "$build/gamemgr" -j"$jobs" libgamemgr.la
+	make -C "$build/files/zip" -j"$jobs" libminizip.la
+	make -C "$build/tools/ucxt" -j"$jobs" head2data
+	make -C "$build/tools/ucxt/src" -j"$jobs" ucxt
+	make -C "$build/tools/ucxt/data" u7bgintrinsics.data
 	ucc="$build/tools/compiler/ucc"
 	expack="$build/tools/expack"
 	textpack="$build/tools/textpack"
+	ucxt="$build/tools/ucxt/src/ucxt"
+	ucxt_gen="$build/tools/ucxt/data"
 	# ipack needs libpng and SDL; skip its checks if it cannot be built here.
 	ipack=""
 	if make -C "$build/shapes" -j"$jobs" libshapes.la && make -C "$build/imagewin" -j"$jobs" libimagewin.la \
@@ -75,6 +87,20 @@ trap 'rm -rf "$work"' EXIT
 fail=0
 ok() { echo "ok   - $1"; }
 bad() { echo "FAIL - $1" >&2; fail=1; }
+
+# ucxt reads two data files from the source tree and three intrinsics tables that
+# head2data generates in the build tree; gather them in one directory for -nc.
+ucxt_data=""
+if [ -n "$ucxt" ]; then
+	ucxt_data="$work/ucxt-data"
+	mkdir "$ucxt_data"
+	if ! cp "$root/tools/ucxt/data/u7misc.data" "$root/tools/ucxt/data/u7opcodes.data" \
+		"$ucxt_gen/u7bgintrinsics.data" "$ucxt_gen/u7siintrinsics.data" "$ucxt_gen/u7sibetaintrinsics.data" \
+		"$ucxt_data/"; then
+		echo "WARN - ucxt data files not found; skipping the ucxt checks" >&2
+		ucxt_data=""
+	fi
+fi
 
 # --- ucc ---------------------------------------------------------------
 cat > "$work/good.uc" <<'UC'
@@ -286,8 +312,9 @@ else
 	bad "expack -i MANIFEST OUTDIR header lacks the OUTDIR input"
 fi
 
-# --- regressions in expack -i, textpack and ipack ------------------------------
-if EXULT_EXPACK="$expack" EXULT_TEXTPACK="$textpack" EXULT_IPACK="$ipack" "$root/tests/e2e/tool-regressions.sh"; then
+# --- regressions in expack -i, textpack, ipack and ucxt -----------------------
+if EXULT_EXPACK="$expack" EXULT_TEXTPACK="$textpack" EXULT_IPACK="$ipack" \
+	EXULT_UCXT="$ucxt" EXULT_UCXT_DATA="$ucxt_data" EXULT_UCC="$ucc" "$root/tests/e2e/tool-regressions.sh"; then
 	ok "tool regression checks"
 else
 	bad "tool regression checks"

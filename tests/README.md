@@ -26,8 +26,8 @@ configured build needs SDL3 and friends, which the unit tests deliberately avoid
 
 ## End-to-end tests: `tests/e2e/run.sh`
 
-Builds the command-line tools `ucc` and `expack` (autoreconf + configure with
-`--disable-exult --enable-compiler`, then only the needed targets), then:
+Builds the command-line tools `ucc`, `expack` and `ucxt` (autoreconf + configure
+with `--disable-exult --enable-compiler`, then only the needed targets), then:
 
 - compiles a small usecode script with `ucc` and checks that a script with a
   syntax error is rejected;
@@ -36,8 +36,10 @@ Builds the command-line tools `ucc` and `expack` (autoreconf + configure with
 - packs a manifest with `expack -i MANIFEST OUTDIR` and checks that the archive
   and header land in `OUTDIR` and nothing is written next to the manifest;
 - runs `tests/e2e/tool-regressions.sh`: `expack -i` response files (CRLF, bad `:N` lines),
-  `expack -l/-x` on a missing archive, `textpack -x` on entries without a NUL, and `ipack`
-  (blank script lines, over-long names, `-u` with tiled specs) on synthetic input.
+  `expack -l/-x` on a missing archive, `textpack -x` on entries without a NUL, `ipack`
+  (blank script lines, over-long names, `-u` with tiled specs) on synthetic input, and
+  `ucxt -nc` (disassembles `ucc` output to stdout and with `-o`; a missing usecode file,
+  a missing data file and an unreadable data file each exit 1 with a message).
 
 ```sh
 tests/e2e/run.sh                          # configure, build, test
