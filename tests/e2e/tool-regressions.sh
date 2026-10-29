@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-# Regression checks for the command-line tools expack, textpack and ipack, using
-# only data created here (no Ultima VII game data). Called by tests/e2e/run.sh,
-# which builds the tools; it can also be run on its own:
+# Regression checks for the command-line tools expack, textpack, ipack and ucxt,
+# using only data created here (no Ultima VII game data). Called by
+# tests/e2e/run.sh, which builds the tools; it can also be run on its own:
 #
 #   EXULT_EXPACK=/path/expack [EXULT_TEXTPACK=/path/textpack] [EXULT_IPACK=/path/ipack] \
+#       [EXULT_UCXT=/path/ucxt EXULT_UCXT_DATA=/dir/with/ucxt/.data/files EXULT_UCC=/path/ucc] \
 #       tests/e2e/tool-regressions.sh
 #
-# A tool whose path is empty or unset is skipped. Every invocation is wrapped in
+# A tool whose path is empty or unset is skipped; the ucxt checks need all three
+# ucxt variables. Every invocation is wrapped in
 # `timeout` so that a hang is reported as a failure instead of stalling the job.
 set -uo pipefail
 
 expack="${EXULT_EXPACK:-}"
 textpack="${EXULT_TEXTPACK:-}"
 ipack="${EXULT_IPACK:-}"
+ucxt="${EXULT_UCXT:-}"
+ucxt_data="${EXULT_UCXT_DATA:-}"
+ucc="${EXULT_UCC:-}"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -159,6 +164,98 @@ if [ -n "$ipack" ]; then
 		fi
 	else
 		bad "ipack -c failed on a tiled spec (rc=$rc)"; cat "$work/last.log" >&2
+	fi
+fi
+
+# --- ucxt ----------------------------------------------------------------------
+# EXULT_UCXT_DATA holds ucxt's five .data files (u7misc, u7opcodes and the three
+# generated intrinsics tables). Every run uses -nc, which reads them from the
+# current directory and needs no exult.cfg or game data.
+if [ -n "$ucxt" ] && [ -n "$ucxt_data" ] && [ -n "$ucc" ]; then
+	mkdir "$work/ux" "$work/ux-empty" "$work/ux-nobg" "$work/ux-dir"
+	cp "$ucxt_data"/*.data "$work/ux/"
+	cat > "$work/adder.uc" <<'UC'
+#game "blackgate"
+#autonumber 0xC00
+
+var adder (var a, var b)
+{
+	return a + b;
+}
+UC
+	run_in "$work" "$ucc" -o adder.uco adder.uc
+	if [ "$rc" -ne 0 ] || [ ! -s "$work/adder.uco" ]; then
+		bad "ucc could not compile the ucxt input (rc=$rc)"; cat "$work/last.log" >&2
+	fi
+
+	# Disassembling a script ucc just compiled shows its function and opcodes.
+	listing_ok() { # file
+		grep -q '\.funcnumber  0C00H' "$1" && grep -Eq '^0006:[[:space:]]+add$' "$1" \
+			&& grep -Eq '^0007:[[:space:]]+retv$' "$1"
+	}
+	run_in "$work/ux" "$ucxt" -nc -bg -i../adder.uco -a
+	if [ "$rc" -eq 0 ] && listing_ok "$work/last.log"; then
+		ok "ucxt -nc disassembles a script compiled by ucc"
+	else
+		bad "ucxt -nc did not disassemble the ucc output (rc=$rc)"; cat "$work/last.log" >&2
+	fi
+
+	# -oFILE sends the listing to FILE, and the file is complete when ucxt exits.
+	run_in "$work/ux" "$ucxt" -nc -bg -i../adder.uco -a -o../adder.txt
+	if [ "$rc" -eq 0 ] && [ -f "$work/adder.txt" ] && listing_ok "$work/adder.txt" \
+		&& ! grep -q '\.funcnumber' "$work/last.log"; then
+		ok "ucxt -o writes the whole listing to the file"
+	else
+		bad "ucxt -o did not write the listing to the file (rc=$rc)"; cat "$work/last.log" >&2
+		cat "$work/adder.txt" >&2 2>/dev/null || true
+	fi
+
+	# ucxt_fails_in DIR DESC ARGS...: ucxt run from DIR must exit 1 (a clean error).
+	ucxt_fails_in() {
+		local dir=$1 what=$2
+		shift 2
+		run_in "$dir" "$ucxt" "$@"
+		if [ "$rc" -eq 1 ]; then
+			ok "$what exits 1"
+		else
+			bad "$what exited $rc, expected 1"; cat "$work/last.log" >&2
+		fi
+	}
+
+	# A usecode file that does not exist is an error, not a crash.
+	ucxt_fails_in "$work/ux" "ucxt with a missing usecode file" -nc -bg -inot-there.uco -a
+	if grep -q 'Failed to locate usecode file' "$work/last.log"; then
+		ok "ucxt names the missing usecode file problem"
+	else
+		bad "ucxt did not report the missing usecode file"; cat "$work/last.log" >&2
+	fi
+
+	# A missing data file is reported before anything is loaded, with the -nc hint.
+	cp "$work/ux/u7misc.data" "$work/ux/u7opcodes.data" "$work/ux-nobg/"
+	for dir in ux-empty ux-nobg; do
+		case $dir in
+			ux-empty) missing=u7misc.data ;;
+			ux-nobg) missing=u7bgintrinsics.data ;;
+		esac
+		ucxt_fails_in "$work/$dir" "ucxt -nc without $missing" -nc -bg -i../adder.uco -a
+		if grep -qF "cannot open ucxt data file './$missing'" "$work/last.log" \
+			&& grep -q 'With -nc, ucxt data files must be in the current directory' "$work/last.log"; then
+			ok "ucxt -nc names the missing $missing and where it looked"
+		else
+			bad "ucxt -nc did not report the missing $missing"; cat "$work/last.log" >&2
+		fi
+	done
+
+	# A data file that exists but cannot be read stops ucxt instead of leaving its
+	# opcode table empty.
+	cp "$work/ux"/*.data "$work/ux-dir/"
+	rm "$work/ux-dir/u7opcodes.data"
+	mkdir "$work/ux-dir/u7opcodes.data"
+	ucxt_fails_in "$work/ux-dir" "ucxt -nc with an unreadable u7opcodes.data" -nc -bg -i../adder.uco -a
+	if grep -qF "Failed to load ucxt data file './u7opcodes.data'" "$work/last.log"; then
+		ok "ucxt -nc names the unreadable u7opcodes.data"
+	else
+		bad "ucxt -nc did not report the unreadable u7opcodes.data"; cat "$work/last.log" >&2
 	fi
 fi
 
