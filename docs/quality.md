@@ -13,12 +13,13 @@ under "Where to look".
 
 | signal | where it lives | what it tells you | blocks merge |
 |---|---|---|---|
-| CI | `.github/workflows/ci.yml` (workflow `CI`), jobs `Unit tests (gcc)`, `Unit tests (clang)`, `E2E (tools)` (tests PR) | unit tests built with gcc and clang (`tests/run-unit-tests.sh`) and end-to-end checks of the tools (`tests/e2e/run.sh`). Runs on every PR and push to `master` | yes, required checks |
+| CI | `.github/workflows/ci.yml` (workflow `CI`), jobs `Unit tests (gcc)`, `Unit tests (clang)`, `E2E (tools)`, `Out-of-tree build (read-only source)` (tests PR) | unit tests built with gcc and clang (`tests/run-unit-tests.sh`), end-to-end checks of the tools (`tests/e2e/run.sh`), and a build from a read-only source tree (`tests/out-of-tree-build.sh`), so every generated file lands in the build tree. Runs on every PR and push to `master` | yes, required checks, except `Out-of-tree build (read-only source)` |
 | Coverage gate | `.github/workflows/coverage-gate.yml`, job `Coverage gate` (tests PR) | test coverage has not dropped below the recorded floor | yes, required check |
 | upstream platform matrix | upstream `ci-linux.yml`, `ci-macos.yml`, `ci-windows.yml`, `ci-msvc.yml`, `ci-android.yml`, `ci-ios.yml`, `ci-freebsd.yml`, `ci-omnios.yml` | the engine still builds on each platform. They are path-filtered: they skip docs-only and `*.md` changes, so a docs PR shows none of them | not required (path-filtered, see [branch-protection.md](branch-protection.md)); treat a red one as a blocker |
 | format-check | `.github/workflows/format-check.yml` | clang-format 19 diff on every PR; `continue-on-error`, so informational only | no |
 | agent-tooling | `.github/workflows/agent-tooling.yml`, job `agent-tooling` (agent-safety PR) | `node --test` of the command-gate hook tests and of `scripts/tests/*.test.mjs` | yes, required check |
 | policy-check | `.github/workflows/policy-check.yml`, job `policy-check`, `scripts/check-policies.mjs`, `policies/` (agent-safety PR) | machine-checkable repo policies (workflow permissions, `--repo` on documented `gh` writes, and so on) | yes, required check |
+| mutation check | `.github/workflows/mutation.yml` (workflow `Mutation check`), job `Mutation check (changed lines)`, `tests/mutate_changed.py`, ledger `tests/mutation-equivalents.txt` | on every PR, breaks each changed line of the files the unit tests build in small ways and fails when the unit tests still pass on a break the ledger does not list; see [tests/README.md](../tests/README.md) | no, not a required check; treat a red one as a missing test |
 | PR metrics | `.github/workflows/pr-metrics.yml`, [metrics.md](metrics.md), [metrics/](metrics/README.md) | acceptance rate and time to merge by author class | no, report only |
 | auto-QA, agent audit, nightly compliance | `.github/workflows/auto-qa.yml`, `agent-audit.yml`, `nightly-compliance.yml` (automation PR) | scheduled hygiene reports; read each file's header | no |
 | upstream-only | `codeql.yml`, `coverity-scan.yml`, `snapshots*.yml` | disabled in this fork | n/a |
@@ -44,6 +45,11 @@ gh api repos/Danathar/exult/rulesets
   second is a rerun, the first is a fix. See the
   [runbook](ai-ops-runbook.md#failed-ci-triage-for-c-builds).
 - **`format-check`**: informational; fix only lines you changed.
+- **`Mutation check (changed lines)`**: a changed line can be broken without
+  any unit test failing. Add a test that fails on the printed break; list it in
+  `tests/mutation-equivalents.txt`, with a reason, only when no test should.
+- **`Out-of-tree build (read-only source)`**: a build step wrote into the source
+  tree, or a stale generated header there shadowed the build tree's.
 - **`agent-tooling` / `policy-check`**: treat as a boundary regression until
   proven otherwise.
 - **Green on a stale branch** says little; check the branch is current with
