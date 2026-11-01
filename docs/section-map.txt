@@ -1,0 +1,224 @@
+# Docs section map: every section of every tracked documentation page, and
+# whether a test reads it.
+#
+# A page lists here as [path]. Under it, every `##` and `###` heading of that
+# page, written exactly as the page writes it, followed by one indented line:
+#
+#   joined: <test file>    that test reads what this section states
+#   prose: <reason>        no test reads it, and this says why that is fine,
+#                          or names what is left unchecked
+#
+# scripts/tests/docs-section-map.test.mjs fails when a tracked page has a
+# heading with no row here, when a row names a heading the page no longer has,
+# or when a `joined:` file is not a check CI runs or never opens the page. It
+# does not prove any sentence true. What it changes is that a section of claims
+# about the build, the workflows or the agent tooling that nothing checks is a
+# visible `prose: unchecked` line in the diff that adds it, instead of the
+# silent default.
+#
+# `prose: unchecked:` marks a section that states facts about the machine (a
+# workflow, a script, the ruleset, the settings file, the Bash guard, the
+# policies) that no test reads. Each is a candidate for a join test; turning it
+# into `joined:` is the fix. `prose: narrative:` marks a section that states no
+# such fact.
+#
+# Tracked pages: every tracked Markdown file at the repository root, in docs/
+# and in docs/security/ (not the dated metrics, agent-task, reflection and
+# fork-delta ledgers), plus .github/copilot-instructions.md, except the copies
+# of upstream pages the test names in UPSTREAM_PAGES. A new page in one of those
+# places has to be added here, or to UPSTREAM_PAGES if upstream owns it, in the
+# change that adds it.
+
+[.github/copilot-instructions.md]
+
+[AGENTS.md]
+## Fork rule (hard rule)
+  prose: unchecked: the --repo Danathar/exult rule, which policies/repo-target.json enforces on commands but nothing holds this text to
+## What Exult is
+  prose: unchecked: table of source directories
+## Build
+  prose: unchecked: a configure line said to be a subset of ci-linux.yml
+## Tests
+  prose: unchecked: test entry points and what they run
+## Style
+  prose: unchecked: .clang-format settings and format-check.yml behaviour
+## Never commit
+  prose: unchecked: the game data rule, which policies/game-data.json enforces on files but nothing holds this text to
+## Commits and pull requests
+  prose: narrative: commit and pull request conventions
+## Risk tiers
+  prose: unchecked: the paths it says are Tier 3, which risk-config.json holds
+## Findings about the Bash guard hook: what is in scope
+  prose: narrative: a standing ruling on which hook findings to file
+## Where agent material lives
+  prose: unchecked: table of agent material paths and the skill names
+## Session continuity and cross-session knowledge
+  prose: unchecked: names the session summary and memory paths
+
+[CLAUDE.md]
+## Claude Code notes
+  prose: unchecked: restates the critical rules and the test commands
+
+[CONTRIBUTING.md]
+## Where things go
+  prose: narrative: where issues and pull requests go
+## Ground rules
+  prose: narrative: contribution rules
+## Build
+  prose: unchecked: a package list and configure line said to be a sketch of ci-linux.yml
+## Tests
+  prose: unchecked: test entry points and what they run
+## Style
+  prose: unchecked: .clang-format, .clang-tidy and format-check.yml behaviour
+## Commits and PRs
+  prose: narrative: commit and pull request conventions
+## Risk tiers
+  prose: unchecked: a summary of the tier paths, which risk-config.json holds
+## Reporting bugs and requesting features
+  prose: narrative: what a bug report should hold
+
+[docs/agent-boundaries.md]
+## By tier
+  prose: narrative: what an agent may do at each tier
+## Who owns what
+  prose: unchecked: what check-policies.mjs enforces on .github/CODEOWNERS
+## Always off limits
+  prose: unchecked: the commands the Bash guard refuses
+## Files that bound agents
+  prose: unchecked: list of agent-boundary files said to be Tier 3, which risk-config.json holds
+
+[docs/ai-ops-runbook.md]
+## Pause and resume the repository in Hive
+  prose: narrative: steps outside the repository, on the Hive dashboard
+## Workflows and how to turn them off
+  prose: unchecked: table of workflows and what each does
+## Serialized merge lane
+  prose: narrative: the Hive merge setting, which lives outside the repository
+## Failed CI triage for C++ builds
+  prose: unchecked: names jobs and steps of the CI workflows
+## SDL3 build failures
+  prose: unchecked: SDL tags and step names of the upstream ci-linux.yml
+## Disk and cache
+  prose: unchecked: caching behaviour of the upstream workflows
+## Runaway agent
+  prose: unchecked: names the agent workflows to disable
+## Leaked secret
+  prose: unchecked: names the workflows that could hold a secret
+
+[docs/branch-protection.md]
+## What is enforced
+  prose: unchecked: the rules and required checks of .github/rulesets/master.json
+## Serialized merging (ACMM merge queue, issue #39)
+  prose: narrative: the Hive merge setting, which lives outside the repository
+## Checking it
+  prose: narrative: commands that read the live ruleset
+## Applying or changing the ruleset
+  prose: narrative: the owner's steps to apply the ruleset file
+
+[docs/fork-delta.md]
+## Keeping it current
+  prose: narrative: how the docs/fork-delta/ entries are kept
+
+[docs/metrics.md]
+## What is computed
+  prose: unchecked: the metrics scripts/pr-metrics.mjs reports
+## Run it locally
+  prose: unchecked: the flags scripts/pr-metrics.mjs takes
+## Weekly run
+  prose: unchecked: schedule, artifact and permissions of pr-metrics.yml
+## How to read the numbers
+  prose: narrative: how to read the metrics
+## Not measured
+  prose: narrative: what the metrics leave out
+
+[docs/multi-agent.md]
+## Rule 1: fork and data rules
+  prose: narrative: restates the fork and game data rules
+## There is no dispatcher in this repository
+  prose: narrative: where agent dispatch happens
+## Who works here
+  prose: unchecked: the labels and logins each kind of agent uses
+## What keeps agents from colliding
+  prose: narrative: how agents avoid working on the same issue
+## Who decides what lands
+  prose: unchecked: the required checks of .github/rulesets/master.json
+## If you are an agent
+  prose: narrative: a checklist pointing at AGENTS.md
+
+[docs/quality.md]
+## Signals
+  joined: scripts/tests/quality-signals.test.mjs
+## How to read a red signal
+  prose: narrative: how to respond to each red check
+## Where to look
+  prose: narrative: commands that read the live runs
+## Known weak spots
+  prose: narrative: what the checks do not cover
+
+[docs/review-rubric.md]
+## Severity levels
+  prose: narrative: review severity levels
+## 1. Scope, tier and fork rules
+  prose: narrative: review checklist
+## 2. Savegame and file-format compatibility
+  prose: narrative: review checklist
+## 3. Usecode and game behaviour
+  prose: narrative: review checklist
+## 4. Cross-platform builds
+  prose: narrative: review checklist
+## 5. Performance
+  prose: narrative: review checklist
+## 6. Memory safety and correctness
+  prose: narrative: review checklist
+## 7. Tests
+  prose: narrative: review checklist
+## 8. Housekeeping
+  prose: narrative: review checklist
+## Reviewing agent PRs (Hive and others)
+  prose: narrative: how to review an agent's pull request
+
+[docs/risk-tiers.md]
+## Tier table
+  joined: scripts/check-policies.mjs
+## Raise the tier
+  prose: narrative: when a change is riskier than its paths
+## How to apply it
+  prose: narrative: how to pick a change's tier
+## Why these paths
+  prose: unchecked: restates each tier's paths, which risk-config.json holds
+## Pull request notes by tier
+  prose: narrative: what a pull request body states at each tier
+
+[docs/security/SECURITY-AI.md]
+## 1. Threat model
+  prose: narrative: what is protected and from whom
+## 2. Layered controls
+  prose: unchecked: the settings file, the Bash guard, the policies and the required checks in place
+## 3. Credentials
+  prose: unchecked: what policies/credential-safety.json scans for
+## 4. Game data and copyright
+  prose: unchecked: what policies/game-data.json refuses
+## 5. Untrusted text is data, not instructions
+  prose: narrative: how agents treat text from others
+## 6. Repository target
+  prose: unchecked: the gh write commands policies/repo-target.json holds to --repo Danathar/exult
+## 7. Workflow tokens and CI
+  prose: unchecked: the upstream workflows policies/workflow-permissions.json excludes and the rules it holds the others to
+## 8. What agents must never do
+  prose: narrative: actions that need the owner's instruction
+## 9. When unsure
+  prose: narrative: stop and ask
+
+[docs/strategy.md]
+## Why this fork exists
+  prose: narrative: purpose of the fork
+## What it will not do
+  prose: narrative: non-goals
+## Real risks, in order
+  prose: narrative: risk ranking
+## Goals and where they are measured
+  prose: unchecked: table of goals and the commands that measure them
+## Autonomy roadmap
+  prose: narrative: plan
+## Status on 2026-10-18
+  prose: narrative: a dated reading, kept as written on that day
