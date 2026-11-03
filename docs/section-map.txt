@@ -121,11 +121,11 @@
 
 [docs/metrics.md]
 ## What is computed
-  prose: unchecked: the metrics scripts/pr-metrics.mjs reports
+  joined: scripts/tests/metrics-page.test.mjs
 ## Run it locally
-  prose: unchecked: the flags scripts/pr-metrics.mjs takes
+  joined: scripts/tests/metrics-page.test.mjs
 ## Weekly run
-  prose: unchecked: schedule, artifact and permissions of pr-metrics.yml
+  joined: scripts/tests/metrics-page.test.mjs
 ## How to read the numbers
   prose: narrative: how to read the metrics
 ## Not measured
