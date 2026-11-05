@@ -29,9 +29,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <new>
 #include <string>    // STL string
 #include <type_traits>
+#include <utility>
 #include <vector>    // STL container
 
 class Usecode_class_symbol;
@@ -53,9 +55,10 @@ public:
 	using Usecode_vector = std::vector<Usecode_value>;
 
 private:
+	// Every copy of a class object shares elems, so it stays valid until the
+	// last copy is gone. class_delete() empties it, which all copies then see.
 	struct ClassRef {
-		Usecode_value* elems;
-		int            cnt;
+		std::shared_ptr<Usecode_vector> elems;
 	};
 
 	Val_type type = int_type;    // Type stored here.
@@ -152,7 +155,8 @@ private:
 			replaceFrom(&Usecode_value::clssym, std::forward<T>(v2), newtype);
 			break;
 		case class_obj_type:
-			replaceFrom(&Usecode_value::clsrefval, std::forward<T>(v2), newtype);
+			// Always a copy: a moved-from value must keep a valid elems.
+			replaceFrom(&Usecode_value::clsrefval, std::as_const(v2), newtype);
 			break;
 		}
 	}
@@ -183,7 +187,9 @@ public:
 
 	explicit Usecode_value(Usecode_class_symbol* ptr) : type(class_sym_type), clssym(ptr), undefined(false) {}
 
-	~Usecode_value();
+	~Usecode_value() {
+		destroy();
+	}
 
 	Usecode_value& operator=(const Usecode_value& v2) {
 		if (&v2 != this) {
@@ -436,22 +442,41 @@ public:
 	bool save(ODataSource* out);
 	bool restore(IDataSource* in);
 	// Class objects.
-	void class_new(Usecode_class_symbol* cls, int nvars);
-	void class_delete();
+	void class_new(Usecode_class_symbol* cls, int nvars) {
+		assert(type == int_type);
+		type = class_obj_type;
+		construct(clsrefval, std::make_shared<Usecode_vector>(nvars + 1));
+		clsrefval.elems->front() = Usecode_value(cls);
+	}
+
+	void class_delete() {
+		assert(type == class_obj_type);
+		clsrefval.elems->clear();
+		clsrefval.~ClassRef();
+		type = int_type;
+		// Explicitly making this undefined, as-if it is a null pointer.
+		undefined = true;
+		construct(intval, 0);
+	}
 
 	Usecode_value& nth_class_var(int n) {
 		// Note:  Elem. 0 is the ->class.
 		static Usecode_value zval(0);
-		return (type == class_obj_type && n + 1 < clsrefval.cnt) ? clsrefval.elems[n + 1] : zval;
+		return (n >= 0 && n < get_class_var_count()) ? (*clsrefval.elems)[n + 1] : zval;
 	}
 
-	int get_class_var_count() {
-		// Note:  Elem. 0 is the ->class.
-		return type == class_obj_type ? clsrefval.cnt - 1 : 0;
+	int get_class_var_count() const {
+		// Note:  Elem. 0 is the ->class.  A deleted object has no elements.
+		return (type == class_obj_type && !clsrefval.elems->empty()) ? static_cast<int>(clsrefval.elems->size()) - 1 : 0;
+	}
+
+	// Null for a deleted object, or a saved one with no class in elem. 0.
+	static Usecode_class_symbol* class_of(const Usecode_vector& elems) {
+		return (!elems.empty() && elems.front().type == class_sym_type) ? elems.front().clssym : nullptr;
 	}
 
 	Usecode_class_symbol* get_class_ptr() const {
-		return (type == class_obj_type) ? clsrefval.elems[0].clssym : nullptr;
+		return type == class_obj_type ? class_of(*clsrefval.elems) : nullptr;
 	}
 };
 

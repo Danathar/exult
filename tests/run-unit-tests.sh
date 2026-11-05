@@ -26,7 +26,7 @@ if [ "${COVERAGE:-0}" = 1 ]; then
 	coverage=(--coverage)
 fi
 
-includes=(-I"$root" -I"$root/headers" -I"$root/files" -I"$root/files/sha1" -I"$root/shapes" -I"$root/imagewin" -I"$root/tests/unit")
+includes=(-I"$root" -I"$root/headers" -I"$root/files" -I"$root/files/sha1" -I"$root/shapes" -I"$root/imagewin" -I"$root/objs" -I"$root/tests/unit")
 
 # Product sources compiled into the test binary (all are free of SDL and game data).
 sources=(
