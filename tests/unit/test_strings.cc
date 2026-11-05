@@ -4,6 +4,10 @@
 #include "istring.h"
 #include "utils.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <string>
 
 TEST(strcasecmp_ignores_case) {
@@ -64,4 +68,37 @@ TEST(newstrdup_copies_and_rejects_null) {
 		threw = true;
 	}
 	CHECK(threw);
+}
+
+TEST(quote_posix_shell_arg_wraps_and_escapes_single_quotes) {
+	CHECK_EQ(quote_posix_shell_arg(""), std::string("''"));
+	CHECK_EQ(quote_posix_shell_arg("Keyring"), std::string("'Keyring'"));
+	CHECK_EQ(quote_posix_shell_arg("a b;c$(d)`e`"), std::string("'a b;c$(d)`e`'"));
+	CHECK_EQ(quote_posix_shell_arg("it's"), std::string("'it'\\''s'"));
+}
+
+#ifndef _WIN32
+// A hostile mod title must reach the program as plain text, not run.
+TEST(quote_posix_shell_arg_survives_a_real_shell) {
+	const std::string hostile = "x;touch quote-test-pwned;$(touch quote-test-pwned)'`touch quote-test-pwned`\"&";
+	const std::string out     = "quote-test-out.txt";
+	const std::string pwned   = "quote-test-pwned";
+	std::remove(pwned.c_str());
+	const std::string cmd = "printf %s " + quote_posix_shell_arg(hostile) + " > " + out;
+	CHECK_EQ(std::system(cmd.c_str()), 0);
+	std::ifstream     in(out, std::ios::binary);
+	const std::string got((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+	CHECK_EQ(got, hostile);
+	CHECK(!std::ifstream(pwned).good());
+	std::remove(out.c_str());
+}
+#endif
+
+TEST(quote_windows_arg_wraps_and_escapes) {
+	CHECK_EQ(quote_windows_arg(""), std::string("\"\""));
+	CHECK_EQ(quote_windows_arg("two words"), std::string("\"two words\""));
+	CHECK_EQ(quote_windows_arg("a\"b"), std::string("\"a\\\"b\""));
+	CHECK_EQ(quote_windows_arg("C:\\dir\\file"), std::string("\"C:\\dir\\file\""));
+	CHECK_EQ(quote_windows_arg("a\\\"b"), std::string("\"a\\\\\\\"b\""));
+	CHECK_EQ(quote_windows_arg("dir\\"), std::string("\"dir\\\\\""));
 }

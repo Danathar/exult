@@ -1348,3 +1348,37 @@ bool is_safe_relative_path(std::string_view name) {
 	}
 	return true;
 }
+
+std::string quote_posix_shell_arg(std::string_view arg) {
+	std::string quoted("'");
+	for (const char ch : arg) {
+		if (ch == '\'') {
+			quoted += "'\\''";    // Close the quotes, add a literal ', reopen.
+		} else {
+			quoted += ch;
+		}
+	}
+	quoted += '\'';
+	return quoted;
+}
+
+std::string quote_windows_arg(std::string_view arg) {
+	std::string quoted("\"");
+	size_t      backslashes = 0;
+	for (const char ch : arg) {
+		if (ch == '\\') {
+			backslashes++;
+		} else {
+			// Backslashes only need escaping when a quote follows them.
+			if (ch == '"') {
+				quoted.append(backslashes + 1, '\\');
+			}
+			backslashes = 0;
+		}
+		quoted += ch;
+	}
+	// The closing quote must not be escaped by a trailing backslash.
+	quoted.append(backslashes, '\\');
+	quoted += '"';
+	return quoted;
+}
