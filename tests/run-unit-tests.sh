@@ -21,11 +21,12 @@ cxx="${CXX:-g++}"
 # mutation check (tests/mutate_changed.py) reads them to know which files the
 # unit build sees.
 flags=(-DEXULT_DATADIR=\"/usr/share/exult\" -MMD -D_GLIBCXX_ASSERTIONS -std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter -Werror=return-type)
+coverage=()
 if [ "${COVERAGE:-0}" = 1 ]; then
-	flags+=(--coverage)
+	coverage=(--coverage)
 fi
 
-includes=(-I"$root" -I"$root/headers" -I"$root/files" -I"$root/files/sha1" -I"$root/tests/unit")
+includes=(-I"$root" -I"$root/headers" -I"$root/files" -I"$root/files/sha1" -I"$root/shapes" -I"$root/imagewin" -I"$root/tests/unit")
 
 # Product sources compiled into the test binary (all are free of SDL and game data).
 sources=(
@@ -38,6 +39,22 @@ sources=(
 	"$root/conf/Configuration.cc"
 	"$root/conf/XMLEntity.cc"
 )
+
+# Needed to load a shape file, and also free of SDL and game data. The tests use
+# a small part of these, so they are built without --coverage: the coverage
+# floor keeps measuring the sources above.
+support_sources=(
+	"$root/shapes/vgafile.cc"
+	"$root/imagewin/imagebuf.cc"
+	"$root/imagewin/ibuf8.cc"
+	"$root/files/Flex.cc"
+	"$root/files/Flat.cc"
+	"$root/files/IFF.cc"
+	"$root/files/Table.cc"
+	"$root/files/U7file.cc"
+	"$root/files/U7fileman.cc"
+	"$root/files/U7obj.cc"
+)
 tests=("$root"/tests/unit/*.cc)
 
 mkdir -p "$build"
@@ -47,11 +64,16 @@ rm -f "$build"/*.gcda
 objs=()
 for src in "${sources[@]}" "${tests[@]}"; do
 	obj="$build/$(basename "$src").o"
+	"$cxx" "${flags[@]}" ${coverage[@]+"${coverage[@]}"} "${includes[@]}" -c "$src" -o "$obj"
+	objs+=("$obj")
+done
+for src in "${support_sources[@]}"; do
+	obj="$build/$(basename "$src").o"
 	"$cxx" "${flags[@]}" "${includes[@]}" -c "$src" -o "$obj"
 	objs+=("$obj")
 done
 
-"$cxx" "${flags[@]}" "${objs[@]}" -o "$build/unit-tests"
+"$cxx" "${flags[@]}" ${coverage[@]+"${coverage[@]}"} "${objs[@]}" -o "$build/unit-tests"
 
 # Run from the build dir: some tests create temporary files in the CWD.
 cd "$build"

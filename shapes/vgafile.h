@@ -371,6 +371,10 @@ public:
 			// but we will return rubbish.
 			// I've put this assert in _before_ you know...
 			// So this isn't the first time we've had trouble here
+			// The number can come from a file, such as a saved game's preview.
+			if (size_t(shapenum) >= shapes.size()) {
+				return nullptr;
+			}
 			r = shapes[shapenum].get(shape_sources, shapenum, framenum, shape_cnts, -1);
 		}
 		return r;
@@ -402,6 +406,8 @@ public:
 		imported_map data;
 		if (get_imported_shape_data(shapenum, data)) {
 			return imported_shapes[data.pointer_offset].get_num_frames();
+		} else if (size_t(shapenum) >= shapes.size()) {
+			return 0;
 		} else {
 			return shapes[shapenum].get_num_frames();
 		}
