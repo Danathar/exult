@@ -76,16 +76,33 @@ jobs:
           if [ "$(date -u -d "$SINCE" +%F 2>/dev/null || true)" != "$SINCE" ]; then
             echo "::error::since must be a real date, got '$SINCE'"; exit 2
           fi
-          # `commits` is requested so a `Co-Authored-By: Claude` commit pushed
-          # onto a human PR branch (claude.yml) is seen. With --limit 500 it
-          # exceeds GitHub's GraphQL node limit, so the limit is 100; if 100
-          # PRs merged in the window the script exits 2 (possible truncation)
-          # and the audit is rerun with a narrower `since`.
-          gh pr list --repo Danathar/exult --state merged --limit 100 --search "merged:>=$SINCE" \
-            --json number,title,author,body,mergedAt,mergedBy,labels,url,baseRefName,headRefName,commits,closingIssuesReferences > merged.json
-          # --limit makes the script refuse a list that may be truncated.
+          # `commits` is left out of the list: with it, each PR's commits carry an
+          # authors connection and even 100 PRs x 100 commits x 100 authors exceeds
+          # GitHub's GraphQL node limit of 500,000. The commits are read a page at
+          # a time from the REST API instead, for the `Co-Authored-By: Claude`
+          # trailer a claude.yml commit pushed onto a human PR branch carries.
+          # `gh pr list` returns the newest N and says nothing about the rest, so
+          # the script's --limit makes it refuse a list that may be truncated.
+          limit=500
+          gh pr list --repo Danathar/exult --state merged --limit "$limit" --search "merged:>=$SINCE" \
+            --json number,title,author,body,mergedAt,mergedBy,labels,url,baseRefName,headRefName,closingIssuesReferences > list.json
+          # The REST commits list holds at most 250 commits; a PR that reaches
+          # that is refused instead of audited in part. Each commit is reshaped to
+          # the messageHeadline/messageBody the script reads.
+          : > commits.ndjson
+          while read -r number; do
+            commits="$(gh api --paginate "repos/Danathar/exult/pulls/$number/commits" \
+              --jq '.[] | {messageHeadline: (.commit.message | split("\n")[0]), messageBody: (.commit.message | split("\n")[1:] | join("\n") | ltrimstr("\n"))}' | jq -s .)"
+            if [ "$(jq length <<<"$commits")" -ge 250 ]; then
+              echo "::error::#$number reached the REST commits cap (250); it cannot be audited in full"
+              exit 2
+            fi
+            jq -n -c --argjson number "$number" --argjson commits "$commits" \
+              '{key: ($number | tostring), value: $commits}' >> commits.ndjson
+          done < <(jq -r '.[].number' list.json)
+          jq --slurpfile c commits.ndjson '($c | from_entries) as $m | map(. + {commits: $m[(.number | tostring)]})' list.json > merged.json
           node scripts/ai-audit-report.mjs --input merged.json --since "$SINCE" \
-            --limit 100 --strict --output report.md && status=0 || status=$?
+            --limit "$limit" --strict --output report.md && status=0 || status=$?
           if [ -f report.md ]; then cat report.md >> "$GITHUB_STEP_SUMMARY"; fi
           if [ "$status" -ne 0 ]; then
             echo "::error::agent audit exited $status (1 = audit-trail violation, 2 = bad or truncated input); see the run summary"
