@@ -45,6 +45,7 @@ libusecode_la_SOURCES += \
 	ucfunction.h	\
 	ucfunction_header.h	\
 	ucfunction.cc	\
+	ucinstruction_checks.h	\
 	uctimers.h
 endif
 

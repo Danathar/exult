@@ -61,6 +61,7 @@
 #include "touchui.h"
 #include "tqueue.h"
 #include "ucfunction.h"
+#include "ucinstruction_checks.h"
 #include "ucsched.h"
 #include "ucsymtbl.h"
 #include "uctimers.h"
@@ -2018,9 +2019,13 @@ int Usecode_internal::run() {
 
 			auto opcode = static_cast<UsecodeOps>(*(frame->ip));
 
-			if (frame->ip + get_opcode_length(static_cast<int>(opcode)) > frame->endp) {
+			if (!usecode_instruction_fits(frame->ip, frame->endp, get_opcode_length(static_cast<int>(opcode)))) {
 				cerr << "Operands lie outside of code segment. ";
 				CERR_CURRENT_IP();
+
+				Usecode_value msg("Out of bounds usecode execution!");
+				abort_function(msg);
+				frame_changed = true;
 				continue;
 			}
 
@@ -2365,7 +2370,12 @@ int Usecode_internal::run() {
 					}
 					val = &(frame->locals[offset]);
 				} else if (opcode == UC_AIDXTHV) {
-					offset             = little_endian::Read2(frame->ip);
+					offset = little_endian::Read2(frame->ip);
+					if (!usecode_has_this(frame->num_args)) {
+						THIS_ERROR();
+						pushi(0);
+						break;
+					}
 					Usecode_value& ths = frame->get_this();
 					if (offset < 0 || offset >= ths.get_class_var_count()) {
 						cerr << "Class variable #" << (offset) << " out of range!";
@@ -2488,6 +2498,13 @@ int Usecode_internal::run() {
 						}
 					}
 				} else if (opcode == UC_LOOPTOPTHV) {
+					if (!usecode_has_this(frame->num_args)) {
+						THIS_ERROR();
+						// Skip the loop: its body would jump back here.
+						initializing_loop = false;
+						frame->ip += offset;
+						break;
+					}
 					Usecode_value& ths = frame->get_this();
 					if (local4 < 0 || local4 >= ths.get_class_var_count()) {
 						cerr << "Class variable #" << (local4) << " out of range!";
@@ -2803,7 +2820,13 @@ int Usecode_internal::run() {
 					}
 					arr = &(frame->locals[offset]);
 				} else if (opcode == UC_POPARRTHV) {
-					offset             = little_endian::Read2(frame->ip);
+					offset = little_endian::Read2(frame->ip);
+					if (!usecode_has_this(frame->num_args)) {
+						THIS_ERROR();
+						(void)pop();    // Index.
+						(void)pop();    // Value.
+						break;
+					}
 					Usecode_value& ths = frame->get_this();
 					if (offset < 0 || offset >= ths.get_class_var_count()) {
 						cerr << "Class variable #" << (offset) << " out of range!";
@@ -3016,15 +3039,24 @@ int Usecode_internal::run() {
 				break;
 			}
 			case UC_PUSHTHV: {    // PUSH class this->var.
-				offset             = little_endian::Read2(frame->ip);
+				offset = little_endian::Read2(frame->ip);
+				if (!usecode_has_this(frame->num_args)) {
+					THIS_ERROR();
+					pushi(0);
+					break;
+				}
 				Usecode_value& ths = frame->get_this();
 				push(ths.nth_class_var(offset));
 				break;
 			}
 			case UC_POPTHV: {    // POP class this->var.
 				// Get value.
-				const Usecode_value val   = pop();
-				offset                    = little_endian::Read2(frame->ip);
+				const Usecode_value val = pop();
+				offset                  = little_endian::Read2(frame->ip);
+				if (!usecode_has_this(frame->num_args)) {
+					THIS_ERROR();
+					break;
+				}
 				Usecode_value& ths        = frame->get_this();
 				ths.nth_class_var(offset) = val;
 				break;
@@ -3072,6 +3104,10 @@ int Usecode_internal::run() {
 			}
 			case UC_CLASSDEL: {    // CLASSDEL
 				Usecode_value cls = pop();
+				if (cls.get_type() != Usecode_value::class_obj_type) {
+					THIS_ERROR();
+					break;
+				}
 				cls.class_delete();
 				break;
 			}

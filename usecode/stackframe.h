@@ -60,6 +60,7 @@ public:
 
 	Usecode_value* save_sp;
 
+	// Check usecode_has_this() first: with no arguments there is no 'this'.
 	Usecode_value& get_this() {
 		return locals[num_args - 1];
 	}
