@@ -29,7 +29,7 @@ Required checks (job names; do not rename these jobs):
 | `agent-tooling` | `.github/workflows/agent-tooling.yml` |
 | `policy-check` | `.github/workflows/policy-check.yml` |
 
-All six workflows run on every pull request and every push to `master` with no
+All four workflows run on every pull request and every push to `master` with no
 path filter, so a docs-only PR still reports them. The upstream `ci-*.yml`
 platform builds are **not** required: they are path-filtered (they skip
 `docs/**`, `*.md` and more), and a required check that never reports would
