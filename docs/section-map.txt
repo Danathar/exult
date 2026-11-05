@@ -39,7 +39,7 @@
 ## Build
   prose: unchecked: a configure line said to be a subset of ci-linux.yml
 ## Tests
-  prose: unchecked: test entry points and what they run
+  joined: scripts/tests/branch-protection-page.test.mjs
 ## Style
   prose: unchecked: .clang-format settings and format-check.yml behaviour
 ## Never commit
@@ -67,7 +67,7 @@
 ## Build
   prose: unchecked: a package list and configure line said to be a sketch of ci-linux.yml
 ## Tests
-  prose: unchecked: test entry points and what they run
+  joined: scripts/tests/branch-protection-page.test.mjs
 ## Style
   prose: unchecked: .clang-format, .clang-tidy and format-check.yml behaviour
 ## Commits and PRs
@@ -107,11 +107,11 @@
 
 [docs/branch-protection.md]
 ## What is enforced
-  prose: unchecked: the rules and required checks of .github/rulesets/master.json
+  joined: scripts/tests/branch-protection-page.test.mjs
 ## Serialized merging (ACMM merge queue, issue #39)
   prose: narrative: the Hive merge setting, which lives outside the repository
 ## Checking it
-  prose: narrative: commands that read the live ruleset
+  joined: scripts/tests/branch-protection-page.test.mjs
 ## Applying or changing the ruleset
   prose: narrative: the owner's steps to apply the ruleset file
 
@@ -141,7 +141,7 @@
 ## What keeps agents from colliding
   prose: narrative: how agents avoid working on the same issue
 ## Who decides what lands
-  prose: unchecked: the required checks of .github/rulesets/master.json
+  joined: scripts/tests/branch-protection-page.test.mjs
 ## If you are an agent
   prose: narrative: a checklist pointing at AGENTS.md
 

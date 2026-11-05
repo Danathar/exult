@@ -65,8 +65,7 @@ built by the upstream `ci-*.yml` workflows; see `README` and `README.windows`,
 
 ## Tests
 
-Two entry points (provided by the CI/tests PR for this fork; they exist once
-that PR is merged):
+Two entry points:
 
 ```bash
 tests/run-unit-tests.sh   # builds and runs the unit tests
