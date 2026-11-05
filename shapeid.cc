@@ -36,6 +36,7 @@
 #include "gamewin.h"
 #include "istring.h"
 #include "miscinf.h"
+#include "saveinfo_checks.h"
 #include "u7drag.h"
 #include "utils.h"
 #include "vgafile.h"
@@ -551,6 +552,11 @@ std::shared_ptr<Font> Shape_manager::get_font(int fontnum) {
 
 Shape_manager::Cached_shape Shape_manager::cache_shape(int shape_kind, int shapenum, int framenum) {
 	Cached_shape cache{nullptr, false};
+	// Check the kind before anything indexes by it; it can come from a file.
+	if (!index_in_range(shape_kind, static_cast<int>(SF_COUNT))) {
+		std::cerr << "Error! Wrong ShapeFile!" << std::endl;
+		return cache;
+	}
 	if (shapenum < 0 || framenum == -1) {
 		return cache;
 	}
@@ -585,7 +591,7 @@ Shape_manager::Cached_shape ShapeID::cache_shape() const {
 int ShapeID::get_num_frames() const {
 	if (!shapefile) {
 		return sman->shapes.get_num_frames(shapenum);
-	} else if (shapefile < SF_OTHER) {
+	} else if (index_in_range(static_cast<int>(shapefile), static_cast<int>(SF_OTHER))) {
 		if (!sman->files[static_cast<int>(shapefile)].is_good()) {
 			return 0;
 		}

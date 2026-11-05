@@ -113,6 +113,7 @@ EXULTSOURCES =	\
 	shapeid.cc	\
 	shapeid.h	\
 	singles.h	\
+	headers/saveinfo_checks.h	\
 	headers/span.h	\
 	touchui.cc	\
 	touchui.h	\
