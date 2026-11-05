@@ -1382,3 +1382,25 @@ std::string quote_windows_arg(std::string_view arg) {
 	quoted += '"';
 	return quoted;
 }
+
+std::string posix_image_editor_command(std::string_view editor, std::string_view path) {
+	std::string cmd(editor);
+	cmd += ' ';
+	cmd += quote_posix_shell_arg(path);
+	cmd += " &";    // Background.
+	return cmd;
+}
+
+std::string windows_image_editor_command(std::string_view editor, std::string_view path) {
+	const auto to_backslashes = [](std::string_view text) {
+		std::string converted(text);
+		for (char& ch : converted) {
+			if (ch == '/') {
+				ch = '\\';
+			}
+		}
+		return converted;
+	};
+	// Convert first: a backslash added after quoting could escape a quote.
+	return to_backslashes(editor) + ' ' + quote_windows_arg(to_backslashes(path));
+}

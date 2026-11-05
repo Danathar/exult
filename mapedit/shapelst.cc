@@ -894,8 +894,6 @@ void Shape_chooser::edit_shape(
 		}
 		editing_files.push_back(Editing_file::create_tiled(file_info->get_basename(), fname, mtime, shnum, tiles, bycols));
 	}
-	string cmd(studio->get_image_editor());
-	cmd += ' ';
 	string imgpath;
 #ifdef _WIN32
 	if (fname[0] == '.' && (fname[1] == '\\' || fname[1] == '/')) {
@@ -908,23 +906,14 @@ void Shape_chooser::edit_shape(
 	}
 #endif
 	imgpath += fname;
-	// handle spaces in path.
-	if (imgpath.find(' ') != string::npos) {
-		imgpath = "\"" + imgpath + "\"";
-	}
-	cmd += imgpath;
 #ifndef _WIN32
-	cmd += " &";    // Background.
-	int ret = system(cmd.c_str());
+	const string cmd = posix_image_editor_command(studio->get_image_editor(), imgpath);
+	int          ret = system(cmd.c_str());
 	if (ret == 127 || ret == -1) {
 		Alert("Can't launch '%s'", studio->get_image_editor());
 	}
 #else
-	for (char& ch : cmd) {
-		if (ch == '/') {
-			ch = '\\';
-		}
-	}
+	string              cmd = windows_image_editor_command(studio->get_image_editor(), imgpath);
 	PROCESS_INFORMATION pi;
 	STARTUPINFO         si;
 	std::memset(&si, 0, sizeof(si));

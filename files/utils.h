@@ -208,11 +208,19 @@ std::string_view get_directory_from_path(std::string_view path);
 bool is_safe_relative_path(std::string_view name);
 
 // Quote one argument so a POSIX shell passes it on unchanged, whatever
-// characters it holds. Use it for every value placed in a system() command.
+// characters it holds. Use it for every value placed in a system() command,
+// except the user's own image editor setting (see below).
 std::string quote_posix_shell_arg(std::string_view arg);
 
 // Quote one argument so the Windows command-line parsing used with
 // CreateProcess passes it on as a single unchanged argument.
 std::string quote_windows_arg(std::string_view arg);
+
+// Build the command that opens path in the user's image editor, for system()
+// and for CreateProcess. path can come from a mod's .cfg file, so it is always
+// quoted. editor is the user's own setting and may carry arguments, such as
+// "gimp -n", so it stays unquoted: never pass a value from a mod as editor.
+std::string posix_image_editor_command(std::string_view editor, std::string_view path);
+std::string windows_image_editor_command(std::string_view editor, std::string_view path);
 
 #endif /* _UTILS_H_ */
