@@ -59,10 +59,6 @@ namespace {
  *
  */
 
-Usecode_value::~Usecode_value() {
-	destroy();
-}
-
 /*
  *  Steals an array from another usecode value. If the other
  *  usecode value is not an array, it will be converted into
@@ -161,7 +157,7 @@ bool Usecode_value::operator==(const Usecode_value& v2) const {
 	case class_sym_type:
 		return v2.type == class_sym_type && clssym == v2.clssym;
 	case class_obj_type:
-		return v2.type == class_obj_type && ptrval == v2.ptrval;
+		return v2.type == class_obj_type && clsrefval.elems == v2.clsrefval.elems;
 	default:
 		return false;
 	}
@@ -293,7 +289,7 @@ void Usecode_value::print(ostream& out, bool shortformat) const {
 		}
 		break;
 	case class_obj_type:
-		print_array(clsrefval.elems, clsrefval.cnt);
+		print_array(clsrefval.elems->cbegin(), clsrefval.elems->size());
 		break;
 	default:
 		break;
@@ -445,13 +441,12 @@ bool Usecode_value::save(ODataSource* out) {
 		// TODO: This creates many copies without need, as every class
 		// instance points to the same array.
 		// Need to serialize this properly.
-		const int len = clsrefval.cnt;
-		if (static_cast<size_t>(len) > max_saved_length) {
+		if (clsrefval.elems->size() > max_saved_length) {
 			return false;
 		}
-		out->write2(len);    // first length, then length Usecode_values
-		for (int i = 0; i < len; i++) {
-			if (!clsrefval.elems[i].save(out)) {
+		out->write2(clsrefval.elems->size());    // first length, then length Usecode_values
+		for (auto& elem : *clsrefval.elems) {
+			if (!elem.save(out)) {
 				return false;
 			}
 		}
@@ -512,11 +507,10 @@ bool Usecode_value::restore(IDataSource* in) {
 		// This will duplicate the instance variables, and they will no
 		// longer point to the same instance.
 		// Need to deserialize this properly.
-		const int len = in->read2();
 		// Stores class, class vars.
-		construct(clsrefval, new Usecode_value[len], len);
-		for (int i = 0; i < len; i++) {
-			if (!clsrefval.elems[i].restore(in)) {
+		construct(clsrefval, std::make_shared<Usecode_vector>(in->read2()));
+		for (auto& elem : *clsrefval.elems) {
+			if (!elem.restore(in)) {
 				return false;
 			}
 		}
@@ -535,23 +529,3 @@ ostream& operator<<(ostream& out, Usecode_value& val) {
 	return out;
 }
 
-/*
- *  Create/delete class objects.
- */
-void Usecode_value::class_new(Usecode_class_symbol* cls, int nvars) {
-	assert(type == int_type);
-	type          = class_obj_type;
-	const int len = nvars + 1;
-	construct(clsrefval, new Usecode_value[len], len);
-	clsrefval.elems[0] = Usecode_value(cls);
-}
-
-void Usecode_value::class_delete() {
-	assert(type == class_obj_type);
-	delete[] clsrefval.elems;
-	clsrefval.~ClassRef();
-	type = int_type;
-	// Explicitly making this undefined, as-if it is a null pointer.
-	undefined = true;
-	construct(intval, 0);
-}

@@ -192,3 +192,24 @@ after: }
 original: if (in && in->good() && !in->fail()) {
 mutant: if (true) {
 reason: untestable here: the case-insensitive match has found the file, so the stream fails only for an unreadable file, and the unit tests run as root in CI containers, where permission bits do not stop reads
+
+file: usecode/useval.h
+line: 446
+after: void class_new(Usecode_class_symbol* cls, int nvars) {
+original: assert(type == int_type);
+mutant: ;
+reason: untestable here: the assert only ends the process on a caller's bug, and a failing assert would end the unit test binary too
+
+file: usecode/useval.h
+line: 453
+after: void class_delete() {
+original: assert(type == class_obj_type);
+mutant: ;
+reason: untestable here: the assert only ends the process on a caller's bug, and a failing assert would end the unit test binary too
+
+file: usecode/useval.h
+line: 455
+after: clsrefval.elems->clear();
+original: clsrefval.~ClassRef();
+mutant: ;
+reason: untestable here: dropping it leaks one reference to an already emptied vector, and no value can observe that reference
