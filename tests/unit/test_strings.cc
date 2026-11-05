@@ -102,3 +102,37 @@ TEST(quote_windows_arg_wraps_and_escapes) {
 	CHECK_EQ(quote_windows_arg("a\\\"b"), std::string("\"a\\\\\\\"b\""));
 	CHECK_EQ(quote_windows_arg("dir\\"), std::string("\"dir\\\\\""));
 }
+
+TEST(posix_image_editor_command_quotes_the_path_only) {
+	CHECK_EQ(posix_image_editor_command("gimp -n", "/save/itmp/a.png"), std::string("gimp -n '/save/itmp/a.png' &"));
+	CHECK_EQ(
+			posix_image_editor_command("gimp", "/save x$(touch pwned)/itmp/a.png"),
+			std::string("gimp '/save x$(touch pwned)/itmp/a.png' &"));
+	CHECK_EQ(posix_image_editor_command("gimp", "/it's/a.png"), std::string("gimp '/it'\\''s/a.png' &"));
+}
+
+#ifndef _WIN32
+// A save path set by a hostile mod must reach the editor as plain text, not run.
+TEST(posix_image_editor_command_survives_a_real_shell) {
+	const std::string hostile = "x;touch editor-test-pwned;$(touch editor-test-pwned)'`touch editor-test-pwned`\"/a b.png";
+	const std::string out     = "editor-test-out.txt";
+	const std::string pwned   = "editor-test-pwned";
+	std::remove(pwned.c_str());
+	// The command ends in " &", so wait for the stand-in editor before reading its output.
+	const std::string cmd = "{ " + posix_image_editor_command("printf %s > " + out, hostile) + " wait; }";
+	CHECK_EQ(std::system(cmd.c_str()), 0);
+	std::ifstream     in(out, std::ios::binary);
+	const std::string got((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+	CHECK_EQ(got, hostile);
+	CHECK(!std::ifstream(pwned).good());
+	std::remove(out.c_str());
+}
+#endif
+
+TEST(windows_image_editor_command_quotes_after_converting_slashes) {
+	CHECK_EQ(
+			windows_image_editor_command("C:/Tools/gimp.exe -n", "C:/save dir/itmp/a.png"),
+			std::string("C:\\Tools\\gimp.exe -n \"C:\\save dir\\itmp\\a.png\""));
+	// The slash before the quote becomes a backslash, so it must be escaped too.
+	CHECK_EQ(windows_image_editor_command("gimp", "a/\"b"), std::string("gimp \"a\\\\\\\"b\""));
+}
