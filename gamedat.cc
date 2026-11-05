@@ -36,6 +36,7 @@
 #include "gamewin.h"
 #include "listfiles.h"
 #include "party.h"
+#include "saveinfo_checks.h"
 #include "scene_layer.h"
 #include "span.h"
 #include "utils.h"
@@ -599,9 +600,13 @@ void Game_window::read_saveinfo(IDataSource* in, SaveGame_Details*& details, Sav
 	// Packing for the rest of the structure
 	in->skip(sizeof(SaveGame_Details) - offsetof(SaveGame_Details, reserved0));
 
-	party = new SaveGame_Party[details->party_size];
+	// No party: leave 'party' null; the load menu preview skips a null party.
+	const std::size_t party_count = saved_party_alloc_count(details->party_size);
+	party                         = party_count ? new SaveGame_Party[party_count] : nullptr;
 	for (i = 0; i < 8 && i < details->party_size; i++) {
 		in->read(party[i].name, 18);
+		// The file may hold no zero byte in the name.
+		terminate_name(party[i].name, sizeof(party[i].name));
 		party[i].shape = in->read2();
 
 		party[i].exp    = in->read4();
