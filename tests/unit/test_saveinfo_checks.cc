@@ -1,6 +1,7 @@
 // headers/saveinfo_checks.h: checks on the preview block of a saved game.
 #include "harness.h"
 #include "saveinfo_checks.h"
+#include "utils.h"
 
 #include <cstring>
 
@@ -34,4 +35,21 @@ TEST(terminate_name_keeps_short_names) {
 	char name[18] = "Avatar";
 	terminate_name(name, sizeof(name));
 	CHECK(std::strcmp(name, "Avatar") == 0);
+}
+
+TEST(level2_file_path_puts_map_files_inside_their_folder) {
+	CHECK(level2_file_path("<GAMEDAT>/map01", "u7ireg00") == "<GAMEDAT>/map01/u7ireg00");
+}
+
+TEST(level2_file_path_keeps_the_gamedat_entry_unchanged) {
+	CHECK(level2_file_path("<GAMEDAT>/", "npc.dat") == "<GAMEDAT>/npc.dat");
+	CHECK(level2_file_path("", "npc.dat") == "npc.dat");
+}
+
+TEST(level2_file_path_cannot_join_two_safe_names_into_a_parent_step) {
+	CHECK(is_safe_relative_path("."));
+	CHECK(is_safe_relative_path("./x"));
+	const std::string joined = level2_file_path(".", "./x");
+	CHECK(joined == "././x");
+	CHECK(is_safe_relative_path(joined));
 }

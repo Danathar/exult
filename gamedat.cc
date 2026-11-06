@@ -814,21 +814,9 @@ bool Game_window::get_saveinfo_zip(
 
 // Level 2 Compression
 bool Game_window::Restore_level2(unzFile& unzipfile, const char* dirname, int dirlen) {
-	std::vector<char>       filebuf;
-	std::unique_ptr<char[]> dynamicname;
-	char                    fixedname[50];    // Set up name.
-	const size_t            oname2offset = sizeof(GAMEDAT) + dirlen - 1;
-	char*                   oname2;
-	if (oname2offset + 13 > std::size(fixedname)) {
-		dynamicname = std::make_unique<char[]>(oname2offset + 13);
-		oname2      = dynamicname.get();
-	} else {
-		oname2 = fixedname;
-	}
-
-	strncpy(oname2, dirname, oname2offset);
-	char* oname = oname2;
-	oname2 += oname2offset;
+	std::vector<char>      filebuf;
+	const std::string_view dir(dirname, sizeof(GAMEDAT) + dirlen - 1);
+	char                   oname2[13];    // Name of one packed file.
 
 	// No stored file can be larger than the entry holding it.
 	unz_file_info entry_info;
@@ -889,7 +877,8 @@ bool Game_window::Restore_level2(unzFile& unzipfile, const char* dirname, int di
 			}
 
 			// Then write it out.
-			auto pOut = U7open_out(oname);
+			const std::string oname = level2_file_path(dir, oname2);
+			auto              pOut  = U7open_out(oname.c_str());
 			if (!pOut) {
 				std::cerr << "couldn't open " << oname << std::endl;
 				return false;
