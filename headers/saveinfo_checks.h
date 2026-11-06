@@ -5,6 +5,20 @@
 #define EXULT_SAVEINFO_CHECKS_H
 
 #include <cstddef>
+#include <string>
+#include <string_view>
+
+// Path of one file packed inside a level 2 save entry. Both names come from the
+// file and are checked one at a time, so the '/' must be here: without it "."
+// and "./x" would join into "../x", which neither check can see.
+inline std::string level2_file_path(std::string_view dir, std::string_view name) {
+	std::string path(dir);
+	if (!path.empty() && path.back() != '/') {
+		path += '/';
+	}
+	path += name;
+	return path;
+}
 
 // True if 'kind' can index an array of 'count' entries (0 <= kind < count).
 inline bool index_in_range(int kind, int count) {
