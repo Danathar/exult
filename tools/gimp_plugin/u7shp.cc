@@ -461,7 +461,7 @@ static GimpImage* load_image(GFile* file, GFile* palette_file, GimpRunMode run_m
 			frame->paint(&img, frame->get_xleft(), frame->get_yabove());
 		}
 		std::vector<unsigned char> pixels;
-		const size_t               num_pixels = frame->get_width() * frame->get_height();
+		const size_t               num_pixels = size_t(frame->get_width()) * size_t(frame->get_height());
 		const unsigned char*       pixel_data = nullptr;
 		if (shape.is_rle()) {
 			// Need to expand from (pixel)* to (pixel, alpha)*.
@@ -551,8 +551,13 @@ static gboolean export_image(GFile* file, GimpImage* image, GimpRunMode run_mode
 		const int           xleft           = hotx - offsetX;
 		const int           yabove          = hoty - offsetY;
 		const Babl*         format          = gegl_buffer_get_format(drawable);
-		const size_t        num_pixels      = width * height;
+		const size_t        num_pixels      = size_t(width) * size_t(height);
 		const size_t        bytes_per_pixel = babl_format_get_bytes_per_pixel(format);
+		if (width <= 0 || height <= 0 || width > 0xFFFF || height > 0xFFFF) {
+			g_object_unref(drawable);
+			g_message("Layer is too large to store in a shape frame (limit is 65535 by 65535 pixels).");
+			return FALSE;
+		}
 		std::vector<guchar> pix(num_pixels * bytes_per_pixel);
 		const GeglRectangle rect{0, 0, gegl_buffer_get_width(drawable), gegl_buffer_get_height(drawable)};
 		gegl_buffer_get(drawable, &rect, 1.0, format, pix.data(), GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);

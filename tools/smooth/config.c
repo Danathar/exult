@@ -49,10 +49,12 @@ int read_config(FILE* f) {
 	char*       pluginname = NULL;
 	libhandle_t a_hdl      = NULL;
 
+	char line[MAX_LINE_LENGTH];
+	int  line_number = 0;
+
 	rewind(f);
-	while (!feof(f)) {
-		char line[MAX_LINE_LENGTH];
-		fgets(line, MAX_LINE_LENGTH, f);
+	while (fgets(line, MAX_LINE_LENGTH, f) != NULL) {
+		line_number++;
 		int line_length = strlen(line);
 		if (g_statics.debug > 2) {
 			printf("length of line: %d\n", line_length);
@@ -73,16 +75,31 @@ int read_config(FILE* f) {
 						fflush(stdout);
 					}
 					free(pluginname);
+					pluginname = NULL;
 				}
 				if (g_statics.debug) {
 					printf("\nsection %s", line);
 					fflush(stdout);
 				}
+				// A section line is "[name]" with an optional line ending.
+				int name_end = line_length;
+				while (name_end > 0 && (line[name_end - 1] == '\n' || line[name_end - 1] == '\r')) {
+					name_end--;
+				}
+				if (name_end < 3 || line[name_end - 1] != ']') {
+					fprintf(stderr, "ERROR: Malformed section in line %d: %s\n", line_number, line);
+					// the previous pluginname was already freed above
+					return -1;
+				}
 				const size_t namelen = (16 + line_length) * sizeof(char);
 				pluginname           = (char*)malloc(namelen);
+				if (pluginname == NULL) {
+					fprintf(stderr, "ERROR: Couldn't allocate memory\n");
+					return -1;
+				}
 				// what's between the '[' and the ']'
-				memmove(line, line + 1, line_length - 3);
-				line[line_length - 3] = '\0';    // and add a \0 at the end
+				memmove(line, line + 1, name_end - 2);
+				line[name_end - 2] = '\0';    // and add a \0 at the end
 #ifdef _WIN32
 				snprintf(pluginname, namelen, "libsmooth_%s.dll", line);
 #else
@@ -101,6 +118,11 @@ int read_config(FILE* f) {
 					// initialise the plugin
 					void* (*init)(glob_statics* g_var);
 					*(void**)&init = plug_load_func(a_hdl, "init_plugin");
+					if (init == NULL) {
+						fprintf(stderr, "ERROR: Plugin %s has no init_plugin function\n", pluginname);
+						free(pluginname);
+						return -1;
+					}
 					(*init)(&g_statics);
 					hdl_list = add_handle(a_hdl, hdl_list);
 				}
