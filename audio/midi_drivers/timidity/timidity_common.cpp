@@ -142,17 +142,24 @@ static PathList* pathlist = nullptr;
 			while (plp) /* Try along the path then */
 			{
 				*current_filename = 0;
-				int l             = static_cast<int>(strlen(plp->path));
+				const int l       = static_cast<int>(strlen(plp->path));
+				bool      need_sep = false;
 				if (l) {
-					strcpy(current_filename, plp->path);
 #	ifndef SDL_PLATFORM_WIN32
-					if (current_filename[l - 1] != PATH_SEP)
+					need_sep = plp->path[l - 1] != PATH_SEP;
 #	else
-				if (current_filename[l - 1] != '\\' && current_filename[l - 1] != '/')
+					need_sep = plp->path[l - 1] != '\\' && plp->path[l - 1] != '/';
 #	endif
-						strcat(current_filename, PATH_STRING);
 				}
-				strcat(current_filename, name);
+				const int written = snprintf(
+						current_filename, sizeof(current_filename), "%s%s%s", plp->path, need_sep ? PATH_STRING : "", name);
+				if (written < 0 || static_cast<size_t>(written) >= sizeof(current_filename)) {
+					/* Would not fit; never open a truncated path. */
+					*current_filename = 0;
+					ctl->cmsg(CMSG_INFO, VERB_DEBUG, "Skipping too long path %s + %s", plp->path, name);
+					plp = plp->next;
+					continue;
+				}
 				ctl->cmsg(CMSG_INFO, VERB_DEBUG, "Trying to open %s", current_filename);
 				if ((fp = try_to_open(current_filename, decompress, noise_mode))) {
 					return fp;
