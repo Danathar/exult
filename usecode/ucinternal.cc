@@ -65,6 +65,7 @@
 #include "ucsched.h"
 #include "ucsymtbl.h"
 #include "uctimers.h"
+#include "ucusevars.h"
 #include "usefuns.h"
 #include "useval.h"
 #include "utils.h"
@@ -1533,7 +1534,7 @@ void Usecode_internal::create_script(
 		// We want the TOP of the well.
 		Usecode_value& v2 = objval.get_elem(1);
 		Game_object*   o2 = get_item(v2);
-		if (o2->get_shapenum() == obj->get_shapenum() && o2->get_lift() == 2) {
+		if (o2 && o2->get_shapenum() == obj->get_shapenum() && o2->get_lift() == 2) {
 			objval = v2;
 			obj    = o2;
 		}
@@ -3471,46 +3472,21 @@ void Usecode_internal::read_usevars() {
 		// Okay if this doesn't exist.
 		return;
 	}
-	const int cnt = nfile.read4();    // Global statics.
-	statics.resize(cnt);
-	int i;
-	for (i = 0; i < cnt; i++) {
-		if (!statics[i].restore(&nfile)) {
-			// The rest of the file can no longer be framed.
-			cerr << "Error reading global static usecode variable #" << i << " from '" << USEVARS
-				 << "'; ignoring the rest of the file." << endl;
-			return;
-		}
-	}
-	unsigned long funid;
-	while (!nfile.eof() && (funid = nfile.read4()) != 0xffffffffU) {
-		if (funid == 0xfffffffeU) {
-			// ++++ FIXME: Write code for the cases when symtbl == 0 or
-			// fsym == 0 (neither of which *should* happen...)
-			const int len = nfile.read2();
-			char*     nm  = new char[len + 1];
-			nfile.read(nm, len);
-			nm[len]              = 0;
-			Usecode_symbol* fsym = symtbl ? (*symtbl)[nm] : nullptr;
-			if (fsym) {
-				funid = fsym->get_val();
-			}
-			delete[] nm;
-		}
-		const int         cnt = nfile.read4();
-		Usecode_function* fun = find_function(funid);
-		if (!fun) {
-			continue;
-		}
-		fun->statics.resize(cnt);
-		for (i = 0; i < cnt; i++) {
-			if (!fun->statics[i].restore(&nfile)) {
-				cerr << "Error reading static usecode variable #" << i << " of function " << hex << setw(4) << setfill('0')
-					 << funid << dec << setfill(' ') << " from '" << USEVARS << "'; ignoring the rest of the file." << endl;
-				return;
-			}
-		}
-	}
+	read_usevars_data(
+			nfile, statics,
+			[this](uint32 funid) -> std::vector<Usecode_value>* {
+				Usecode_function* fun = find_function(static_cast<int>(funid));
+				return fun ? &fun->statics : nullptr;
+			},
+			[this](const char* nm, uint32& funid) {
+				// ++++ FIXME: Write code for the cases when symtbl == 0 or
+				// fsym == 0 (neither of which *should* happen...)
+				Usecode_symbol* fsym = symtbl ? (*symtbl)[nm] : nullptr;
+				if (fsym) {
+					funid = fsym->get_val();
+				}
+			},
+			cerr, USEVARS);
 }
 
 void Usecode_internal::clear_usevars() {
