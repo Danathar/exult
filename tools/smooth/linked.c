@@ -48,7 +48,11 @@ int delete_node(node* n) {
 			// must call deinit first
 			void* (*deinit)(void);
 			*(void**)&deinit = plug_load_func(n->handle, "deinit_plugin");
-			(*deinit)();
+			if (deinit != NULL) {
+				(*deinit)();
+			} else {
+				fprintf(stderr, "ERROR: Plugin has no deinit_plugin function\n");
+			}
 			val = plug_unload(n->handle);
 		}
 		free(n);

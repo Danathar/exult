@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -57,25 +58,46 @@ void rebuild() {
 	exit(0);
 }
 
+static void print_usage() {
+	printf("Syntax: rip <number>\tGets function <number> out of usecode "
+		   "(and"
+		   " index)\n\trip all\t\tGets all functions out of usecode (and "
+		   "index)\n"
+		   "\trip glue\tRecreate usecode file (needs all functions)\n"
+		   "\trip index\tOnly get index\n\trip put <nr>\tInserts function"
+		   " <nr> into the usecode file\n");
+}
+
+// Parses the whole of text as a hex number. sscanf("%x") would accept "foo"
+// as 0xf because it stops at the first non-hex character.
+static bool parse_hex(const char* text, unsigned& number) {
+	if (text[0] == '\0' || text[0] == '-' || text[0] == '+') {
+		return false;
+	}
+	char*               end   = nullptr;
+	errno                     = 0;
+	const unsigned long value = strtoul(text, &end, 16);
+	if (errno != 0 || *end != '\0'
+		|| value > std::numeric_limits<unsigned>::max()) {
+		return false;
+	}
+	number = static_cast<unsigned>(value);
+	return true;
+}
+
 int main(int argc, char* argv[]) {
 	printf("Wody's Rip v0.005\nCopyright (c) 1999 Wody Dragon (a.k.a. Wouter "
 		   "Dijkslag)\n");
 	if (argc < 2 || (!strcasecmp(argv[1], "put") && argc != 3)) {
-		printf("Syntax: rip <number>\tGets function <number> out of usecode "
-			   "(and"
-			   " index)\n\trip all\t\tGets all functions out of usecode (and "
-			   "index)\n"
-			   "\trip glue\tRecreate usecode file (needs all functions)\n"
-			   "\trip index\tOnly get index\n\trip put <nr>\tInserts function"
-			   " <nr> into the usecode file\n");
+		print_usage();
 		exit(0);
 	}
 
 	constexpr const unsigned all_functions = std::numeric_limits<unsigned>::max();
 	constexpr const unsigned only_index    = std::numeric_limits<unsigned>::max() - 1u;
 
-	unsigned number;
-	bool     put = false;
+	unsigned number = 0;
+	bool     put    = false;
 	if (!strcasecmp(argv[1], "all")) {
 		number = all_functions;
 	} else if (!strcasecmp(argv[1], "glue")) {
@@ -83,10 +105,14 @@ int main(int argc, char* argv[]) {
 	} else if (!strcasecmp(argv[1], "index")) {
 		number = only_index;
 	} else if (!strcasecmp(argv[1], "put")) {
-		sscanf(argv[2], "%x", &number);
+		if (!parse_hex(argv[2], number)) {
+			print_usage();
+			exit(1);
+		}
 		put = true;
-	} else {
-		sscanf(argv[1], "%x", &number);
+	} else if (!parse_hex(argv[1], number)) {
+		print_usage();
+		exit(1);
 	}
 
 	FILE* fi = fopen("usecode", "rb+");

@@ -44,6 +44,8 @@ if [ -n "${EXULT_BIN_DIR:-}" ]; then
 	ipack="$(find_tool ipack "$d" "$d/tools")" || ipack=""
 	ucxt="$(find_tool ucxt "$d" "$d/tools/ucxt/src")" || ucxt=""
 	ucxt_gen="$d/tools/ucxt/data"
+	rip="$(find_tool rip "$d" "$d/tools")" || rip=""
+	shp2pcx="$(find_tool shp2pcx "$d" "$d/tools")" || shp2pcx=""
 else
 	build="${BUILD_DIR:-${TMPDIR:-/tmp}/exult-e2e-build}"
 	mkdir -p "$build"
@@ -59,7 +61,7 @@ else
 	fi
 	make -C "$build/files" -j"$jobs" libu7file.la
 	make -C "$build/usecode" -j"$jobs" libusecode.la
-	make -C "$build/tools" -j"$jobs" expack textpack
+	make -C "$build/tools" -j"$jobs" expack textpack rip shp2pcx
 	make -C "$build/tools/compiler" -j"$jobs" ucc
 	make -C "$build/conf" -j"$jobs" libconf.la
 	make -C "$build/gamemgr" -j"$jobs" libgamemgr.la
@@ -70,6 +72,8 @@ else
 	ucc="$build/tools/compiler/ucc"
 	expack="$build/tools/expack"
 	textpack="$build/tools/textpack"
+	rip="$build/tools/rip"
+	shp2pcx="$build/tools/shp2pcx"
 	ucxt="$build/tools/ucxt/src/ucxt"
 	ucxt_gen="$build/tools/ucxt/data"
 	# ipack needs libpng and SDL; skip its checks if it cannot be built here.
@@ -314,6 +318,7 @@ fi
 
 # --- regressions in expack -i, textpack, ipack and ucxt -----------------------
 if EXULT_EXPACK="$expack" EXULT_TEXTPACK="$textpack" EXULT_IPACK="$ipack" \
+	EXULT_RIP="$rip" EXULT_SHP2PCX="$shp2pcx" \
 	EXULT_UCXT="$ucxt" EXULT_UCXT_DATA="$ucxt_data" EXULT_UCC="$ucc" "$root/tests/e2e/tool-regressions.sh"; then
 	ok "tool regression checks"
 else

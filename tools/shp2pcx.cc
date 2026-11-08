@@ -42,6 +42,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif    // __GNUC__
 
 #include <cassert>
+#include <climits>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -141,6 +142,9 @@ unsigned int read4(FILE* f) {
 	return b0 + (b1 << 8) + (b2 << 16) + (b3 << 24);
 }
 
+// Largest frame (or combined shape) accepted, in pixels. Real shapes are far smaller.
+static constexpr size_t max_pixels = INT_MAX;
+
 u7shape* load_shape(char* filename) {
 	int max_leftX  = -1;
 	int max_rightX = -1;
@@ -232,10 +236,17 @@ u7shape* load_shape(char* filename) {
 			frame->width  = frame->leftX + frame->rightX + 1;
 			frame->height = frame->leftY + frame->rightY + 1;
 
-			frame->pixels = new uint8[frame->width * frame->height];
-			memset(frame->pixels, 0, frame->width * frame->height);
+			const size_t frame_pixels = size_t(frame->width) * size_t(frame->height);
+			if (frame_pixels > max_pixels) {
+				cerr << "Invalid frame size in " << filename << endl;
+				fclose(fp);
+				return nullptr;
+			}
 
-			uint8* const eod = frame->pixels + frame->width * frame->height;
+			frame->pixels = new uint8[frame_pixels];
+			memset(frame->pixels, 0, frame_pixels);
+
+			uint8* const eod = frame->pixels + frame_pixels;
 			int          slice;
 			while ((slice = read2(fp)) != 0) {
 				if (feof(fp) || ferror(fp)) {
@@ -249,13 +260,16 @@ u7shape* load_shape(char* filename) {
 				const int offsetX = read2signed(fp);
 				const int offsetY = read2signed(fp);
 
-				const int temp_int = (frame->leftY + offsetY) * frame->width + (frame->leftX + offsetX);
+				const long long temp_int = (long long)(frame->leftY + offsetY) * (long long)frame->width + (frame->leftX + offsetX);
 
 				uint8* pixptr = frame->pixels;
-				pixptr        = pixptr + temp_int;
-
-				if (pixptr < frame->pixels) {
-					pixptr = frame->pixels;
+				if (temp_int > (long long)frame_pixels) {
+					cerr << "Slice exceeds frame bounds in " << filename << endl;
+					fclose(fp);
+					return nullptr;
+				}
+				if (temp_int > 0) {
+					pixptr = pixptr + temp_int;
 				}
 				if (pixptr > eod || slice_length > eod - pixptr) {
 					cerr << "Slice exceeds frame bounds in " << filename << endl;
@@ -310,6 +324,12 @@ u7shape* load_shape(char* filename) {
 
 	const int width  = max_leftX + max_rightX + 1;
 	const int height = max_leftY + max_rightY + 1;
+	if (size_t(width) * size_t(height) > max_pixels) {
+		cerr << "Invalid frame size in " << filename << endl;
+		fclose(fp);
+		return nullptr;
+	}
+	const size_t shape_pixels = size_t(width) * size_t(height);
 
 	shape->width  = width;
 	shape->height = height;
@@ -318,15 +338,16 @@ u7shape* load_shape(char* filename) {
 		frame         = &shape->frames[i];
 		uint8* pixptr = frame->pixels;
 
-		frame->pixels = new uint8[width * height];
-		memset(frame->pixels, 0, width * height);
+		frame->pixels = new uint8[shape_pixels];
+		memset(frame->pixels, 0, shape_pixels);
 
 		int dsty = max_leftY - frame->leftY;
 
 		for (int srcy = 0; srcy < frame->height; srcy++, dsty++) {
 			const int dstx = max_leftX - frame->leftX;
 			const int srcx = 0;
-			memcpy(frame->pixels + dsty * width + dstx, pixptr + srcy * frame->width + srcx, frame->width);
+			memcpy(frame->pixels + size_t(dsty) * size_t(width) + size_t(dstx), pixptr + size_t(srcy) * size_t(frame->width) + size_t(srcx),
+				   frame->width);
 		}
 
 		delete[] pixptr;

@@ -145,11 +145,17 @@ int main(int argc, char** argv) {
 		// enter the u7chunk retrieved for that one
 
 		fseek(f, 0, SEEK_SET);    // back to the beginning for each colour
-		while ((!feof(f)) && found[i] == 0) {
-			unsigned j;
+		while (found[i] == 0) {
+			unsigned j = 0;
 			char     cmd[256];
-			fscanf(f, "%s %u", cmd, &j);
-			if (strcasecmp(cmd, buff) == 0) {    // chains match
+			cmd[0] = '\0';
+			// Each call consumes at least one token, so a malformed line
+			// cannot loop forever.
+			const int nread = fscanf(f, "%255s %u", cmd, &j);
+			if (nread == EOF) {
+				break;
+			}
+			if (nread == 2 && strcasecmp(cmd, buff) == 0) {    // chains match
 				found[i]   = 1;
 				mapping[i] = j;
 			}

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Regression checks for the command-line tools expack, textpack, ipack and ucxt,
+# Regression checks for the command-line tools expack, textpack, ipack, ucxt, rip and shp2pcx,
 # using only data created here (no Ultima VII game data). Called by
 # tests/e2e/run.sh, which builds the tools; it can also be run on its own:
 #
 #   EXULT_EXPACK=/path/expack [EXULT_TEXTPACK=/path/textpack] [EXULT_IPACK=/path/ipack] \
 #       [EXULT_UCXT=/path/ucxt EXULT_UCXT_DATA=/dir/with/ucxt/.data/files EXULT_UCC=/path/ucc] \
+#       [EXULT_RIP=/path/rip] [EXULT_SHP2PCX=/path/shp2pcx] \
 #       tests/e2e/tool-regressions.sh
 #
 # A tool whose path is empty or unset is skipped; the ucxt checks need all three
@@ -18,6 +19,8 @@ ipack="${EXULT_IPACK:-}"
 ucxt="${EXULT_UCXT:-}"
 ucxt_data="${EXULT_UCXT_DATA:-}"
 ucc="${EXULT_UCC:-}"
+rip="${EXULT_RIP:-}"
+shp2pcx="${EXULT_SHP2PCX:-}"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -256,6 +259,56 @@ UC
 		ok "ucxt -nc names the unreadable u7opcodes.data"
 	else
 		bad "ucxt -nc did not report the unreadable u7opcodes.data"; cat "$work/last.log" >&2
+	fi
+fi
+
+# --- rip -------------------------------------------------------------------
+# A function number that is not hex must print the usage text and exit non-zero
+# instead of using an uninitialised number. A valid number is still accepted (the
+# tool then stops because the scratch directory has no usecode file).
+if [ -n "$rip" ]; then
+	mkdir "$work/rip"
+	for args in "foo" "put zz"; do
+		# shellcheck disable=SC2086 # word splitting of $args is intended
+		run_in "$work/rip" "$rip" $args
+		if [ "$rc" -eq 1 ] && grep -q 'Syntax: rip' "$work/last.log"; then
+			ok "rip $args prints usage and exits 1"
+		else
+			bad "rip $args exited $rc, expected usage and exit 1"; cat "$work/last.log" >&2
+		fi
+	done
+	run_in "$work/rip" "$rip" 0A1
+	if [ "$rc" -eq 0 ] && grep -q "Can't open usecode file" "$work/last.log" && ! grep -q 'Syntax: rip' "$work/last.log"; then
+		ok "rip accepts a hex function number"
+	else
+		bad "rip rejected a valid hex function number (exit $rc)"; cat "$work/last.log" >&2
+	fi
+fi
+
+# --- shp2pcx ---------------------------------------------------------------
+# Synthetic shapes. A frame whose four extents are all 0x7FFF is 65535 x 65535
+# pixels: its pixel count overflows int, so it must be rejected with an error
+# rather than aborting. A one-pixel shape must still convert.
+if [ -n "$shp2pcx" ]; then
+	mkdir "$work/s2p"
+	head -c 768 /dev/zero > "$work/s2p/pal.pal"
+	# size 18, header size 8, frame header (4 x 0x7FFF), slice terminator
+	printf '\022\000\000\000\010\000\000\000\377\177\377\177\377\177\377\177\000\000' > "$work/s2p/huge.shp"
+	run_in "$work/s2p" "$shp2pcx" huge.shp huge pal.pal
+	if [ "$rc" -eq 1 ] && grep -q 'Invalid frame size in huge.shp' "$work/last.log" \
+		&& ! grep -Eq 'runtime error|terminate called|AddressSanitizer' "$work/last.log"; then
+		ok "shp2pcx rejects a frame with huge extents"
+	else
+		bad "shp2pcx on a huge frame exited $rc, expected an Invalid frame size error and exit 1"; cat "$work/last.log" >&2
+	fi
+	# size 25, header size 8, frame header (all extents 0 = 1x1 pixel), one
+	# uncompressed slice of length 1 at offset (0,0) holding pixel 7, terminator
+	printf '\031\000\000\000\010\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\000\000\007\000\000' > "$work/s2p/one.shp"
+	run_in "$work/s2p" "$shp2pcx" one.shp one pal.pal
+	if [ "$rc" -eq 0 ] && [ -s "$work/s2p/one00.pcx" ]; then
+		ok "shp2pcx converts a one-pixel shape"
+	else
+		bad "shp2pcx failed (exit $rc) on a one-pixel shape"; cat "$work/last.log" >&2
 	fi
 fi
 
