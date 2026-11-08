@@ -636,7 +636,9 @@ Scripted_schedule::Scripted_schedule(Actor* n, int type)
 
 Scripted_schedule::~Scripted_schedule() {
 	if (inst) {
-		ucmachine->call_method(inst, -1, nullptr);    // Free 'inst'.
+		ucmachine->call_method(inst, -1, nullptr);    // Empty the class object.
+		delete inst;                                  // Free 'inst' itself.
+		inst = nullptr;
 	}
 }
 
@@ -4246,9 +4248,13 @@ void Sew_schedule::now_what() {
 			state = get_wool;
 			break;
 		}
-		Game_object*     work_table_obj = npc->find_closest(971);
-		const Tile_coord tpos           = work_table_obj->get_tile() + Tile_coord(1, -2, 0);
-		Actor_action*    pact           = Path_walking_actor_action::create_path(npcpos, tpos, cost);
+		Game_object* work_table_obj = npc->find_closest(971);
+		if (!work_table_obj) {
+			state = done;
+			break;
+		}
+		const Tile_coord tpos = work_table_obj->get_tile() + Tile_coord(1, -2, 0);
+		Actor_action*    pact = Path_walking_actor_action::create_path(npcpos, tpos, cost);
 		signed char      frames[5];
 		const int        nframes      = npc->get_attack_frames(698, false, 6, frames);
 		const int        shnum        = GAME_SI ? 403 : (rand() % 2 ? 738 : 249);
@@ -4320,9 +4326,13 @@ void Sew_schedule::now_what() {
 	case get_clothes: {
 		const Game_object_shared cloth_obj = cloth.lock();
 		if (cloth_obj) {
-			Game_object*     work_table_obj = npc->find_closest(971);
-			const Tile_coord tpos           = work_table_obj->get_tile() + Tile_coord(1, -2, 0);
-			Actor_action*    pact           = Path_walking_actor_action::create_path(npcpos, tpos, cost);
+			Game_object* work_table_obj = npc->find_closest(971);
+			if (!work_table_obj) {
+				state = done;
+				break;
+			}
+			const Tile_coord tpos = work_table_obj->get_tile() + Tile_coord(1, -2, 0);
+			Actor_action*    pact = Path_walking_actor_action::create_path(npcpos, tpos, cost);
 			if (pact) {
 				npc->set_action(new Sequence_actor_action(pact, new Pickup_actor_action(cloth_obj.get(), 250)));
 			} else {
@@ -4781,14 +4791,24 @@ void Bake_schedule::now_what() {
 		// Place baked goods if spot is empty.
 		const Tile_coord t = Map_chunk::find_spot(spot_on_table, 0, 377, 0, 0);
 		if (t.tx != -1 && t.tz == spot_on_table.tz) {
-			npc->set_action(new Sequence_actor_action(
-					pact, new Pickup_actor_action(dough_in_oven_obj.get(), spot_on_table, 250, false, drop_sfx_id(), sfx_vol())));
+			Actor_action* pickup
+					= new Pickup_actor_action(dough_in_oven_obj.get(), spot_on_table, 250, false, drop_sfx_id(), sfx_vol());
+			if (pact) {
+				npc->set_action(new Sequence_actor_action(pact, pickup));
+			} else {
+				npc->set_action(pickup);
+			}
 			dough_in_oven = Game_object_weak();
 			state         = get_dough;
 		} else {
 			delete pact;
 			pact = Path_walking_actor_action::create_path(npcpos, displaytable_obj->get_tile(), cost1);
-			npc->set_action(new Sequence_actor_action(pact, new Face_pos_actor_action(displaytable_obj->get_tile(), 250)));
+			Actor_action* face = new Face_pos_actor_action(displaytable_obj->get_tile(), 250);
+			if (pact) {
+				npc->set_action(new Sequence_actor_action(pact, face));
+			} else {
+				npc->set_action(face);
+			}
 			delay = 250;
 			state = clear_display;
 		}
@@ -5394,6 +5414,13 @@ void Forge_schedule::now_what() {
 		Game_object* well_obj               = npc->find_closest(470);
 		well                                = weak_from_obj(well_obj);
 
+		if (!trough_obj) {
+			// uh-oh... try again in a few seconds
+			npc->start(250, 2500);
+			state = put_sword_on_firepit;
+			return;
+		}
+
 		const Tile_coord drop_spot = Map_chunk::find_spot(trough_obj->get_tile(), 3, 810, 0);
 		if (bucket_obj && bucket_obj.get() && bucket_obj.get()->get_outermost() == npc) {
 			// Change bucket to full when there is no well nearby
@@ -5520,7 +5547,7 @@ void Forge_schedule::now_what() {
 		well                   = weak_from_obj(well_obj);
 		well2                  = weak_from_obj(well2_obj);
 
-		if (!well2_obj) {
+		if (!well_obj || !well2_obj) {
 			// uh-oh... try again in a few seconds
 			npc->start(250, 2500);
 			state = put_sword_on_firepit;
