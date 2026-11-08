@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Regression checks for the command-line tools expack, textpack, ipack, ucxt, rip and shp2pcx,
-# using only data created here (no Ultima VII game data). Called by
+# Regression checks for the command-line tools expack, textpack, ipack, ucxt, rip, shp2pcx,
+# smooth and mockup, using only data created here or the sample images shipped with
+# smooth and mockup (no Ultima VII game data). Called by
 # tests/e2e/run.sh, which builds the tools; it can also be run on its own:
 #
 #   EXULT_EXPACK=/path/expack [EXULT_TEXTPACK=/path/textpack] [EXULT_IPACK=/path/ipack] \
 #       [EXULT_UCXT=/path/ucxt EXULT_UCXT_DATA=/dir/with/ucxt/.data/files EXULT_UCC=/path/ucc] \
 #       [EXULT_RIP=/path/rip] [EXULT_SHP2PCX=/path/shp2pcx] \
+#       [EXULT_SMOOTH=/path/smooth [EXULT_SMOOTH_PLUGINS=/dir/with/libsmooth_*.so]] \
+#       [EXULT_MOCKUP=/path/mockup] \
 #       tests/e2e/tool-regressions.sh
 #
 # A tool whose path is empty or unset is skipped; the ucxt checks need all three
@@ -21,6 +24,11 @@ ucxt_data="${EXULT_UCXT_DATA:-}"
 ucc="${EXULT_UCC:-}"
 rip="${EXULT_RIP:-}"
 shp2pcx="${EXULT_SHP2PCX:-}"
+smooth="${EXULT_SMOOTH:-}"
+smooth_plugins="${EXULT_SMOOTH_PLUGINS:-}"
+mockup="${EXULT_MOCKUP:-}"
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -30,12 +38,14 @@ bad() { echo "FAIL - $1" >&2; fail=1; }
 
 # Run a command with a time limit, capturing output in $work/last.log and the
 # exit status in $rc. run_in does the same from inside the given directory.
+# SDL tools (smooth, mockup) treat SIGTERM as a quit request they never read,
+# so -k sends SIGKILL if the command is still running 5 seconds later.
 rc=0
 run_in() { # dir command...
 	local dir=$1
 	shift
 	rc=0
-	(cd "$dir" && timeout 30 "$@") >"$work/last.log" 2>&1 || rc=$?
+	(cd "$dir" && timeout -k 5 30 "$@") >"$work/last.log" 2>&1 || rc=$?
 }
 run() { run_in . "$@"; }
 
@@ -309,6 +319,122 @@ if [ -n "$shp2pcx" ]; then
 		ok "shp2pcx converts a one-pixel shape"
 	else
 		bad "shp2pcx failed (exit $rc) on a one-pixel shape"; cat "$work/last.log" >&2
+	fi
+fi
+
+# --- smooth ----------------------------------------------------------------
+# smooth reads its config file line by line. A section line that is not
+# "[name]" must be rejected with its line number (a lone "[" used to write
+# before the line buffer; "[]" names no plugin), a section line with a CRLF
+# ending must still name the plugin, the last line must be read once (not
+# again at end of file), and a plugin library without init_plugin must be
+# refused instead of called.
+# Uses the sample image shipped with smooth; SDL runs with its dummy video driver.
+if [ -n "$smooth" ]; then
+	plugins="${smooth_plugins:-$(dirname "$smooth")}"
+	mkdir "$work/smooth"
+	cp "$root/tools/smooth/rough.bmp" "$work/smooth/rough.bmp"
+	run_smooth() { # config [extra args...]
+		local conf=$1
+		shift
+		run_in "$work/smooth" env SDL_VIDEO_DRIVER=dummy LD_LIBRARY_PATH="$plugins${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+			"$smooth" "$@" -i rough.bmp -c "$conf" -o out.bmp
+	}
+
+	cp "$root/tools/smooth/smooth.conf" "$work/smooth/sample.conf"
+	run_smooth sample.conf
+	if [ "$rc" -eq 0 ] && grep -q '^Done!' "$work/last.log" && [ -s "$work/smooth/out.bmp" ]; then
+		ok "smooth converts its sample image with its sample config"
+	else
+		bad "smooth failed (exit $rc) on its sample image and config"; cat "$work/last.log" >&2
+	fi
+
+	printf '# comment\n[\n' > "$work/smooth/bracket.conf"
+	printf '# comment\n[]\n' > "$work/smooth/empty.conf"
+	printf '# comment\n[randomize' > "$work/smooth/unclosed.conf"
+	for conf in bracket empty unclosed; do
+		rm -f "$work/smooth/out.bmp"
+		run_smooth "$conf.conf"
+		if [ "$rc" -eq 255 ] && grep -q 'ERROR: Malformed section in line 2' "$work/last.log" \
+			&& [ ! -e "$work/smooth/out.bmp" ]; then
+			ok "smooth rejects a malformed section line ($conf) with its line number"
+		else
+			bad "smooth on a malformed section line ($conf) exited $rc, expected a Malformed section error"
+			cat "$work/last.log" >&2
+		fi
+	done
+
+	printf '[randomize]\r\n3C9134 931029\r\n' > "$work/smooth/crlf.conf"
+	rm -f "$work/smooth/out.bmp"
+	run_smooth crlf.conf
+	if [ "$rc" -eq 0 ] && grep -q '^Done!' "$work/last.log" && [ -s "$work/smooth/out.bmp" ]; then
+		ok "smooth reads a config file with CRLF line endings"
+	else
+		bad "smooth failed (exit $rc) on a CRLF config file"; cat "$work/last.log" >&2
+	fi
+
+	# At debug level 2 smooth prints "line read:" once per plugin data line.
+	printf '[randomize]\n3C9134 931029\n' > "$work/smooth/last.conf"
+	run_smooth last.conf -d 2
+	lines="$(grep -c 'line read:' "$work/last.log" || true)"
+	if [ "$rc" -eq 0 ] && [ "$lines" -eq 1 ]; then
+		ok "smooth reads the last config line once"
+	else
+		bad "smooth exited $rc and read the one data line $lines times, expected once"; cat "$work/last.log" >&2
+	fi
+
+	# A library that loads but has no init_plugin: the C maths library, which
+	# smooth links, under a plugin name.
+	libm="$(ldd "$smooth" | awk '$1 ~ /^libm\.so/ { print $3; exit }')"
+	if [ -n "$libm" ]; then
+		mkdir "$work/smooth/fake"
+		ln -s "$libm" "$work/smooth/fake/libsmooth_noinit.so"
+		printf '[noinit]\n' > "$work/smooth/noinit.conf"
+		plugins_saved="$plugins"
+		plugins="$work/smooth/fake"
+		run_smooth noinit.conf
+		plugins="$plugins_saved"
+		if [ "$rc" -eq 255 ] && grep -q 'ERROR: Plugin libsmooth_noinit.so has no init_plugin function' "$work/last.log"; then
+			ok "smooth refuses a plugin without init_plugin"
+		else
+			bad "smooth on a plugin without init_plugin exited $rc, expected an error"; cat "$work/last.log" >&2
+		fi
+	else
+		bad "could not find the maths library smooth links (ldd $smooth)"
+	fi
+fi
+
+# --- mockup ----------------------------------------------------------------
+# mockup maps each colour of a 192x192 image to a chunk number read from a
+# mapping file of "colour number" pairs. A colour with no number after it must
+# be ignored, not mapped to an uninitialised number. Uses the sample image and
+# mapping shipped with mockup; SDL runs with its dummy video driver.
+if [ -n "$mockup" ]; then
+	mkdir "$work/mockup"
+	cp "$root/tools/mockup/map.png" "$work/mockup/map.png"
+	run_mockup() { # mapping file
+		rm -f "$work/mockup/u7map"
+		run_in "$work/mockup" env SDL_VIDEO_DRIVER=dummy "$mockup" map.png "$1"
+	}
+
+	cp "$root/tools/mockup/mappings.txt" "$work/mockup/sample.txt"
+	run_mockup sample.txt
+	if [ "$rc" -eq 0 ] && grep -q '^Done!' "$work/last.log" && ! grep -q 'Not expected pixel' "$work/last.log" \
+		&& [ "$(wc -c < "$work/mockup/u7map")" -eq 73728 ]; then
+		ok "mockup converts its sample image with its sample mapping"
+	else
+		bad "mockup failed (exit $rc) on its sample image and mapping"; cat "$work/last.log" >&2
+	fi
+
+	# Colour 725E0C is palette index 0 of map.png. Drop its line and end the
+	# file with the colour alone.
+	{ grep -iv '^725E0C ' "$root/tools/mockup/mappings.txt"; printf '725E0C\n'; } > "$work/mockup/nonumber.txt"
+	run_mockup nonumber.txt
+	if [ "$rc" -eq 0 ] && ! grep -q 'color 725e0c ->' "$work/last.log" \
+		&& grep -q 'Not expected pixel is 00$' "$work/last.log"; then
+		ok "mockup ignores a colour with no chunk number"
+	else
+		bad "mockup on a colour with no chunk number exited $rc or mapped it"; grep -m3 '725e0c' "$work/last.log" >&2
 	fi
 fi
 

@@ -39,7 +39,10 @@ with `--disable-exult --enable-compiler`, then only the needed targets), then:
   `expack -l/-x` on a missing archive, `textpack -x` on entries without a NUL, `ipack`
   (blank script lines, over-long names, `-u` with tiled specs) on synthetic input, and
   `ucxt -nc` (disassembles `ucc` output to stdout and with `-o`; a missing usecode file,
-  a missing data file and an unreadable data file each exit 1 with a message).
+  a missing data file and an unreadable data file each exit 1 with a message), and
+  `smooth` and `mockup` on their sample images (malformed `smooth` config sections, CRLF
+  line endings, a plugin without `init_plugin`; a `mockup` colour with no chunk number).
+  `smooth` and `mockup` need SDL3_image; without it their checks are skipped with a warning.
 
 ```sh
 tests/e2e/run.sh                          # configure, build, test
