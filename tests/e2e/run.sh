@@ -9,8 +9,9 @@
 #      the extracted bytes must equal the inputs. A truncated archive must not
 #      round-trip.
 #   3. tests/e2e/tool-regressions.sh checks expack -i response files, textpack -x
-#      and ipack (blank lines, long names, tiled updates) on synthetic input, and
-#      that ucxt disassembles ucc's output and fails cleanly on missing input.
+#      and ipack (blank lines, long names, tiled updates) on synthetic input,
+#      that ucxt disassembles ucc's output and fails cleanly on missing input, and
+#      that smooth and mockup reject malformed config and mapping input.
 #
 # Usage:
 #   tests/e2e/run.sh                      # configure + build ucc and expack, then test
@@ -46,6 +47,8 @@ if [ -n "${EXULT_BIN_DIR:-}" ]; then
 	ucxt_gen="$d/tools/ucxt/data"
 	rip="$(find_tool rip "$d" "$d/tools")" || rip=""
 	shp2pcx="$(find_tool shp2pcx "$d" "$d/tools")" || shp2pcx=""
+	smooth="$(find_tool smooth "$d" "$d/tools/smooth")" || smooth=""
+	mockup="$(find_tool mockup "$d" "$d/tools/mockup")" || mockup=""
 else
 	build="${BUILD_DIR:-${TMPDIR:-/tmp}/exult-e2e-build}"
 	mkdir -p "$build"
@@ -83,6 +86,19 @@ else
 		ipack="$build/tools/ipack"
 	else
 		echo "WARN - ipack could not be built; skipping the ipack checks" >&2
+	fi
+	# smooth and mockup need SDL3_image; configure leaves them out without it.
+	smooth=""
+	if make -C "$build/tools/smooth" -j"$jobs"; then
+		smooth="$build/tools/smooth/smooth"
+	else
+		echo "WARN - smooth could not be built; skipping the smooth checks" >&2
+	fi
+	mockup=""
+	if make -C "$build/tools/mockup" -j"$jobs"; then
+		mockup="$build/tools/mockup/mockup"
+	else
+		echo "WARN - mockup could not be built; skipping the mockup checks" >&2
 	fi
 fi
 
@@ -318,7 +334,7 @@ fi
 
 # --- regressions in expack -i, textpack, ipack and ucxt -----------------------
 if EXULT_EXPACK="$expack" EXULT_TEXTPACK="$textpack" EXULT_IPACK="$ipack" \
-	EXULT_RIP="$rip" EXULT_SHP2PCX="$shp2pcx" \
+	EXULT_RIP="$rip" EXULT_SHP2PCX="$shp2pcx" EXULT_SMOOTH="$smooth" EXULT_MOCKUP="$mockup" \
 	EXULT_UCXT="$ucxt" EXULT_UCXT_DATA="$ucxt_data" EXULT_UCC="$ucc" "$root/tests/e2e/tool-regressions.sh"; then
 	ok "tool regression checks"
 else
