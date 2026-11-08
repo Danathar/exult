@@ -36,6 +36,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "gamewin.h"
 #include "items.h"
 #include "msgfile.h"
+#include "saveinfo_checks.h"
 #include "touchui.h"
 
 using std::cout;
@@ -917,18 +918,16 @@ void Notebook_gump::read() {
 			note = new One_note();
 			notes.push_back(note);
 		} else if (notend.first == "note/time") {
-			int d;
-			int h;
-			int m;
-			sscanf(notend.second.c_str(), "%d:%d:%d", &d, &h, &m);
-			if (note) {
+			int d = 0;
+			int h = 0;
+			int m = 0;
+			if (note && parse_note_time(notend.second, d, h, m)) {
 				note->set_time(d, h, m);
 			}
 		} else if (notend.first == "note/place") {
-			int x;
-			int y;
-			sscanf(notend.second.c_str(), "%d:%d", &x, &y);
-			if (note) {
+			int x = 0;
+			int y = 0;
+			if (note && parse_note_place(notend.second, x, y)) {
 				note->set_loc(x, y);
 			}
 		} else if (notend.first == "note/text") {
@@ -937,9 +936,8 @@ void Notebook_gump::read() {
 				note->add_text_with_line_breaks(notend.second);
 			}
 		} else if (notend.first == "note/gflag") {
-			int gf;
-			sscanf(notend.second.c_str(), "%d", &gf);
-			if (note) {
+			int gf = -1;
+			if (note && parse_note_gflag(notend.second, gf)) {
 				note->set_gflag(gf);
 			}
 		}

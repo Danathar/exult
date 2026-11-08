@@ -5,6 +5,7 @@
 #define EXULT_SAVEINFO_CHECKS_H
 
 #include <cstddef>
+#include <cstdio>
 #include <string>
 #include <string_view>
 
@@ -36,6 +37,42 @@ inline void terminate_name(char* name, std::size_t size) {
 	if (size > 0) {
 		name[size - 1] = 0;
 	}
+}
+
+// Notebook entries are read from the save as text. These return true and set
+// the outputs only when the whole text parsed; otherwise the outputs keep the
+// caller's defaults, so a damaged entry never leaves garbage behind.
+inline bool parse_note_time(const std::string& text, int& day, int& hour, int& minute) {
+	int d = 0;
+	int h = 0;
+	int m = 0;
+	if (std::sscanf(text.c_str(), "%d:%d:%d", &d, &h, &m) != 3) {
+		return false;
+	}
+	day    = d;
+	hour   = h;
+	minute = m;
+	return true;
+}
+
+inline bool parse_note_place(const std::string& text, int& x, int& y) {
+	int px = 0;
+	int py = 0;
+	if (std::sscanf(text.c_str(), "%d:%d", &px, &py) != 2) {
+		return false;
+	}
+	x = px;
+	y = py;
+	return true;
+}
+
+inline bool parse_note_gflag(const std::string& text, int& gflag) {
+	int g = 0;
+	if (std::sscanf(text.c_str(), "%d", &g) != 1) {
+		return false;
+	}
+	gflag = g;
+	return true;
 }
 
 #endif
