@@ -46,7 +46,8 @@ libusecode_la_SOURCES += \
 	ucfunction_header.h	\
 	ucfunction.cc	\
 	ucinstruction_checks.h	\
-	uctimers.h
+	uctimers.h	\
+	ucusevars.h
 endif
 
 CLEANFILES = *~

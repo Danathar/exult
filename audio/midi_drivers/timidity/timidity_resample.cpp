@@ -34,6 +34,7 @@
 #	include "timidity_tables.h"
 
 #	include <cmath>
+#	include <cstdint>
 #	include <cstdio>
 #	include <cstdlib>
 #	include <cstring>
@@ -635,10 +636,23 @@ namespace NS_TIMIDITY {
 		if (a <= 0) {
 			return;
 		}
-		auto newlen = static_cast<sint32>(sp->data_length / a);
-		if (newlen < 0 || (newlen >> FRACTION_BITS) > MAX_SAMPLE_SIZE) {
+		/* Check the range on the double; converting an out-of-range double to
+		 sint32 is undefined behaviour. */
+		const double newlen_d = static_cast<double>(sp->data_length) / a;
+		if (!std::isfinite(newlen_d) || newlen_d < 0
+			|| newlen_d >= static_cast<double>(MAX_SAMPLE_SIZE) * (1 << FRACTION_BITS)
+			|| newlen_d > static_cast<double>(INT32_MAX)) {
 			return;
 		}
+		/* Loop points are normally inside the sample, but they come from the
+		 patch file, so range check them before converting too. */
+		const double loop_start_d = static_cast<double>(sp->loop_start) / a;
+		const double loop_end_d   = static_cast<double>(sp->loop_end) / a;
+		if (!(std::fabs(loop_start_d) <= static_cast<double>(INT32_MAX))
+			|| !(std::fabs(loop_end_d) <= static_cast<double>(INT32_MAX))) {
+			return;
+		}
+		const auto newlen = static_cast<sint32>(newlen_d);
 		/* The interpolation loop below needs a few output samples; a
 		 shorter result would divide by zero or never terminate. */
 		if ((newlen >> FRACTION_BITS) < 4) {
@@ -685,8 +699,8 @@ namespace NS_TIMIDITY {
 		}
 
 		sp->data_length = newlen;
-		sp->loop_start  = static_cast<sint32>(sp->loop_start / a);
-		sp->loop_end    = static_cast<sint32>(sp->loop_end / a);
+		sp->loop_start  = static_cast<sint32>(loop_start_d);
+		sp->loop_end    = static_cast<sint32>(loop_end_d);
 		free(sp->data);
 		sp->data        = newdata;
 		sp->sample_rate = 0;

@@ -285,17 +285,18 @@ int playfli::play(Image_window* win, int first_frame, int last_frame, unsigned l
 
 			case FLI_SS2: {
 				const int change_lines = fli_data.read2();
-				for (int line = 0; line < change_lines; line++) {
+				int       row         = 0;  // current screen row
+				for (int lines_done = 0; lines_done < change_lines; lines_done++) {
 					int packets = fli_data.read2();
 					while ((packets & 0x8000U) != 0U) {
 						// flag word
 						if ((packets & 0x4000U) != 0U) {
 							// skip lines
-							line += std::abs(static_cast<sint16>(packets));
+							row += std::abs(static_cast<sint16>(packets));
 						} else {
 							// Set last pixel of current line (used if line
 							// width is odd)
-							fli_buf->put_pixel8(packets & 0xff, fli_width - 1, line);
+							fli_buf->put_pixel8(packets & 0xff, fli_width - 1, row);
 						}
 						packets = fli_data.read2();
 					}
@@ -311,14 +312,15 @@ int playfli::play(Image_window* win, int first_frame, int last_frame, unsigned l
 							for (int i = 0; i < word_count; i++) {
 								little_endian::Write2(pixptr, data);
 							}
-							fli_buf->copy_hline8(pixbuf.data(), 2 * word_count, pix_pos, line);
+							fli_buf->copy_hline8(pixbuf.data(), 2 * word_count, pix_pos, row);
 							pix_pos += 2 * word_count;
 						} else {
 							fli_data.read(pixbuf.data(), 2 * size_count);
-							fli_buf->copy_hline8(pixbuf.data(), 2 * size_count, pix_pos, line);
+							fli_buf->copy_hline8(pixbuf.data(), 2 * size_count, pix_pos, row);
 							pix_pos += 2 * size_count;
 						}
 					}
+					row++;
 				}
 				break;
 			}
