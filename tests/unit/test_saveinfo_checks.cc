@@ -53,3 +53,39 @@ TEST(level2_file_path_cannot_join_two_safe_names_into_a_parent_step) {
 	CHECK(joined == "././x");
 	CHECK(is_safe_relative_path(joined));
 }
+
+TEST(parse_note_time_reads_full_text) {
+	int d = 0;
+	int h = 0;
+	int m = 0;
+	CHECK(parse_note_time("3:14:15", d, h, m));
+	CHECK(d == 3 && h == 14 && m == 15);
+}
+
+TEST(parse_note_time_keeps_defaults_when_damaged) {
+	int d = 7;
+	int h = 8;
+	int m = 9;
+	CHECK(!parse_note_time("", d, h, m));
+	CHECK(!parse_note_time("3:14", d, h, m));
+	CHECK(!parse_note_time("abc", d, h, m));
+	CHECK(d == 7 && h == 8 && m == 9);
+}
+
+TEST(parse_note_place_needs_both_numbers) {
+	int x = -1;
+	int y = -2;
+	CHECK(!parse_note_place("12", x, y));
+	CHECK(!parse_note_place("", x, y));
+	CHECK(x == -1 && y == -2);
+	CHECK(parse_note_place("12:34", x, y));
+	CHECK(x == 12 && y == 34);
+}
+
+TEST(parse_note_gflag_rejects_non_numbers) {
+	int g = -1;
+	CHECK(!parse_note_gflag("zz", g));
+	CHECK(g == -1);
+	CHECK(parse_note_gflag("42", g));
+	CHECK(g == 42);
+}
