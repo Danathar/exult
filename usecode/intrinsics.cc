@@ -1921,7 +1921,7 @@ USECODE_INTRINSIC(add_spell) {
 	// add_spell(spell# (0-71), ??, spellbook).
 	// Returns 0 if book already has that spell.
 	Game_object* obj  = get_item(parms[2]);
-	auto*        book = obj->as_spellbook();
+	auto*        book = obj ? obj->as_spellbook() : nullptr;
 	if (!book) {
 		cout << "Add_spell - Not a spellbook!" << endl;
 		return Usecode_value(0);
@@ -1933,7 +1933,7 @@ USECODE_INTRINSIC(remove_all_spells) {
 	// remove_all_spells(spellbook).
 	// Removes all spells from spellbook.
 	Game_object* obj  = get_item(parms[0]);
-	auto*        book = obj->as_spellbook();
+	auto*        book = obj ? obj->as_spellbook() : nullptr;
 	if (!book) {
 		cout << "remove_all_spells - Not a spellbook!" << endl;
 		return no_ret;
@@ -1946,7 +1946,7 @@ USECODE_INTRINSIC(has_spell) {
 	// has_spell(spellbook, spell#).
 	// Returns true if the spellbook has desired spell, false if not.
 	Game_object* obj  = get_item(parms[0]);
-	auto*        book = obj->as_spellbook();
+	auto*        book = obj ? obj->as_spellbook() : nullptr;
 	if (!book) {
 		cout << "has_spell - Not a spellbook!" << endl;
 		return Usecode_value(0);
@@ -1958,7 +1958,7 @@ USECODE_INTRINSIC(remove_spell) {
 	// remove_spell(spellbook, spell#).
 	// Returns true if the spellbook has desired spell, false if not.
 	Game_object* obj  = get_item(parms[0]);
-	auto*        book = obj->as_spellbook();
+	auto*        book = obj ? obj->as_spellbook() : nullptr;
 	if (!book) {
 		cout << "remove_spell - Not a spellbook!" << endl;
 		return Usecode_value(0);
@@ -2156,7 +2156,10 @@ USECODE_INTRINSIC(get_array_size) {
 
 USECODE_INTRINSIC(mark_virtue_stone) {
 	Game_object* obj = get_item(parms[0]);
-	auto*        vs  = obj->as_virtstone();
+	if (!obj) {
+		return no_ret;
+	}
+	auto* vs = obj->as_virtstone();
 	if (vs) {
 		vs->set_target_pos(obj->get_outermost()->get_tile());
 		vs->set_target_map(obj->get_outermost()->get_map_num());
@@ -2165,7 +2168,10 @@ USECODE_INTRINSIC(mark_virtue_stone) {
 }
 
 USECODE_INTRINSIC(recall_virtue_stone) {
-	Game_object*       obj = get_item(parms[0]);
+	Game_object* obj = get_item(parms[0]);
+	if (!obj) {
+		return no_ret;
+	}
 	Game_object_shared keep;
 	auto*              vs = obj->as_virtstone();
 	if (vs) {
@@ -2893,6 +2899,9 @@ USECODE_INTRINSIC(fire_projectile) {
 	// fire_projectile(attacker, dir, missile, attval, wshape, ashape)
 
 	Game_object* attacker = get_item(parms[0]);
+	if (!attacker) {
+		return no_ret;
+	}
 	// Get direction (0-7).
 	const int dir     = parms[1].get_int_value();
 	const int missile = parms[2].get_int_value();    // Sprite to use for missile.
