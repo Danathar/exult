@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <array>
 #include <iosfwd>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -251,18 +252,22 @@ struct StringsBase {
 			// If the load counter is different to when the array was created, we recreate the array because the strings have
 			// been invalidated
 			if (!cached_array || lc != current_lc) {
-				delete cached_array;
-				lc = current_lc;
+				// Build the new array first. If reading a string throws, the
+				// old cache and lc are left as they were, so the next call
+				// retries and nothing is left pointing at freed memory.
+				std::unique_ptr<std::array<TReturn, COUNT>> fresh;
 				if constexpr (COUNT == 2) {
 					// Simple easy optimization for the common case where the array is size 2
-					cached_array = new std::array<TReturn, COUNT>{(*this)(0), (*this)(1)};
-
+					fresh = std::make_unique<std::array<TReturn, COUNT>>(std::array<TReturn, COUNT>{(*this)(0), (*this)(1)});
 				} else {
-					cached_array = new std::array<TReturn, COUNT>();
+					fresh = std::make_unique<std::array<TReturn, COUNT>>();
 					for (size_t i = 0; i < COUNT; i++) {
-						(*cached_array)[i] = (*this)(i);
+						(*fresh)[i] = (*this)(i);
 					}
 				}
+				delete cached_array;
+				cached_array = fresh.release();
+				lc           = current_lc;
 			}
 			return *cached_array;
 		}
