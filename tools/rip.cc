@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -67,6 +68,23 @@ static void print_usage() {
 		   " <nr> into the usecode file\n");
 }
 
+// Parses the whole of text as a hex number. sscanf("%x") would accept "foo"
+// as 0xf because it stops at the first non-hex character.
+static bool parse_hex(const char* text, unsigned& number) {
+	if (text[0] == '\0' || text[0] == '-' || text[0] == '+') {
+		return false;
+	}
+	char*               end   = nullptr;
+	errno                     = 0;
+	const unsigned long value = strtoul(text, &end, 16);
+	if (errno != 0 || *end != '\0'
+		|| value > std::numeric_limits<unsigned>::max()) {
+		return false;
+	}
+	number = static_cast<unsigned>(value);
+	return true;
+}
+
 int main(int argc, char* argv[]) {
 	printf("Wody's Rip v0.005\nCopyright (c) 1999 Wody Dragon (a.k.a. Wouter "
 		   "Dijkslag)\n");
@@ -87,12 +105,12 @@ int main(int argc, char* argv[]) {
 	} else if (!strcasecmp(argv[1], "index")) {
 		number = only_index;
 	} else if (!strcasecmp(argv[1], "put")) {
-		if (sscanf(argv[2], "%x", &number) != 1) {
+		if (!parse_hex(argv[2], number)) {
 			print_usage();
 			exit(1);
 		}
 		put = true;
-	} else if (sscanf(argv[1], "%x", &number) != 1) {
+	} else if (!parse_hex(argv[1], number)) {
 		print_usage();
 		exit(1);
 	}
