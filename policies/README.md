@@ -111,6 +111,18 @@ No tracked file under `gamedat/` or the repository-root `static/`, no `*.sav`,
 `u7speech.spc` or `u7voice.flx` (case-insensitive). Data Exult ships itself
 (`content/`, `data/`) does not match.
 
+## check-policies-corpus.json
+
+Not a rule: the shared regression corpus for this checker. Each row is one
+workflow and the run-expression violations the checker must report for it,
+one row per bypass fixed in any copy of the checker in the owner's
+repositories. The canonical copy is in
+[Danathar/dns-failover](https://github.com/Danathar/dns-failover/blob/main/policies/check-policies-corpus.json);
+this file is a byte copy, pinned by SHA-256 and replayed through
+`checkWorkflows` in `scripts/tests/check-policies.test.mjs` on every pull
+request. Never edit it here: change the canonical copy, then copy it again
+and update the pin.
+
 ## CODEOWNERS and risk tiers
 
 Not JSON policy files. The checker compares the tier table in
