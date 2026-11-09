@@ -40,8 +40,8 @@
 # `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'` strips credentials from subprocess
 # environments. What is enforced today: a pre-push hook in the checkout rejects
 # pushes to master, and the issue path starts on a `claude/ai-fix-<number>`
-# branch. The branch ruleset for master (issue #39) is not in place yet; once it
-# is, it is the real server-side control.
+# branch. The master branch ruleset (issue #39, docs/branch-protection.md) is
+# the real server-side control.
 #
 # Checks on agent pushes: commits pushed and PRs opened with the workflow's
 # GITHUB_TOKEN do not start other workflows (a GitHub rule against recursive
