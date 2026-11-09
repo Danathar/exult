@@ -145,6 +145,24 @@ jobs:
             echo "scripts/check-policies.mjs does not exist yet; skipped" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
+      # policies/check-policies-corpus.json is a copy of the canonical file in
+      # Danathar/dns-failover. The checker test pins the copy's hash, which
+      # catches a local edit but not a copy that has fallen behind its
+      # original, so this compares it with dns-failover's main.
+      - name: Compare the check-policies corpus with dns-failover
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORPUS: policies/check-policies-corpus.json
+        run: |
+          set -euo pipefail
+          want=$(gh api "repos/Danathar/dns-failover/contents/$CORPUS" -H 'Accept: application/vnd.github.raw' | sha256sum | cut -d' ' -f1)
+          got=$(sha256sum "$CORPUS" | cut -d' ' -f1)
+          if [ "$got" != "$want" ]; then
+            echo "::error::$CORPUS is $got; Danathar/dns-failover main has $want. Copy the file from there and update CORPUS_SHA256 in scripts/tests/check-policies.test.mjs."
+            exit 1
+          fi
+          echo "$CORPUS matches Danathar/dns-failover main ($got)."
+
       - name: Script and hook tests
         run: |
           set -euo pipefail
