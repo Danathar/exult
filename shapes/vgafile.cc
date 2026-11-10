@@ -471,6 +471,51 @@ unsigned int Shape_frame::read(
 }
 
 /*
+ *  Check that RLE frame data read from a file stays inside its buffer.
+ *  The painters walk it from a bare pointer until a zero scanline word, so
+ *  every scanline, run and pixel must fit, and the terminator must be there.
+ */
+
+static bool rle_data_fits(const unsigned char* data, size_t len) {
+	size_t pos = 0;
+	while (true) {
+		if (len - pos < 2) {
+			return false;    // No room for the next scanline word.
+		}
+		const unsigned scanword = data[pos] | (data[pos + 1] << 8);
+		pos += 2;
+		if (scanword == 0) {
+			return true;    // Terminator.
+		}
+		if (len - pos < 4) {
+			return false;    // No room for x and y.
+		}
+		pos += 4;
+		size_t scanlen = scanword >> 1;
+		if (!(scanword & 1)) {    // Raw pixels.
+			if (len - pos < scanlen) {
+				return false;
+			}
+			pos += scanlen;
+			continue;
+		}
+		while (scanlen) {    // Encoded runs.
+			if (len - pos < 1) {
+				return false;
+			}
+			const unsigned bcnt   = data[pos++];
+			const size_t   count  = bcnt >> 1;
+			const size_t   nbytes = (bcnt & 1) ? 1 : count;
+			if (count > scanlen || len - pos < nbytes) {
+				return false;
+			}
+			pos += nbytes;
+			scanlen -= count;
+		}
+	}
+}
+
+/*
  *  Read in a Run-Length_Encoded shape.
  */
 
@@ -494,6 +539,16 @@ void Shape_frame::get_rle_shape(
 		datalen = len;
 		data    = make_unique<unsigned char[]>(datalen);
 		shapes->read(data.get(), len);
+		if (!rle_data_fits(data.get(), datalen)) {
+			cerr << "Shape_frame::get_rle_shape: bad RLE data at " << filepos << endl;
+			// Leave an empty frame.
+			xleft = xright = yabove = ybelow = 0;
+
+			datalen = 2;
+			data    = make_unique<unsigned char[]>(2);
+			data[0] = 0;    // 0-delimit.
+			data[1] = 0;
+		}
 	}
 	rle = true;
 }
