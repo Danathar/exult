@@ -14,6 +14,10 @@ name: Agent audit trail
 # merger is a violation), and base `master` of Danathar/exult. The result goes
 # to the run summary.
 #
+# The signature requirement is also checked on open agent PRs, while the body
+# can still be fixed, by `agent-signature.yml` (scripts/check-pr-signature.mjs,
+# which calls this script's findSignature).
+#
 # Failure model: a violation fails the run (`--strict`). It does not open an
 # issue. A red scheduled run is already visible in the Actions tab and in
 # GitHub's failure notifications, and keeping the token read-only (no
