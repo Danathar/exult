@@ -71,13 +71,40 @@ jobs:
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends \
             g++ make autoconf automake libtool autoconf-archive pkg-config bison flex \
-            zlib1g-dev libsdl3-dev libsdl3-image-dev libpng-dev libogg-dev libvorbis-dev
+            zlib1g-dev libsdl3-dev libsdl3-image-dev libpng-dev libogg-dev libvorbis-dev gcovr
 
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Build ucc and expack, then run the end-to-end checks
+        env:
+          # Instrumented so the run leaves gcov counters for the report below.
+          CFLAGS: "-g -O0 --coverage"
+          CXXFLAGS: "-g -O0 --coverage"
+          LDFLAGS: "--coverage"
+          LIBS: "-lgcov"
+          BUILD_DIR: /tmp/exult-e2e-build
         run: tests/e2e/run.sh
+
+      - name: Report end-to-end line coverage
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -d /tmp/exult-e2e-build ]; then
+            gcovr --root "$GITHUB_WORKSPACE" --filter "${GITHUB_WORKSPACE}/(?!tests/)" \
+              --txt e2e-coverage.txt --json e2e-coverage.json /tmp/exult-e2e-build || true
+            if [ -s e2e-coverage.txt ]; then
+              { echo '### End-to-end line coverage (informational)'; echo '```'; cat e2e-coverage.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+      - name: Upload end-to-end coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-coverage
+          path: e2e-coverage.json
+          if-no-files-found: ignore
+          retention-days: 30
 
   out-of-tree:
     # Regression check for Danathar/exult#75: every generated file must land in
