@@ -90,6 +90,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           if [ -d /tmp/exult-e2e-build ]; then
+            # configure leaves a-conftest.gcno behind; gcovr 7.2 treats it as fatal.
+            rm -f /tmp/exult-e2e-build/*conftest*.gcno /tmp/exult-e2e-build/*conftest*.gcda
             gcovr --root "$GITHUB_WORKSPACE" --filter "${GITHUB_WORKSPACE}/(?!tests/)" \
               --txt e2e-coverage.txt --json e2e-coverage.json /tmp/exult-e2e-build || true
             if [ -s e2e-coverage.txt ]; then
@@ -103,7 +105,7 @@ jobs:
         with:
           name: e2e-coverage
           path: e2e-coverage.json
-          if-no-files-found: ignore
+          if-no-files-found: warn
           retention-days: 30
 
   out-of-tree:
