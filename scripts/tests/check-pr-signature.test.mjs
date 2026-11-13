@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { main } from '../check-pr-signature.mjs';
-import { AGENT_LOGINS, findSignature } from '../ai-audit-report.mjs';
+import { AGENT_LOGINS, findSignature, hasLinkedIssue } from '../ai-audit-report.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WORKFLOW = path.resolve(here, '..', '..', '.github', 'workflows', 'agent-signature.yml');
@@ -26,19 +26,51 @@ test('a body with the signature line passes', () => {
 });
 
 test('a body without the line, an empty body and no body fail with an error annotation', () => {
-    for (const body of ['Filed by the scanner agent', '', undefined, '— hive:', 'see — hive: agent=x']) {
+    for (const body of ['Filed by the scanner agent\nCloses #3', '', undefined, '— hive:\nCloses #3', 'see — hive: agent=x\nCloses #3']) {
         const r = run(body);
         assert.equal(r.code, 1, JSON.stringify(body));
-        assert.match(r.err, /^::error::/);
+        assert.match(r.err, /^::error::.*signature line/);
     }
 });
 
 test('a signature only inside a code fence does not count, as in the audit', () => {
-    assert.equal(run(`Example:\n\`\`\`\n${SIG}\n\`\`\``).code, 1);
+    assert.equal(run(`Closes #3\nExample:\n\`\`\`\n${SIG}\n\`\`\``).code, 1);
+});
+
+test('an in-repo issue link passes in every accepted spelling', () => {
+    for (const link of ['Refs #3', 'Closes #3', 'Fixes: #3', 'resolves #3', 'Refs Danathar/exult#3']) {
+        const r = run(`**Summary:** x\n\n${link}\n\n${SIG}\n`);
+        assert.equal(r.code, 0, link);
+        assert.equal(r.err, '', link);
+    }
+});
+
+test('a body with no issue link fails with an error that names the missing line', () => {
+    const r = run(`**Summary:** x\n\n${SIG}\n`);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /^::error::.*`Closes #N`.*`Refs #N`.*another repository.*does not count/);
+    assert.doesNotMatch(r.err, /signature line/);
+});
+
+test('a link only to another repository does not count, as in the audit', () => {
+    const r = run(`Refs Danathar/atomic-image-builder#858\n\n${SIG}\n`);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /another repository/);
+});
+
+test('an issue link only inside a code fence does not count, as in the audit', () => {
+    assert.equal(run(`Example:\n\`\`\`\nCloses #3\n\`\`\`\n${SIG}\n`).code, 1);
+    assert.equal(run(`Example:\n~~~\nRefs #3\n~~~\n${SIG}\n`).code, 1);
+});
+
+test('a body missing both reports both errors', () => {
+    const r = run('nothing here');
+    assert.equal(r.code, 1);
+    assert.equal(r.err.match(/::error::/g).length, 2);
 });
 
 test('the body is never echoed into the log', () => {
-    const body = `::warning::injected\n${SIG}`;
+    const body = `::warning::injected\nCloses #3\n${SIG}`;
     const ok = run(body);
     assert.ok(!ok.out.includes('injected') && !ok.err.includes('injected'));
     const bad = run('::warning::injected');
@@ -46,7 +78,7 @@ test('the body is never echoed into the log', () => {
 });
 
 test('the PR-time check agrees with the audit on every body', () => {
-    for (const body of [
+    const bodies = [
         SIG,
         `  ${SIG}  `,
         `x\r\n${SIG}\r\n`,
@@ -56,8 +88,14 @@ test('the PR-time check agrees with the audit on every body', () => {
         `~~~\n${SIG}\n~~~`,
         `\`\`\`\n${SIG}\n\`\`\`\n${SIG}`,
         'nothing here',
-    ]) {
-        assert.equal(run(body).code, findSignature(body) ? 0 : 1, JSON.stringify(body));
+    ];
+    const links = ['', 'Closes #3\n', 'Refs other/repo#3\n', '```\nFixes #3\n```\n', 'Refs Danathar/exult#3\n'];
+    for (const link of links) {
+        for (const sig of bodies) {
+            const body = link + sig;
+            const ok = findSignature(body) && hasLinkedIssue({ body });
+            assert.equal(run(body).code, ok ? 0 : 1, JSON.stringify(body));
+        }
     }
 });
 
