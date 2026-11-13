@@ -62,7 +62,7 @@ only after those merge.
 | `pr-metrics.yml` | weekly and manual; read-only summary plus artifact ([metrics.md](metrics.md)) |
 | `auto-qa.yml`, `nightly-compliance.yml`, `agent-audit.yml`, `auto-issues.yml` | scheduled or failure-triggered reports and tracking issues |
 | `ai-fix.yml`, `claude.yml` | agent workflows, started by the owner or collaborators by label or `@claude`; skip when no Anthropic credential is configured |
-| `agent-signature.yml` | advisory: on a PR from the Hive App or an `ai-fix/` branch, fails job `signature` when the description lacks the `— hive: agent=...` line, using the agent audit's own test; this repository's `ai-fix.yml` opens `claude/ai-fix-<n>` branches instead, which the audit does not hold to the signature rule, so they are skipped |
+| `agent-signature.yml` | advisory: on a PR from the Hive App or an `ai-fix/` branch, fails job `signature` when the description lacks the `— hive: agent=...` line or a `Closes`/`Fixes`/`Resolves`/`Refs #N` link to an issue in this repository, using the agent audit's own tests; this repository's `ai-fix.yml` opens `claude/ai-fix-<n>` branches instead, which the audit does not hold to the signature rule, so they are skipped |
 | `labeler.yml` | labels PRs by changed paths |
 | upstream `ci-*.yml`, `format-check.yml`, `notify.yml`, `released.yml` | platform builds etc.; do not edit them in fork PRs |
 | `codeql.yml`, `coverity-scan.yml`, `snapshots*.yml` | disabled in this fork |
