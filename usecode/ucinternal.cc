@@ -2544,64 +2544,14 @@ int Usecode_internal::run() {
 				}
 
 				// in SI, the loop-array can be modified in-loop, it seems
-				// (conv. with Spektran, 044D:00BE)
-
-				// so, check for changes of the array size, and adjust
-				// total count and next value accordingly.
-
-				// Allowing this for BG too.
-
+				// (conv. with Spektran, 044D:00BE). Allowing this for BG too.
+				// Keep the total count in step with the array's size so the
+				// loop never reads past its end. The current position is not
+				// moved, so adding or removing an element before it makes the
+				// loop repeat or skip one element.
 				const int cnt = arr.is_array() ? arr.get_array_size() : 1;
-
 				if (cnt != frame->locals[local2].get_int_value()) {
-					// update new total count
 					frame->locals[local2] = Usecode_value(cnt);
-
-					if (std::abs(cnt - frame->locals[local2].get_int_value()) == 1) {
-						// small change... we can fix this
-						const Usecode_value& curval = arr.is_array() ? arr.get_elem(next - 1) : arr;
-
-						if (curval != frame->locals[local3]) {
-							if (cnt > frame->locals[local2].get_int_value()) {
-								// array got bigger, it seems
-								// addition occured before the current value
-								next++;
-							} else {
-								// array got smaller
-								// deletion occured before the current value
-								next--;
-							}
-						} else {
-							// addition/deletion was after the current value
-							// so don't need to update 'next'
-						}
-					} else {
-						// big change...
-						// just update total count to make sure
-						// we don't crash
-					}
-				}
-
-				if (cnt != frame->locals[local2].get_int_value()) {
-					// update new total count
-					frame->locals[local2] = Usecode_value(cnt);
-
-					const Usecode_value& curval = arr.is_array() ? arr.get_elem(next - 1) : arr;
-
-					if (curval != frame->locals[local3]) {
-						if (cnt > frame->locals[local2].get_int_value()) {
-							// array got bigger, it seems
-							// addition occured before the current value
-							next++;
-						} else {
-							// array got smaller
-							// deletion occured before the current value
-							next--;
-						}
-					} else {
-						// addition/deletion was after the current value
-						// so don't need to update 'next'
-					}
 				}
 
 				// End of loop?
