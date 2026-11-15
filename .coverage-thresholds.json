@@ -1,6 +1,6 @@
 {
-  "line_coverage_floor": 84,
+  "line_coverage_floor": 86,
   "source_filter": "/(?!tests/)",
-  "measured_line_coverage": 84,
+  "measured_line_coverage": 86,
   "notes": "Read by .github/workflows/coverage-gate.yml. Line coverage over every product source the unit tests in tests/unit compile or include (everything outside tests/), measured with gcc 14 + gcovr on Debian 13. The floor is the measured value rounded down; raise it when coverage rises."
 }
