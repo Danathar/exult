@@ -15,6 +15,13 @@ harmless is listed in `tests/mutation-equivalents.txt`; any other survivor
 fails the run. Files the unit build never sees (most of the engine, which
 needs SDL) are skipped: no unit test could catch a mutant there.
 
+The Claude Code hooks in `.claude/hooks/*.mjs` (outside `.claude/hooks/tests/`)
+are the assistant's command guard, so their changed lines get the same
+treatment with JavaScript edits, and each mutant runs
+`node --test '.claude/hooks/tests/*.test.mjs' 'scripts/tests/*.test.mjs'`
+instead of the unit build. A hook mutant `node --check` rejects is not
+counted. Without `node` on the PATH the hooks are skipped.
+
 The edits, each applied on its own:
 
 - a comparison negated (`==` to `!=`) or moved across its boundary
@@ -26,6 +33,14 @@ The edits, each applied on its own:
   `false`
 - `continue` or `break` dropped
 - a statement line that is not a declaration or a `return` dropped
+
+The JavaScript edits for the hooks:
+
+- `===` negated to `!==` and back
+- `true` swapped with `false`
+- a string entry dropped from an array literal
+- an `if` test forced to `true` and to `false`
+- a `return block(...)` dropped (turned into `void (...)`)
 
 A mutant that does not compile is not counted. A mutant counts as caught when
 the build of the tests or the tests themselves fail, or run past the time
@@ -63,6 +78,8 @@ EQUIVALENTS = ROOT / "tests" / "mutation-equivalents.txt"
 EQUIVALENTS_NAME = "tests/mutation-equivalents.txt"
 RUNNER = "tests/run-unit-tests.sh"
 SUFFIXES = (".cc", ".cpp", ".h")
+HOOKS = ".claude/hooks/"
+HOOK_TESTS = ["node", "--test", ".claude/hooks/tests/*.test.mjs", "scripts/tests/*.test.mjs"]
 
 # The fields of one entry in the equivalents file, in the order they are
 # printed. `line` is informational: the key is the file, the nearest non-blank
@@ -95,8 +112,13 @@ def git(*args, cwd=ROOT):
     return result.stdout
 
 
+def is_hook(path):
+    """True for a Claude Code hook script, not one of its tests."""
+    return path.startswith(HOOKS) and path.endswith(".mjs") and not path.startswith(HOOKS + "tests/")
+
+
 def changed_lines(base, cwd=ROOT):
-    """Map each changed C++ file outside tests/ to the set of its added lines."""
+    """Map each changed C++ file outside tests/, and each hook, to the set of its added lines."""
     diff = git("diff", "--unified=0", "--no-color", "--no-ext-diff", f"{base}...HEAD", "--", cwd=cwd)
     changed = {}
     current = None
@@ -104,7 +126,8 @@ def changed_lines(base, cwd=ROOT):
         if line.startswith("+++ "):
             path = line[4:]
             current = path[2:] if path.startswith("b/") else None
-            if current and (not current.endswith(SUFFIXES) or current.startswith("tests/")):
+            if current and not is_hook(current) and (not current.endswith(SUFFIXES)
+                                                     or current.startswith("tests/")):
                 current = None
         elif line.startswith("@@") and current:
             match = re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)
@@ -155,7 +178,7 @@ def mask(line):
             out.append(char if char == quote else " ")
             if char == quote:
                 quote = None
-        elif char in "\"'":
+        elif char in "\"'`":
             quote = char
             out.append(char)
         elif line.startswith("//", i):
@@ -215,14 +238,76 @@ def line_mutants(text):
     return [m for m in found if m != text and not (m in seen or seen.add(m))]
 
 
+JS_OPERATORS = [(" === ", " !== "), (" !== ", " === ")]
+JS_STRING = re.compile(r"([\"'`])[^\"'`]*\1")
+
+
+def closing_paren(masked, start):
+    """The index of the `)` that closes the `(` just before `start`, or None."""
+    depth = 1
+    for i in range(start, len(masked)):
+        if masked[i] == "(":
+            depth += 1
+        elif masked[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+def js_line_mutants(text):
+    """Every mutated version of one line of a hook script."""
+    stripped = text.strip()
+    if not stripped or stripped.startswith(("//", "/*", "*")):
+        return []
+    masked = mask(text)
+    found = []
+
+    def at(start, end, new):
+        found.append(text[:start] + new + text[end:])
+
+    for old, new in JS_OPERATORS:
+        for match in re.finditer(re.escape(old), masked):
+            at(match.start(), match.end(), new)
+    for match in re.finditer(r"\b(true|false)\b", masked):
+        at(match.start(), match.end(), "false" if match.group(1) == "true" else "true")
+    for match in JS_STRING.finditer(masked):
+        before = masked[:match.start()].rstrip()
+        after = masked[match.end():]
+        if before and not (before.endswith(("[", ",")) and before.count("[") > before.count("]")):
+            continue
+        comma = re.match(r"\s*,\s*", after)
+        if comma:
+            at(match.start(), match.end() + comma.end(), "")
+        elif not after.lstrip().startswith("]"):
+            continue
+        elif before.endswith(","):
+            at(len(before) - 1, match.end(), "")
+        else:
+            at(match.start(), match.end(), "")
+    condition = re.match(r"^\s*(?:\}\s*else\s+)?if \(", masked)
+    if condition:
+        close = closing_paren(masked, condition.end())
+        if close is not None:
+            for value in ("true", "false"):
+                at(condition.end(), close, value)
+    # `void (...)` keeps a call that spans several lines valid while the
+    # block is no longer returned.
+    for match in re.finditer(r"\breturn block\(", masked):
+        at(match.start(), match.end(), "void (")
+    seen = set()
+    return [m for m in found if m != text and not (m in seen or seen.add(m))]
+
+
 def mutants_for(path, lines, root=ROOT):
     source = (Path(root) / path).read_text().splitlines()
+    generate = js_line_mutants if is_hook(path) else line_mutants
     mutants = []
     for number in sorted(lines):
         if number > len(source):
             continue
         above = next((line.strip() for line in reversed(source[:number - 1]) if line.strip()), "")
-        for mutated in line_mutants(source[number - 1]):
+        for mutated in generate(source[number - 1]):
             mutants.append(Mutant(path, number, above, source[number - 1].strip(), mutated.strip()))
     return mutants
 
@@ -280,8 +365,24 @@ def run_tests(copy, build, timeout, cxx):
     return "failed" if binary.exists() else "unbuilt"
 
 
-def judge(copies, mutants, timeout, cxx, deadline=None):
+def run_hook_tests(copy, timeout, file=None):
+    """Return "passed", "failed" or "unbuilt" for the hook and script tests in `copy`.
+
+    With `file`, a hook `node --check` rejects is "unbuilt" and not counted.
+    """
+    if file is not None and subprocess.run(["node", "--check", file], cwd=copy, capture_output=True).returncode:
+        return "unbuilt"
+    try:
+        result = subprocess.run(HOOK_TESTS, cwd=copy, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return "failed"
+    return "passed" if result.returncode == 0 else "failed"
+
+
+def judge(copies, mutants, timeouts, cxx, deadline=None):
     """Return (survivors, counts), running one mutant per free copy.
+
+    `timeouts` maps "c++" and "hook" to the time limit of one test run.
 
     `counts` maps "caught", "skipped" and "unrun" to how many mutants ended
     that way. A mutant not started by `deadline` (a time.monotonic() value)
@@ -304,7 +405,10 @@ def judge(copies, mutants, timeout, cxx, deadline=None):
             indent = lines[index][:len(lines[index]) - len(lines[index].lstrip())]
             lines[index] = indent + mutant.mutant
             target.write_bytes("\n".join(lines).encode())
-            outcome = run_tests(copy, Path(copy) / ".mutation-build", timeout, cxx)
+            if is_hook(mutant.file):
+                outcome = run_hook_tests(copy, timeouts["hook"], mutant.file)
+            else:
+                outcome = run_tests(copy, Path(copy) / ".mutation-build", timeouts["c++"], cxx)
             return mutant, {"passed": "survived", "failed": "caught", "unbuilt": "skipped"}[outcome]
         finally:
             target.write_bytes(original)
@@ -333,8 +437,14 @@ def print_entry(mutant):
 def run(base, jobs, cxx, list_only=False, root=ROOT, budget_minutes=None):
     equivalents = read_equivalents()
     changed = changed_lines(base, cwd=root)
+    hooks = sorted(path for path in changed if is_hook(path))
+    if hooks and shutil.which("node") is None:
+        for path in hooks:
+            print(f"skip {path}: node is not installed")
+            del changed[path]
+        hooks = []
     if not changed:
-        print("No changed C++ lines outside tests/; nothing to mutate.")
+        print("No changed C++ or hook lines outside tests/; nothing to mutate.")
         return 0
     with tempfile.TemporaryDirectory(prefix="exult-mutants-") as scratch:
         copies = []
@@ -342,11 +452,19 @@ def run(base, jobs, cxx, list_only=False, root=ROOT, budget_minutes=None):
             copy = Path(scratch) / f"copy{number}"
             copy_tree(root, copy)
             copies.append(copy)
-        started = time.monotonic()
-        if run_tests(copies[0], copies[0] / ".mutation-build", None, cxx) != "passed":
-            raise Unjudgeable(f"the unmutated unit tests fail; run {RUNNER} and fix them first")
-        timeout = 3 * (time.monotonic() - started) + 60
-        in_build = built_files(copies[0] / ".mutation-build", copies[0])
+        timeouts = {}
+        in_build = set(hooks)
+        if len(hooks) < len(changed):
+            started = time.monotonic()
+            if run_tests(copies[0], copies[0] / ".mutation-build", None, cxx) != "passed":
+                raise Unjudgeable(f"the unmutated unit tests fail; run {RUNNER} and fix them first")
+            timeouts["c++"] = 3 * (time.monotonic() - started) + 60
+            in_build |= built_files(copies[0] / ".mutation-build", copies[0])
+        if hooks:
+            started = time.monotonic()
+            if run_hook_tests(copies[0], None) != "passed":
+                raise Unjudgeable(f"the unmutated hook tests fail; run {' '.join(HOOK_TESTS)} and fix them first")
+            timeouts["hook"] = 3 * (time.monotonic() - started) + 60
         mutants = []
         for path in sorted(changed):
             if path not in in_build:
@@ -361,7 +479,7 @@ def run(base, jobs, cxx, list_only=False, root=ROOT, budget_minutes=None):
         if not mutants:
             return 0
         deadline = time.monotonic() + 60 * budget_minutes if budget_minutes else None
-        survivors, counts = judge(copies, mutants, timeout, cxx, deadline)
+        survivors, counts = judge(copies, mutants, timeouts, cxx, deadline)
     unlisted = [m for m in survivors if m.key() not in equivalents]
     print(f"caught {counts['caught']}, survived {len(survivors)} ({len(survivors) - len(unlisted)} listed), "
           f"did not compile {counts['skipped']}, not run {counts['unrun']}")

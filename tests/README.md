@@ -93,8 +93,12 @@ product files the unit tests compile or include (a comparison flipped, `&&`
 swapped with `||`, an `if` forced true or false, a statement dropped, ...),
 rebuilds and runs the unit tests after each, and fails when they still pass on
 an edit that `tests/mutation-equivalents.txt` does not list. Changed files the
-unit build never sees are skipped. It works on temporary copies and never edits
-the checkout.
+unit build never sees are skipped. Changed lines of the Claude Code hooks in
+`.claude/hooks/*.mjs` get JavaScript edits (`===` flipped, a string dropped
+from an array, an `if` forced, a `return block(...)` dropped) and run
+`node --test '.claude/hooks/tests/*.test.mjs' 'scripts/tests/*.test.mjs'`
+instead; without `node` they are skipped. It works on temporary copies and
+never edits the checkout.
 
 ```sh
 python3 -B tests/mutate_changed.py                       # compare HEAD with origin/master
