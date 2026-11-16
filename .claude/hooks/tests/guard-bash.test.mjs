@@ -290,6 +290,12 @@ const blocked = [
     'SBR=all git --config-env=safe.bareRepository=SBR -C evil show',
     'git --config-env safe.bareRepository=SBR show',
     'cd evil && git -c safe.bareRepository=all show',
+    // the walk must step over the value of --config-env and --namespace too,
+    // or the value reads as the subcommand and the options after it go unchecked
+    'git --config-env user.name=V --git-dir=evil log -p -1',
+    'git --config-env user.name=V --bare show',
+    'git --namespace x --git-dir=evil log -p -1',
+    'git --namespace x -c safe.bareRepository=all show',
     'GIT_EXTERNAL_DIFF=sh git diff',
     'GIT_TRACE=/tmp/x git status',
     'printf "%s\\n" --output=x | xargs git log',
