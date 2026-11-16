@@ -56,6 +56,11 @@ const allowed = [
     'git log -p --output-indicator-new=+ -1',
     'git diff --stat origin/master...HEAD',
     'git show HEAD:configure.ac',
+    // a --bare after the subcommand is not git's global option
+    'git log --oneline -- --bare',
+    'git init --bare /var/tmp/x.git',
+    // only a key in the safe.* section is refused, not one that merely contains it
+    'git -c branch.unsafe.merge=x status',
     'GIT_PAGER=cat git log -1',
     'GIT_AUTHOR_NAME=x GIT_AUTHOR_EMAIL=x@example.com git commit -s -m msg',
     'git grep -n Shape_manager',
@@ -266,6 +271,25 @@ const blocked = [
     'git log --ext-diff',
     'git diff --no-index /etc/passwd /dev/null',
     'git -c core.pager=sh log',
+    // the option spellings of GIT_DIR / GIT_WORK_TREE: a named bare repository
+    // gets past safe.bareRepository=explicit, so its textconv program would run
+    'git --git-dir=evil log -p -1',
+    'git --git-dir evil show',
+    'git --bare -C evil log -p -1',
+    'git -C evil --bare show',
+    'git --work-tree=.. diff HEAD',
+    'git --work-tree .. status',
+    'git --no-pager --git-dir=evil show',
+    'timeout 5 git --bare show',
+    // `-c` / `--config-env` would override the safe.bareRepository=explicit
+    // settings env, so a discovered bare repository's textconv would run again
+    'git -c safe.bareRepository=all -C evil log -p -1',
+    'git -c SAFE.BAREREPOSITORY=all show',
+    'git -c safe.directory=* -C evil show',
+    'git -c user.name=x -c safe.bareRepository=all show',
+    'SBR=all git --config-env=safe.bareRepository=SBR -C evil show',
+    'git --config-env safe.bareRepository=SBR show',
+    'cd evil && git -c safe.bareRepository=all show',
     'GIT_EXTERNAL_DIFF=sh git diff',
     'GIT_TRACE=/tmp/x git status',
     'printf "%s\\n" --output=x | xargs git log',

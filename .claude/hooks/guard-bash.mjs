@@ -402,7 +402,6 @@ function checkPrCreate(args) {
 // ---------------------------------------------------------------------------
 
 function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
-    let redirected = false;
     // Walk global options to find the subcommand, vetting `-c key=value`.
     let i = 0;
     while (i < args.length && args[i].startsWith('-')) {
@@ -416,12 +415,32 @@ function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
         if (configKey !== null && EXEC_GIT_CONFIG.test(configKey)) {
             return block(`Blocked: \`git ${a} ${configKey}=...\` makes git run a program or read other config.`);
         }
+        // `-c` is read at the same scope as the GIT_CONFIG_* settings env and
+        // wins over it, so `-c safe.bareRepository=all` would switch off the
+        // protection .claude/settings.json sets. The env spellings are refused
+        // through riskyEnv() below; this refuses the option spellings.
+        if (configKey !== null && /^safe\./i.test(configKey)) {
+            return block(
+                `Blocked: \`git ${a} ${configKey}=...\` overrides the safe.* setting in .claude/settings.json ` +
+                    'that stops a committed repository folder from running a program. Run git without it.'
+            );
+        }
         if (a.startsWith('--exec-path=')) {
             return block('Blocked: `git --exec-path=DIR` runs git commands from another directory.');
         }
         if (a === '-C') cwd = cwd === null ? null : resolve(cwd ?? process.cwd(), args[i + 1] ?? '.');
-        if (a === '--git-dir' || a === '--work-tree' || a.startsWith('--git-dir=') || a.startsWith('--work-tree=')) redirected = true;
-        i += ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'].includes(a) ? 2 : 1;
+        // safe.bareRepository=explicit (.claude/settings.json) refuses a bare
+        // repository git finds by itself, but allows one that is named, and
+        // these options name it: a bare repository committed in a branch could
+        // then run its diff.*.textconv program. --work-tree reads outside the
+        // project. git matches these global options exactly, not by prefix.
+        if (['--git-dir', '--bare', '--work-tree'].includes(a) || /^--(?:git-dir|work-tree)=/.test(a)) {
+            return block(
+                `Blocked: \`git ${a.split('=')[0]}\` points git at another repository or work tree, ` +
+                    'whose config can make git run a program. Run git from the project without it.'
+            );
+        }
+        i += ['-C', '-c', '--namespace', '--config-env'].includes(a) ? 2 : 1;
     }
     const sub = args[i];
     const rest = args.slice(i + 1);
@@ -460,7 +479,6 @@ function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
         }
     }
     if (sub === 'push') {
-        if (redirected) return block('Blocked: `git push` with --git-dir/--work-tree; the repository being pushed cannot be verified.');
         return checkGitPush(rest, cwd);
     }
     if (sub === 'remote') return checkGitRemote(rest);

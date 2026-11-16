@@ -94,3 +94,60 @@ test('a committed bare repository cannot make a pre-approved git show or git log
     assert.equal(git(victim, agentEnv, 'log', '-1', '--format=%s').stdout.trim(), 'x');
     assert.equal(git(victim, agentEnv, 'show', '--format=%s', '-s').stdout.trim(), 'x');
 });
+
+// Runs `git args` in `cwd` with the settings env, checks that it still reaches
+// the planted program (so the route is real), then checks that the guard hook
+// refuses the same command line with a message matching `reason`.
+function assertRouteRunsAndHookRefuses(cwd, env, marker, args, reason) {
+    const command = `git ${args.join(' ')}`;
+    git(cwd, env, ...args);
+    assert.ok(existsSync(marker), `${command} no longer runs the program; this test needs a new route`);
+    rmSync(marker);
+
+    const hook = fileURLToPath(new URL('../../.claude/hooks/guard-bash.mjs', import.meta.url));
+    const r = spawnSync(process.execPath, [hook], {
+        input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+        encoding: 'utf8',
+    });
+    assert.equal(r.status, 2, `the guard hook should refuse ${command}: ${r.stderr}`);
+    assert.match(r.stderr, reason);
+}
+
+// safe.bareRepository=explicit refuses a bare repository git finds by itself,
+// but allows one that is named with --git-dir or --bare.
+test('a named bare repository still runs the program, so the guard hook refuses it', (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'bare-repo-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const marker = join(dir, 'ran');
+    const victim = plantedClone(dir, marker);
+    const agentEnv = { ...baseEnv(dir), ...settingsEnv };
+
+    for (const [cwd, args] of [
+        [victim, ['--git-dir=evil', 'log', '-p', '-1']],
+        [victim, ['--git-dir', 'evil', 'show']],
+        [join(victim, 'evil'), ['--bare', 'show']],
+        [join(victim, 'evil'), ['--bare', 'log', '-p', '-1']],
+    ]) {
+        assertRouteRunsAndHookRefuses(cwd, agentEnv, marker, args, /--git-dir|--bare/);
+    }
+});
+
+// git reads `-c` and `--config-env` at the same scope as the GIT_CONFIG_*
+// settings env, and the later value wins, so `git -c safe.bareRepository=all`
+// switches the protection off for that one command.
+test('a command-line safe.bareRepository override still runs the program, so the guard hook refuses it', (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'bare-repo-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const marker = join(dir, 'ran');
+    const victim = plantedClone(dir, marker);
+    const agentEnv = { ...baseEnv(dir), ...settingsEnv, SBR: 'all' };
+
+    for (const [cwd, args] of [
+        [victim, ['-c', 'safe.bareRepository=all', '-C', 'evil', 'log', '-p', '-1']],
+        [victim, ['-c', 'safe.bareRepository=all', '-C', 'evil', 'show']],
+        [join(victim, 'evil'), ['-c', 'safe.bareRepository=all', 'show']],
+        [victim, ['--config-env=safe.bareRepository=SBR', '-C', 'evil', 'show']],
+    ]) {
+        assertRouteRunsAndHookRefuses(cwd, agentEnv, marker, args, /safe\.bareRepository/);
+    }
+});
