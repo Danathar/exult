@@ -5,7 +5,10 @@ name: Mutation check
 # and fails when they pass on a break tests/mutation-equivalents.txt does not
 # list. Pull requests only: it compares the head with the base branch. Changed
 # files the unit build never sees are skipped, so most engine-only PRs finish
-# after one baseline build.
+# after one baseline build. Changed lines of the Claude Code hooks in
+# .claude/hooks/*.mjs get JavaScript edits and run the Node hook and script
+# tests instead; Node 24 is installed because Debian's Node 20 `node --test`
+# does not expand the test globs.
 
 on:
   pull_request:
@@ -41,6 +44,11 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python3 -B -m unittest discover -s tests -p 'test_mutate_changed.py'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
 
       - name: Mutate changed lines
         env:

@@ -11,6 +11,7 @@ import contextlib
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent / "mutate_changed.py"
 spec = importlib.util.spec_from_file_location("mutate_changed", SCRIPT)
@@ -65,6 +66,12 @@ class ChangedLines(unittest.TestCase):
         git(self.repo.path, "branch", "start")
         self.repo.commit({"a.cc": "one\nthree\n"})
         self.assertEqual(mc.changed_lines("start", cwd=self.repo.path), {})
+
+    def test_hooks_count_but_not_their_tests_or_other_scripts(self):
+        git(self.repo.path, "branch", "start")
+        self.repo.commit({".claude/hooks/guard.mjs": "a\nb\n", ".claude/hooks/tests/guard.test.mjs": "t\n",
+                          "scripts/tool.mjs": "s\n"})
+        self.assertEqual(mc.changed_lines("start", cwd=self.repo.path), {".claude/hooks/guard.mjs": {1, 2}})
 
     def test_unknown_base_cannot_be_judged(self):
         with self.assertRaises(mc.Unjudgeable):
@@ -142,6 +149,59 @@ class LineMutants(unittest.TestCase):
     def test_assignment_and_call_statements_are_dropped(self):
         self.assertEqual(mc.line_mutants("\tname = resolved;"), ["\t;"])
         self.assertEqual(mc.line_mutants("\tclosedir(dir);"), ["\t;"])
+
+
+class JsLineMutants(unittest.TestCase):
+    def test_strict_comparisons_and_forced_if(self):
+        self.assertEqual(set(mc.js_line_mutants("    if (a === '--repo' || a !== '-R') values.push(x);")), {
+            "    if (a !== '--repo' || a !== '-R') values.push(x);",
+            "    if (a === '--repo' || a === '-R') values.push(x);",
+            "    if (true) values.push(x);",
+            "    if (false) values.push(x);",
+        })
+
+    def test_booleans(self):
+        self.assertEqual(set(mc.js_line_mutants("        if (allowed === true) return null;")), {
+            "        if (allowed !== true) return null;",
+            "        if (allowed === false) return null;",
+            "        if (true) return null;",
+            "        if (false) return null;",
+        })
+
+    def test_array_string_entries_are_dropped(self):
+        self.assertEqual(set(mc.js_line_mutants("    if (['secret', 'variable'].includes(group)) {")), {
+            "    if (['variable'].includes(group)) {",
+            "    if (['secret'].includes(group)) {",
+            "    if (true) {",
+            "    if (false) {",
+        })
+        self.assertEqual(set(mc.js_line_mutants("    pr: ['view', 'list'],")),
+                         {"    pr: ['list'],", "    pr: ['view'],"})
+        self.assertEqual(mc.js_line_mutants("    only: ['x'],"), ["    only: [],"])
+        self.assertEqual(mc.js_line_mutants("        'view',"), ["        "])
+
+    def test_strings_outside_arrays_are_kept(self):
+        self.assertEqual(mc.js_line_mutants("    f('a', b);"), [])
+        self.assertEqual(mc.js_line_mutants("    x = { a: 'b' };"), [])
+
+    def test_return_block_is_dropped(self):
+        self.assertEqual(mc.js_line_mutants("        return block('Blocked: x === y');"),
+                         ["        void ('Blocked: x === y');"])
+        self.assertEqual(mc.js_line_mutants("    return block("), ["    void ("])
+        self.assertEqual(mc.js_line_mutants("        return block(`Blocked: ${a === b}`);"),
+                         ["        void (`Blocked: ${a === b}`);"])
+
+    def test_comments_are_left_alone(self):
+        self.assertEqual(mc.js_line_mutants("    // a === b"), [])
+        self.assertEqual(mc.js_line_mutants(" * a === true"), [])
+
+    def test_hook_files_use_the_js_edits(self):
+        with tempfile.TemporaryDirectory() as root:
+            hook = Path(root) / ".claude/hooks/g.mjs"
+            hook.parent.mkdir(parents=True)
+            hook.write_text("function f(a) {\n    return a === 1;\n}\n")
+            got = mc.mutants_for(".claude/hooks/g.mjs", {2}, root=root)
+        self.assertEqual([m.mutant for m in got], ["return a !== 1;"])
 
 
 class Equivalents(unittest.TestCase):
@@ -287,6 +347,63 @@ class Run(unittest.TestCase):
     def test_main_maps_unjudgeable_to_2(self):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(mc.main(["--base", "no-such-ref"]), 2)
+
+
+class HookRun(unittest.TestCase):
+    """run() over a changed hook, with the node tests replaced by a stub."""
+
+    HOOK = ".claude/hooks/g.mjs"
+
+    def setUp(self):
+        self.repo = Repo({self.HOOK: "export function f(a) {\n    return a;\n}\n"})
+        self.addCleanup(self.repo.close)
+        git(self.repo.path, "branch", "start")
+        self.repo.commit({self.HOOK: "export function f(a) {\n    return a === 1;\n}\n"})
+        self.saved = (mc.run_tests, mc.run_hook_tests, mc.EQUIVALENTS)
+        self.addCleanup(self.restore)
+        mc.EQUIVALENTS = self.repo.path / "eq.txt"
+        self.cpp_calls = []
+        mc.run_tests = lambda *args: self.cpp_calls.append(args) or "passed"
+
+    def restore(self):
+        mc.run_tests, mc.run_hook_tests, mc.EQUIVALENTS = self.saved
+
+    def stub(self, verdict):
+        calls = []
+
+        def run_hook_tests(copy, timeout, file=None):
+            text = (Path(copy) / self.HOOK).read_text()
+            calls.append(text)
+            return "passed" if len(calls) == 1 else verdict(text)
+
+        mc.run_hook_tests = run_hook_tests
+        return calls
+
+    def run_quiet(self, node="/usr/bin/node"):
+        with mock.patch.object(mc.shutil, "which", lambda name: node):
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                code = mc.run("start", 1, "c++", root=self.repo.path)
+        return code, out.getvalue()
+
+    def test_hook_survivor_exits_1_without_the_unit_build(self):
+        calls = self.stub(lambda text: "passed" if "!==" in text else "failed")
+        code, out = self.run_quiet()
+        self.assertEqual(code, 1)
+        self.assertIn(f"file: {self.HOOK}\nline: 2\nafter: export function f(a) {{\n"
+                      "original: return a === 1;\nmutant: return a !== 1;\nreason:\n", out)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.cpp_calls, [])
+
+    def test_caught_hook_mutant_exits_0(self):
+        self.stub(lambda text: "failed")
+        self.assertEqual(self.run_quiet()[0], 0)
+
+    def test_hooks_are_skipped_without_node(self):
+        calls = self.stub(lambda text: "passed")
+        code, out = self.run_quiet(node=None)
+        self.assertEqual(code, 0)
+        self.assertIn(f"skip {self.HOOK}: node is not installed", out)
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
