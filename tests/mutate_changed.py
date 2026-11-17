@@ -336,7 +336,12 @@ def read_equivalents(path=None):
 
 
 def copy_tree(source, target):
-    """Copy the tracked files of the checkout at `source` into `target`."""
+    """Copy the tracked files of the checkout at `source` into `target`.
+
+    The copy is a git repository with those files staged and the source's
+    `origin`, because the hook tests ask git which files are tracked and
+    where a push goes. `-f` keeps a tracked file that .gitignore matches.
+    """
     names = git("ls-files", "-z", cwd=source).split("\0")
     for name in filter(None, names):
         src = Path(source) / name
@@ -344,6 +349,15 @@ def copy_tree(source, target):
             dst = Path(target) / name
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
+    Path(target).mkdir(parents=True, exist_ok=True)
+    git("init", "-q", cwd=target)
+    try:
+        origin = git("remote", "get-url", "origin", cwd=source).strip()
+    except Unjudgeable:
+        origin = None
+    if origin:
+        git("remote", "add", "origin", origin, cwd=target)
+    git("add", "-A", "-f", cwd=target)
 
 
 def run_tests(copy, build, timeout, cxx):
