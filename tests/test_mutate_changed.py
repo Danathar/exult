@@ -92,6 +92,40 @@ class BuiltFiles(unittest.TestCase):
             self.assertEqual(mc.built_files(build, root), {"files/utils.cc", "files/utils.h"})
 
 
+class CopyTree(unittest.TestCase):
+    """The hook tests run git in the copy: `git ls-files`, and the push target's `origin`."""
+
+    def setUp(self):
+        self.repo = Repo({".gitignore": "*.log\n", "a.txt": "a\n", "docs/b.md": "b\n"})
+        self.addCleanup(self.repo.close)
+        self.repo.write({"kept.log": "k\n"})
+        git(self.repo.path, "add", "-f", "kept.log")
+        git(self.repo.path, "commit", "-q", "-m", "tracked but ignored")
+        (self.repo.path / "untracked.txt").write_text("u\n")
+        self.copy = tempfile.TemporaryDirectory()
+        self.addCleanup(self.copy.cleanup)
+        self.target = Path(self.copy.name) / "copy"
+
+    def ls_files(self, path):
+        return subprocess.run(["git", "ls-files"], cwd=path, check=True, capture_output=True,
+                              text=True).stdout.split()
+
+    def test_copy_tracks_the_same_files_and_keeps_origin(self):
+        git(self.repo.path, "remote", "add", "origin", "https://github.com/example/repo")
+        mc.copy_tree(self.repo.path, self.target)
+        self.assertEqual(self.ls_files(self.target), [".gitignore", "a.txt", "docs/b.md", "kept.log"])
+        self.assertFalse((self.target / "untracked.txt").exists())
+        origin = subprocess.run(["git", "remote", "get-url", "origin"], cwd=self.target, capture_output=True,
+                                text=True)
+        self.assertEqual(origin.stdout.strip(), "https://github.com/example/repo")
+
+    def test_copy_of_a_checkout_without_origin_has_no_remote(self):
+        mc.copy_tree(self.repo.path, self.target)
+        self.assertEqual(self.ls_files(self.target), [".gitignore", "a.txt", "docs/b.md", "kept.log"])
+        remotes = subprocess.run(["git", "remote"], cwd=self.target, check=True, capture_output=True, text=True)
+        self.assertEqual(remotes.stdout, "")
+
+
 class Mask(unittest.TestCase):
     def test_blanks_literals_and_comments_keeping_offsets(self):
         line = 'if (a == "x == y" && c == \'!\') { // b == c'
