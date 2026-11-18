@@ -4,7 +4,9 @@
 #
 #   1. ucc compiles a small usecode script; a script with a syntax error must be
 #      rejected (non-zero exit, no output file). Regression inputs that used to
-#      crash ucc or exit 0 must fail cleanly or compile.
+#      crash ucc or exit 0 must fail cleanly or compile. #include pulls in
+#      another file once, searches -I, and fails cleanly when the file is
+#      missing, the name is unquoted or nesting passes 21 files.
 #   2. expack builds a Flex archive from known files, lists it, extracts it, and
 #      the extracted bytes must equal the inputs. A truncated archive must not
 #      round-trip.
@@ -247,6 +249,53 @@ ucc_rejects fold_div_overflow "a constant division that overflows 32 bits"
 
 printf 'const int m = (-2147483647 - 1) %% -1;\n' > "$work/fold_mod_overflow.uc"
 ucc_rejects fold_mod_overflow "a constant remainder that overflows 32 bits"
+
+# #include: the included file's code is compiled, a file is included once, -I is
+# searched, and a missing file, an unquoted name or nesting past 21 files fail cleanly.
+mkdir "$work/incdir"
+printf 'var helper (var a)\n{\n\treturn a;\n}\n' > "$work/inc_lib.uc"
+printf '#game "blackgate"\n#autonumber 0xC00\n#include "inc_lib.uc"\n\nvar use_helper ()\n{\n\treturn helper(1);\n}\n' > "$work/inc_use.uc"
+ucc_accepts inc_use "a script that calls a function from an #include file"
+
+printf '#game "blackgate"\n#autonumber 0xC00\n#include "inc_lib.uc"\n#include "inc_lib.uc"\n\nvar use_helper ()\n{\n\treturn helper(1);\n}\n' > "$work/inc_twice.uc"
+ucc_accepts inc_twice "a script that includes the same file twice"
+
+printf 'var dir_helper (var a)\n{\n\treturn a;\n}\n' > "$work/incdir/inc_dirlib.uc"
+printf '#game "blackgate"\n#autonumber 0xC00\n#include "inc_dirlib.uc"\n\nvar use_dir_helper ()\n{\n\treturn dir_helper(1);\n}\n' > "$work/inc_dir.uc"
+rc=0
+(cd "$work" && "$ucc" -I incdir -o inc_dir.uco inc_dir.uc >ucc-inc_dir.log 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$work/inc_dir.uco" ]; then
+	ok "ucc finds an #include file through -I"
+else
+	bad "ucc failed (exit $rc) on an #include file found only through -I"; cat "$work/ucc-inc_dir.log" >&2 || true
+fi
+
+printf '#game "blackgate"\n#include "inc_missing.uc"\n' > "$work/inc_nofile.uc"
+ucc_rejects inc_nofile "an #include of a file that does not exist"
+if grep -q "cannot open include file 'inc_missing.uc'" "$work/ucc-inc_nofile.log"; then
+	ok "ucc names the missing #include file"
+else
+	bad "ucc did not name the missing #include file"; cat "$work/ucc-inc_nofile.log" >&2 || true
+fi
+
+printf '#game "blackgate"\n#include inc_lib.uc\n' > "$work/inc_unquoted.uc"
+ucc_rejects inc_unquoted "an #include without a quoted filename"
+
+# inc_chainN.uc includes inc_chain(N+1).uc; the last one defines chain_end.
+# Starting at 1 nests 21 files deep (the limit), starting at 0 nests 22.
+for i in $(seq 0 20); do
+	printf '#include "inc_chain%d.uc"\n' "$((i + 1))" > "$work/inc_chain$i.uc"
+done
+printf 'var chain_end (var a)\n{\n\treturn a;\n}\n' > "$work/inc_chain21.uc"
+printf '#game "blackgate"\n#autonumber 0xC00\n#include "inc_chain1.uc"\n' > "$work/inc_deep21.uc"
+ucc_accepts inc_deep21 "#include nested 21 files deep"
+printf '#game "blackgate"\n#autonumber 0xC00\n#include "inc_chain0.uc"\n' > "$work/inc_deep22.uc"
+ucc_rejects inc_deep22 "#include nested 22 files deep"
+if grep -q "include nesting exceeds the limit of 21 files" "$work/ucc-inc_deep22.log"; then
+	ok "ucc reports the #include nesting limit"
+else
+	bad "ucc did not report the #include nesting limit"; cat "$work/ucc-inc_deep22.log" >&2 || true
+fi
 
 # --- expack ------------------------------------------------------------
 mkdir "$work/in" "$work/out"
