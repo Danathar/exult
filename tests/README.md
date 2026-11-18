@@ -30,7 +30,9 @@ Builds the command-line tools `ucc`, `expack` and `ucxt` (autoreconf + configure
 with `--disable-exult --enable-compiler`, then only the needed targets), then:
 
 - compiles a small usecode script with `ucc` and checks that a script with a
-  syntax error is rejected;
+  syntax error is rejected; checks `#include` (the included code compiles, a file
+  is included once, `-I` is searched, a missing file, an unquoted name and nesting
+  past 21 files are rejected);
 - packs files into a Flex archive with `expack -c`, lists it with `-l`,
   extracts it with `-x`, and compares the extracted bytes to the inputs;
 - packs a manifest with `expack -i MANIFEST OUTDIR` and checks that the archive
