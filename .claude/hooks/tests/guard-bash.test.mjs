@@ -56,6 +56,25 @@ const allowed = [
     'git log -p --output-indicator-new=+ -1',
     'git diff --stat origin/master...HEAD',
     'git show HEAD:configure.ac',
+    // the walk steps over --attr-source's value to the subcommand
+    'git --attr-source HEAD log -p -1',
+    // removing or emptying a variable other than the GIT_CONFIG_* settings env
+    'unset FOO; git log -1',
+    'export -n FOO; git log -1',
+    'env -u FOO git log -1',
+    'env -S -u FOO git log -1',
+    'exec -a name git log -1',
+    // HOME is only read, or set for a program other than git
+    'cd "$HOME" && git status',
+    'export HOME; git status',
+    'HOME=/tmp/h make check',
+    'make check HOME=/tmp/h',
+    // env and wrapper options that neither remove a variable nor clear the environment
+    'env --unset=FOO git log -1',
+    'env --chdir=/tmp git log -1',
+    'env -C /tmp git log -1',
+    'ionice -c 3 git log -1',
+    'declare +x FOO; git log -1',
     // a --bare after the subcommand is not git's global option
     'git log --oneline -- --bare',
     'git init --bare /var/tmp/x.git',
@@ -296,6 +315,52 @@ const blocked = [
     'git --config-env user.name=V --bare show',
     'git --namespace x --git-dir=evil log -p -1',
     'git --namespace x -c safe.bareRepository=all show',
+    // the walk must step over --attr-source and --super-prefix values too
+    'git --attr-source HEAD --git-dir=evil log -p',
+    'git --attr-source HEAD -c safe.bareRepository=all log -p',
+    'git --super-prefix x/ --bare show',
+    // --shallow-file reads a file and can print its first line
+    'git --shallow-file .env log -1',
+    'git --shallow-file=.env log -1',
+    'git --shallow-file HEAD --git-dir=evil log -p',
+    // removing the GIT_CONFIG_* settings env puts git back on its default
+    'unset GIT_CONFIG_COUNT; git log -p',
+    'v=GIT_CONFIG_COUNT; unset $v; git log -p',
+    'export -n GIT_CONFIG_COUNT; git log -p',
+    'declare +x GIT_CONFIG_COUNT; git log -p',
+    'typeset +x GIT_CONFIG_KEY_0; git log -p',
+    'env -u GIT_CONFIG_COUNT git log -p',
+    'env -uGIT_CONFIG_COUNT git log -p',
+    'env -iu GIT_CONFIG_COUNT git log -p',
+    'env --unset=GIT_CONFIG_COUNT git log -p',
+    'env --un GIT_CONFIG_KEY_0 git log -p',
+    'env -S-u GIT_CONFIG_COUNT git log -p',
+    // emptying the environment drops it as well
+    'env -i git log -p',
+    'env - git log -p',
+    'env --ignore-environment git log -p',
+    'env -i bash -c "git log -p"',
+    'env -i -S "git log -p"',
+    'env -S -i git log -p',
+    'env --split-string=-i git log -p',
+    'timeout 5 env -i git log -p',
+    'exec -c git log -p',
+    'exec -cl git log -p',
+    'exec -a name -c git log -p',
+    'exec -l -c git log -p',
+    // overwriting it keeps the variable exported with the new value
+    'GIT_CONFIG_COUNT=0; git log -p',
+    'GIT_CONFIG_VALUE_0=all; git log -p',
+    'declare GIT_CONFIG_VALUE_0=all; git log -p',
+    'local GIT_CONFIG_COUNT=0',
+    // HOME / XDG_CONFIG_HOME pointed at a branch's directory load its .gitconfig
+    'HOME=planted git diff HEAD~1 HEAD',
+    'HOME=planted; git log -p',
+    'export HOME=planted; git diff HEAD~1 HEAD',
+    'env HOME=planted git diff HEAD~1 HEAD',
+    'readonly HOME=planted',
+    'XDG_CONFIG_HOME=planted git diff HEAD~1 HEAD',
+    'XDG_CONFIG_HOME=planted; git diff HEAD~1 HEAD',
     'GIT_EXTERNAL_DIFF=sh git diff',
     'GIT_TRACE=/tmp/x git status',
     'printf "%s\\n" --output=x | xargs git log',
@@ -917,6 +982,20 @@ test('pushing HEAD or no refspec is blocked on master and allowed on other branc
         assert.equal(run(`cd ${dir} && git push origin feature`).status, 0, 'cd into a good repo');
     } finally {
         rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('a refusal about git settings names the variable it protects', () => {
+    for (const [command, reason] of [
+        ['GIT_CONFIG_COUNT=0; git log -p', /`GIT_CONFIG_COUNT=0` overwrites the GIT_CONFIG_\* settings env/],
+        ['HOME=planted; git log -p', /`HOME=planted` changes where git reads its global config/],
+        ['readonly XDG_CONFIG_HOME=planted', /`readonly XDG_CONFIG_HOME=planted` changes where git reads/],
+        ['export -n GIT_CONFIG_COUNT; git log -p', /`export -n GIT_CONFIG_COUNT` can remove the GIT_CONFIG_\* settings env/],
+        ['HOME=planted git log -p', /`git` with HOME set reads its global config/],
+    ]) {
+        const r = run(command);
+        assert.equal(r.status, 2, command);
+        assert.match(r.stderr, reason, command);
     }
 });
 
