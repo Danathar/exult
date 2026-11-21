@@ -35,7 +35,7 @@ issue/branch/PR --this directory--> ledger row
 
 - Closing reference:
   `gh pr view <N> --repo Danathar/exult --json closingIssuesReferences --jq '[.closingIssuesReferences[].number]'`
-- Hive signature: Hive PRs end with `— hive: agent=<name>` and are opened by
+- Hive signature: Hive PRs end with `-- hive: agent=<name>` (PRs before 2026-11-18 carry `— hive:`) and are opened by
   `app/danathar-atomic-hive`. A PR the owner opened from a local session carries
   the owner's login; do not read "unsigned" as "human-written".
 - Branch: `gh pr list --repo Danathar/exult --state all --head <branch> --json number,state,mergedAt`

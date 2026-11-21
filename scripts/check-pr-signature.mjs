@@ -4,7 +4,7 @@
  * requirements.
  *
  * `scripts/ai-audit-report.mjs` reads merged pull requests weekly and flags an
- * agent PR whose body has no `— hive: agent=...` line, or no link to an issue
+ * agent PR whose body has no `-- hive: agent=...` line (the older `— hive:` spelling also counts), or no link to an issue
  * in this repository; by then the body can no longer be fixed.
  * `.github/workflows/agent-signature.yml` runs this script on an open agent PR
  * instead, so the body can be fixed before merge.
@@ -35,11 +35,12 @@ export function main(env = process.env, stdout = process.stdout, stderr = proces
     let code = 0;
 
     if (findSignature(env.PR_BODY)) {
-        stdout.write('The pull request body has a `— hive: agent=...` signature line.\n');
+        stdout.write('The pull request body has a `-- hive: agent=...` signature line.\n');
     } else {
         stderr.write(
-            '::error::The pull request body has no `— hive: agent=<name> ...` signature line ' +
-                `(outside code blocks). ${audit} ${fix}\n`,
+            '::error::The pull request body has no `-- hive: agent=<name> ...` signature line ' +
+                '(the older `— hive:` spelling also counts; outside code blocks). ' +
+                `${audit} ${fix}\n`,
         );
         code = 1;
     }

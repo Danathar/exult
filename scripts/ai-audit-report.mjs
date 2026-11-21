@@ -12,8 +12,8 @@
  *
  * A PR is agent-authored when its author is the Hive GitHub App
  * (`app/danathar-atomic-hive` in `gh` output, `danathar-atomic-hive[bot]` in
- * REST/webhook output) or its body has a `— hive: agent=<name> ...` signature
- * line (the Hive lane), or it was opened by the Claude workflow (claude.yml, ai-fix.yml):
+ * REST/webhook output) or its body has a `-- hive: agent=<name> ...` signature
+ * line (the Hive lane; the older `— hive:` spelling also counts), or it was opened by the Claude workflow (claude.yml, ai-fix.yml):
  * head branch `claude/...` or a `claude.ai/code` link in the body, an author of `github-actions` (a PR opened by a workflow), or any commit with a `Co-Authored-By: Claude` trailer (claude.yml pushes onto
  * existing PR branches, so the PR author alone does not show it; this needs the
  * `commits` field, so the input must be fetched with a smaller --limit). Everything else is counted as non-agent and listed only as a number,
@@ -23,7 +23,7 @@
  *   linked-issue   GitHub's resolved closingIssuesReferences name an issue of
  *                  Danathar/exult, or the body (outside code fences) has a
  *                  `Closes|Fixes|Refs|... #N` reference to this repository
- *   signature      Hive-lane PRs only: body has a `— hive: agent=...` line (Claude
+ *   signature      Hive-lane PRs only: body has a `-- hive: agent=...` line (Claude
  *                  workflow PRs carry no such line and are not checked for it)
  *   human-merge    merged by a human account or by the Hive App itself. This
  *                  repository uses the `hive-serialized` merge strategy: the
@@ -68,14 +68,15 @@ export const AGENT_LOGINS = [
     'danathar-atomic-hive[bot]',
 ];
 
-const SIGNATURE_LINE = /^— hive:.*(^|\s)agent=\S+/;
+// The hive writes `-- hive:` (two ASCII hyphens) since v5.322.0; earlier PRs carry `— hive:`.
+const SIGNATURE_LINE = /^(?:--|\u2014) hive:.*(^|\s)agent=\S+/;
 
 function lines(body) {
     return String(body ?? '').split(/\r?\n/);
 }
 
 /**
- * First `— hive: agent=...` line of the body, or null. Lines inside fenced
+ * First `-- hive: agent=...` (or older `— hive: agent=...`) line of the body, or null. Lines inside fenced
  * code blocks are examples, not a signature, and are skipped.
  */
 export function findSignature(body) {
@@ -271,7 +272,7 @@ export function renderMarkdown(report) {
     );
     if (report.agent === 0) {
         out.push(
-            '**No agent-authored PRs were found, so nothing was audited.** This is not a pass of the audit-trail rules; check the window and the classification (author `app/danathar-atomic-hive` or a `— hive: agent=...` body line, head branch `claude/...`, a claude.ai/code link or a `Co-Authored-By: Claude` commit trailer).',
+            '**No agent-authored PRs were found, so nothing was audited.** This is not a pass of the audit-trail rules; check the window and the classification (author `app/danathar-atomic-hive` or a `-- hive: agent=...` body line, head branch `claude/...`, a claude.ai/code link or a `Co-Authored-By: Claude` commit trailer).',
             ''
         );
         return out.join('\n');
