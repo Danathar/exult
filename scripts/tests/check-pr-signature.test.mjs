@@ -47,7 +47,7 @@ test('near misses of the signature line fail, and the error shows the -- spellin
     ]) {
         const r = run(`Closes #3\n${sig}`);
         assert.equal(r.code, 1, sig);
-        assert.match(r.err, /^::error::.*`-- hive: agent=<name> \.\.\.`.*older.*still counts/);
+        assert.match(r.err, /^::error::.*`-- hive: agent=<name> \.\.\.`.*older.*also counts/);
     }
 });
 
