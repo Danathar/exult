@@ -88,6 +88,9 @@ test('near misses of the -- signature do not count', () => {
         '-- hive: backend=claude',
         '-- hive:',
         'text -- hive: agent=x',
+        '-- hive: subagent=x',
+        '-- hive: agent=',
+        '\u2014 hive: agent=',
     ]) {
         assert.equal(findSignature(line), null, line);
     }
