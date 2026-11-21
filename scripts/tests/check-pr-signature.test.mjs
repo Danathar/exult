@@ -25,6 +25,32 @@ test('a body with the signature line passes', () => {
     assert.equal(r.err, '');
 });
 
+test('the -- spelling the hive writes passes, the older em dash spelling still passes', () => {
+    const ascii = '-- hive: agent=scanner backend=claude model=claude-sonnet-5-5 effort=high';
+    for (const sig of [ascii, `  ${ascii}  `, '\u2014 hive: agent=scanner']) {
+        for (const nl of ['\n', '\r\n']) {
+            const r = run(`**Summary:** x${nl}${nl}Closes #3${nl}${nl}${sig}${nl}`);
+            assert.equal(r.code, 0, JSON.stringify(sig));
+            assert.equal(r.err, '');
+        }
+    }
+});
+
+test('near misses of the signature line fail, and the error shows the -- spelling', () => {
+    for (const sig of [
+        '- hive: agent=x',
+        '--- hive: agent=x',
+        '--hive: agent=x',
+        '\u2013 hive: agent=x',
+        '-- hive: backend=claude',
+        'see -- hive: agent=x',
+    ]) {
+        const r = run(`Closes #3\n${sig}`);
+        assert.equal(r.code, 1, sig);
+        assert.match(r.err, /^::error::.*`-- hive: agent=<name> \.\.\.`.*older.*still counts/);
+    }
+});
+
 test('a body without the line, an empty body and no body fail with an error annotation', () => {
     for (const body of ['Filed by the scanner agent\nCloses #3', '', undefined, '— hive:\nCloses #3', 'see — hive: agent=x\nCloses #3']) {
         const r = run(body);
@@ -84,6 +110,9 @@ test('the PR-time check agrees with the audit on every body', () => {
         `x\r\n${SIG}\r\n`,
         '— hive: backend=claude agent=x',
         '— hive: agent=',
+        '-- hive: agent=scanner backend=claude',
+        '-- hive: backend=claude agent=x',
+        '--hive: agent=x',
         '- hive: agent=x',
         `~~~\n${SIG}\n~~~`,
         `\`\`\`\n${SIG}\n\`\`\`\n${SIG}`,
