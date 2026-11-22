@@ -101,8 +101,7 @@ size. [docs/risk-tiers.md](docs/risk-tiers.md) (with `risk-config.json`) is the
 source: Tier 1 is docs and tests by path, Tier 2 is ordinary engine and tool
 code, Tier 3 is the build system, `.github/**`, agent configuration and
 savegame/file-format code. Classify your files with
-`node scripts/check-policies.mjs --classify <path>...` (both files arrive with
-the agent-safety PR).
+`node scripts/check-policies.mjs --classify <path>...`.
 
 Tier 3 changes need the owner's review. Review criteria:
 [docs/review-rubric.md](docs/review-rubric.md).
