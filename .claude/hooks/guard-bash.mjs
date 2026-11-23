@@ -57,7 +57,11 @@
 //     identity and no-op pagers (GIT_EXTERNAL_DIFF=, GIT_TRACE=FILE, GIT_DIR=, ...).
 //   - HOME or XDG_CONFIG_HOME set for git (inline, exported or as a statement
 //     of its own): git then reads a `.gitconfig` from the directory named,
-//     which a branch can commit.
+//     which a branch can commit. PATH the same way: the shell then finds a
+//     program named git that a branch committed.
+//   - read, mapfile/readarray, printf -v, a for or select loop, getopts and
+//     let assigning HOME, XDG_CONFIG_HOME, PATH, a GIT_CONFIG_* name, or a
+//     name the shell builds at run time (`read $v`).
 //   - `git --shallow-file FILE`, which reads FILE and can print its first line.
 //   - Removing or overwriting the GIT_CONFIG_* variables that .claude/
 //     settings.json uses to set safe.bareRepository=explicit: `unset`,
@@ -425,6 +429,13 @@ const GIT_GLOBAL_OPTIONS_WITH_VALUE = ['-C', '-c', '--namespace', '--config-env'
 // committed (`HOME=planted git diff`) loads a config that can set
 // diff.external or core.pager, so git runs a program from the branch.
 const CONFIG_HOME_ENV = ['HOME', 'XDG_CONFIG_HOME'];
+// The shell finds git through PATH, so `PATH=planted:$PATH git log` runs a
+// planted/git that a branch committed. It is refused for git the same ways.
+const GIT_LOOKUP_ENV = [...CONFIG_HOME_ENV, 'PATH'];
+
+// The variable an assignment key sets: `PATH+=:dir` appends, and is read as
+// `PATH+` by the word reader.
+const variableName = (key) => key.replace(/\+$/, '');
 
 // .claude/settings.json sets safe.bareRepository=explicit through
 // GIT_CONFIG_COUNT / GIT_CONFIG_KEY_0 / GIT_CONFIG_VALUE_0. Removing any of
@@ -446,9 +457,16 @@ function blockSettingsEnvRemoval(what) {
 
 // A bare `GIT_CONFIG_COUNT=0` statement, or `declare GIT_CONFIG_VALUE_0=all`,
 // changes the value and keeps the variable exported, so git reads the new
-// value: the same effect as removing it. HOME and XDG_CONFIG_HOME are
+// value: the same effect as removing it. HOME, XDG_CONFIG_HOME and PATH are
 // exported in every shell, so a statement that sets one reaches git too.
-function blockSettingsEnvOverwrite(name, what) {
+function blockSettingsEnvOverwrite(key, what) {
+    const name = variableName(key);
+    if (name === 'PATH') {
+        return block(
+            `Blocked: \`${what}\` changes where the shell finds git, so a program named git committed in a branch ` +
+                'could run in its place. Leave PATH as it is.'
+        );
+    }
     if (CONFIG_HOME_ENV.includes(name)) {
         return block(
             `Blocked: \`${what}\` changes where git reads its global config, so git could load a .gitconfig ` +
@@ -463,7 +481,79 @@ function blockSettingsEnvOverwrite(name, what) {
 }
 
 // A statement or declare operand that sets a variable git reads this way.
-const overwritesGitEnv = (name) => name.includes('GIT_CONFIG') || CONFIG_HOME_ENV.includes(name);
+const overwritesGitEnv = (key) => {
+    const name = variableName(key);
+    return name.includes('GIT_CONFIG') || GIT_LOOKUP_ENV.includes(name);
+};
+
+// read, mapfile/readarray, printf -v, the name of a for or select loop,
+// getopts and let assign a variable named by an operand, with no NAME=value
+// word for the checks above to read: `read -r HOME <<< planted`,
+// `mapfile -t PATH < list` and `for HOME in planted; do git diff; done` set
+// the variable all the same, and it stays exported for the git that follows.
+// The options of read and mapfile that take a value; read's -a names the
+// array it assigns.
+const READ_VALUE_OPTIONS = { read: 'adinNptu', mapfile: 'CcdnOsu', readarray: 'CcdnOsu' };
+
+/** The words a builtin assigns as variable names ([] for any other command). */
+function builtinAssignedNames(cmd, args) {
+    if (Object.hasOwn(READ_VALUE_OPTIONS, cmd)) {
+        const names = [];
+        let k = 0;
+        for (; k < args.length; k++) {
+            const a = args[k];
+            if (a === '--') {
+                k++;
+                break;
+            }
+            if (!a.startsWith('-') || a === '-') break;
+            for (let j = 1; j < a.length; j++) {
+                if (!READ_VALUE_OPTIONS[cmd].includes(a[j])) continue;
+                const value = j + 1 < a.length ? a.slice(j + 1) : (args[++k] ?? '');
+                if (cmd === 'read' && a[j] === 'a') names.push(value);
+                break;
+            }
+        }
+        return [...names, ...args.slice(k)];
+    }
+    // bash reads -v only as printf's first word: `printf -v NAME` or `-vNAME`.
+    if (cmd === 'printf' && args[0]?.startsWith('-v')) return [args[0].slice(2) || (args[1] ?? '')];
+    // `for ((i = 0; ...))` has no name: the reader ends the segment at `(`.
+    if ((cmd === 'for' || cmd === 'select') && args.length) return [args[0]];
+    if (cmd === 'getopts' && args.length > 1) return [args[1]];
+    return [];
+}
+
+/**
+ * The refusal for a builtin that assigns HOME, XDG_CONFIG_HOME, PATH or a
+ * GIT_CONFIG_* name, or a name the shell builds at run time (`read $v`,
+ * `for ${n} in ...`, `let $v=1`), or null.
+ */
+function checkBuiltinAssignment(cmd, args) {
+    const label = cmd === 'printf' ? 'printf -v' : cmd;
+    const built = (word) =>
+        block(
+            `Blocked: \`${label} ${word}\` assigns a variable whose name the shell builds at run time, so this hook ` +
+                'cannot tell whether it is HOME, XDG_CONFIG_HOME, PATH or the GIT_CONFIG_* settings env git reads. ' +
+                'Name the variable.'
+        );
+    if (cmd === 'let') {
+        for (const a of args) {
+            const name = (a.match(/[A-Za-z_]\w*/g) ?? []).find(overwritesGitEnv);
+            if (name !== undefined) return blockSettingsEnvOverwrite(name, `let ${a}`);
+            if (/\$[{(]?[\w!@#]*[})]?\s*(?:\[[^\]]*\])?\s*(?:<<|>>|[-+*\/%&|^])?=(?!=)/.test(a)) return built(a);
+        }
+        return null;
+    }
+    for (const word of builtinAssignedNames(cmd, args)) {
+        // A subscript (`PATH[0]`) assigns the variable itself.
+        const name = word.split('[')[0];
+        if (!name) continue;
+        if (!/^[A-Za-z_]\w*$/.test(name)) return built(word);
+        if (overwritesGitEnv(name)) return blockSettingsEnvOverwrite(name, `${label} ${word}`);
+    }
+    return null;
+}
 
 function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
     // Walk global options to find the subcommand, vetting `-c key=value`.
@@ -516,7 +606,14 @@ function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
     const rest = args.slice(i + 1);
 
     const env = { ...exported, ...inlineEnv };
-    const homeKey = CONFIG_HOME_ENV.find((name) => name in env);
+    const lookupKey = Object.keys(env).find((key) => GIT_LOOKUP_ENV.includes(variableName(key)));
+    const homeKey = lookupKey === undefined ? undefined : variableName(lookupKey);
+    if (homeKey === 'PATH') {
+        return block(
+            'Blocked: `git` with PATH set runs the first program named git in the directories PATH lists, so one committed ' +
+                'in a branch could run in its place. Run git with PATH unchanged.'
+        );
+    }
     if (homeKey) {
         return block(
             `Blocked: \`git\` with ${homeKey} set reads its global config from that directory, so a .gitconfig ` +
@@ -1429,6 +1526,11 @@ function checkSegment(words, state) {
     const nested = () => Object.create(state);
     const env = { ...(state.exportedEnv ?? {}), ...inlineEnv };
 
+    // `read -r HOME <<< planted`, `printf -v PATH ...`, `for HOME in ...`:
+    // a builtin that assigns a variable git reads, named as an operand.
+    const assigned = checkBuiltinAssignment(cmd, args);
+    if (assigned) return assigned;
+
     // `export -n NAME` and `declare +x NAME` un-export NAME, and an operand
     // that assigns (`declare GIT_CONFIG_COUNT=0`, `readonly ...`) overwrites it.
     // An export (`export NAME=`, `declare -x NAME=`) is recorded below instead,
@@ -1459,7 +1561,7 @@ function checkSegment(words, state) {
             // `export NAME` without a value exports an earlier assignment: value unknown (null).
             const eq = a.indexOf('=');
             const name = eq === -1 ? a : a.slice(0, eq);
-            if (/^(GIT_CONFIG_|GIT_SSH)/i.test(name) || WATCHED_ENV.test(name) || (eq !== -1 && CONFIG_HOME_ENV.includes(name))) {
+            if (/^(GIT_CONFIG_|GIT_SSH)/i.test(name) || WATCHED_ENV.test(name) || (eq !== -1 && GIT_LOOKUP_ENV.includes(variableName(name)))) {
                 (state.exportedEnv ??= {})[name] = eq === -1 ? null : a.slice(eq + 1);
             }
         }
