@@ -146,7 +146,8 @@ test('the counts the pages state are the ruleset\'s', () => {
     const sources = COUNT_WORDS[new Set(checkRows().map((r) => r.source)).size];
     assert.ok(text.includes(`has ${COUNT_WORDS[ruleset.rules.length]} rules`), 'the number of rules');
     assert.ok(text.includes(`the ${checks} checks below must pass`), 'the number of required checks');
-    const unfiltered = COUNT_WORDS[new Set(checkRows().filter((r) => !CONDITIONAL.has(r.name)).map((r) => r.source)).size];
+    const unfilteredWord = COUNT_WORDS[new Set(checkRows().filter((r) => !CONDITIONAL.has(r.name)).map((r) => r.source)).size];
+    const unfiltered = unfilteredWord[0].toUpperCase() + unfilteredWord.slice(1); // the sentence starts with it
     assert.ok(text.includes(`${unfiltered} of the ${sources} workflows (all but \`agent-signature.yml\`) run on every pull request`), 'the number of workflows they come from');
     assert.ok(flat(read('policies/README.md')).includes(`pull request plus ${checks} required status checks`), 'policies/README.md');
 });
