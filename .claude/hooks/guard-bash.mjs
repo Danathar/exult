@@ -110,6 +110,10 @@
 //     glob that can match them (`gam*`, `mv ./* /tmp`), and a recursive rm of
 //     /, ~, $HOME, the current directory or its parents (`*`, `./*`, `../..`,
 //     `~/.*`).
+//   - Overwriting the same files: a writing redirection onto them (`>`, `>>`,
+//     `>|`, `&>`, `2>`) behind any command, including the pre-approved
+//     `git log` and `make`; truncate and tee operands, dd `of=`, and the
+//     destination of cp, install, ln and rsync (copying game data out is fine).
 //
 // Parsing notes: redirections (`>log`, `2>&1`, `&>f`, `<file`) end the word and
 // are not arguments. Quoted heredoc bodies are data. Wrappers (env, timeout,
@@ -1113,6 +1117,49 @@ function globHitsGameData(operand) {
     });
 }
 
+/** True if a path operand names game data, as typed, normalised or through a glob. */
+function namesGameData(a) {
+    const { abs, segs } = pathSegments(a);
+    return GAME_DATA.test((abs ? '/' : '') + segs.join('/')) || GAME_DATA.test(a.replace(/^\.\//, '')) || globHitsGameData(a);
+}
+
+const OVERWRITE_REASON =
+    'would overwrite Ultima VII game data, a savegame or the user\'s Exult configuration. ' +
+    'That data is copyrighted, not reproducible from this repository, and never the agent\'s to replace.';
+
+/** A writing redirection (`>`, `>>`, `>|`, `&>`, `2>`) onto game data, whatever the command. */
+function checkRedirectTargets(outs) {
+    const hit = (outs ?? []).flatMap(substitutionReadings).find(namesGameData);
+    return hit === undefined ? null : block(`Blocked: a redirection to \`${hit}\` ${OVERWRITE_REASON}`);
+}
+
+const OVERWRITERS = new Set(['truncate', 'tee', 'cp', 'install', 'ln', 'rsync', 'dd']);
+
+/**
+ * The files a write command replaces: every operand of truncate and tee, `of=`
+ * of dd, and the destination of cp, install, ln and rsync (the last operand,
+ * or `-t DIR` / `--target-directory=DIR`). Copying game data out stays allowed.
+ */
+function checkOverwrite(cmd, args) {
+    const operands = args.filter((a) => !a.startsWith('-'));
+    let targets;
+    if (cmd === 'dd') targets = args.filter((a) => a.startsWith('of=')).map((a) => a.slice(3));
+    else if (cmd === 'truncate' || cmd === 'tee') targets = operands;
+    else {
+        targets = operands.slice(-1);
+        if (cmd !== 'rsync') {
+            args.forEach((a, i) => {
+                const long = /^--target-directory(?:=(.*))?$/.exec(a);
+                const short = /^-[a-zA-Z]*t(.*)$/.exec(a);
+                if (long) targets.push(long[1] ?? args[i + 1] ?? '');
+                else if (short && !a.startsWith('--')) targets.push(short[1] || (args[i + 1] ?? ''));
+            });
+        }
+    }
+    const hit = targets.flatMap(substitutionReadings).find(namesGameData);
+    return hit === undefined ? null : block(`Blocked: \`${cmd} ... ${hit}\` ${OVERWRITE_REASON}`);
+}
+
 function checkDelete(cmd, args) {
     const operands = args.filter((a) => !a.startsWith('-')).flatMap(substitutionReadings);
     const recursive = args.some((a) => a === '--recursive' || /^-[a-zA-Z]*[rR]/.test(a));
@@ -1331,6 +1378,8 @@ function checkUnlistedProgram(w, inlineEnv, state) {
 function checkSegment(words, state) {
     spend();
     const { pipedFrom, stdinFrom, hereString, heredocBody } = words;
+    const redirected = checkRedirectTargets(words.outs);
+    if (redirected) return redirected;
     let w = words.slice();
     const inlineEnv = {};
     // Set once the segment runs through xargs: xargs appends words it reads at
@@ -1549,6 +1598,7 @@ function checkSegment(words, state) {
     if (MAKERS.has(cmd) || ['ninja', 'meson', 'cmake', 'checkinstall'].includes(cmd)) return checkInstall(cmd, args);
     if (PKG_MANAGERS.has(cmd) || ['npm', 'pnpm', 'yarn', 'cargo', 'pip', 'pip3'].includes(cmd)) return checkPackages(cmd, args);
     if (DELETERS.has(cmd)) return checkDelete(cmd, args) ?? (cmd === 'find' ? checkFindExec(args, state) : null);
+    if (OVERWRITERS.has(cmd)) return checkOverwrite(cmd, args);
     if (cmd === 'source' || cmd === '.') {
         return args.some((a) => a.startsWith('/dev/fd/'))
             ? block('Blocked: sourcing a process substitution (`source <(curl ...)`) runs code this hook cannot inspect.')
