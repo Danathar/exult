@@ -46,10 +46,11 @@ of them before they run; other agents are bound by this list.
   system package managers (`dnf`, `apt`, `rpm-ostree`, `brew`, ...). Build in
   the tree and run from there; there is no `DESTDIR` exception, because the
   install hooks also touch the host.
-- Deleting or moving Ultima VII game data, savegames or the user's Exult
-  configuration (`gamedat/`, the repository-root `static/`, `*.sav`, `~/.exult`,
-  `~/.config/exult`, installed game directories), and `git clean -x`, which
-  deletes the ignored `gamedat/` directory.
+- Deleting, moving or overwriting Ultima VII game data, savegames or the
+  user's Exult configuration (`gamedat/`, the repository-root `static/`,
+  `*.sav`, `~/.exult`, `~/.config/exult`, installed game directories),
+  including an output redirection onto them, and `git clean -x`, which deletes
+  the ignored `gamedat/` directory.
 - Committing game data or any copyrighted asset from the original games
   (`policies/game-data.json` checks the paths).
 - Reading, printing or committing credentials, tokens, `.env` files, or
