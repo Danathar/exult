@@ -8,7 +8,8 @@ check that GitHub is really enforcing it. Every command here targets
 
 The ruleset in [`.github/rulesets/master.json`](../.github/rulesets/master.json)
 is applied to the repository as the live ruleset `protect master` (id
-`25350776`, applied 2026-10-18). It targets the default branch (`master`) and
+`25350776`, applied 2026-10-18; the `signature` check was added to it on
+2026-11-24, per issue #471). It targets the default branch (`master`) and
 has four rules:
 
 | rule | effect |
