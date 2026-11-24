@@ -177,6 +177,17 @@ test('the ruleset is the one the page describes', () => {
     assert.deepEqual(ruleset.bypass_actors, []);
 });
 
+test('the page records when each conditional required check went live', () => {
+    const text = flat(enforced());
+    for (const name of CONDITIONAL) {
+        assert.match(
+            text,
+            new RegExp(`the \`${name}\` check was added to it on \\d{4}-\\d{2}-\\d{2}`),
+            `the page does not say when ${name} was applied to the live ruleset`,
+        );
+    }
+});
+
 test('required checks run on every pull request and push to master, unfiltered', () => {
     assert.ok(flat(enforced()).includes('on every pull request and every push to `master` with no path filter'));
     for (const { name, source } of checkRows().filter((r) => !CONDITIONAL.has(r.name))) {
