@@ -87,7 +87,7 @@ layer assumes the one inside it can fail.
    [docs/agent-boundaries.md](../agent-boundaries.md) says what an agent may
    not do. CODEOWNERS only *requests* review: the `master` ruleset
    ([branch-protection.md](../branch-protection.md)) requires a pull request
-   and six status checks, but not code owner review.
+   and seven status checks, but not code owner review.
 6. **Token and credential scope.** The repository and its workflows are
    limited by `GITHUB_TOKEN` permissions and by the repository access of the
    Hive GitHub App. Those limits are configured on GitHub, not in this

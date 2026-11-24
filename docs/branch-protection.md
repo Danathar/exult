@@ -16,7 +16,7 @@ has four rules:
 | `deletion` | `master` cannot be deleted. |
 | `non_fast_forward` | no force pushes to `master`. |
 | `pull_request` | every change reaches `master` through a pull request. No approving review is required (`required_approving_review_count: 0`) and code owner review is **not** required, so the owner can merge their own PRs and Hive can merge its own. `.github/CODEOWNERS` therefore only *requests* the owner's review on Tier 3 paths ([risk-tiers.md](risk-tiers.md)). |
-| `required_status_checks` | the six checks below must pass, on a branch that is up to date with `master` (`strict_required_status_checks_policy: true`). |
+| `required_status_checks` | the seven checks below must pass, on a branch that is up to date with `master` (`strict_required_status_checks_policy: true`). |
 
 Required checks (job names; do not rename these jobs):
 
@@ -28,9 +28,17 @@ Required checks (job names; do not rename these jobs):
 | `Coverage gate` | `.github/workflows/coverage-gate.yml` |
 | `agent-tooling` | `.github/workflows/agent-tooling.yml` |
 | `policy-check` | `.github/workflows/policy-check.yml` |
+| `signature` | `.github/workflows/agent-signature.yml` |
 
-All four workflows run on every pull request and every push to `master` with no
-path filter, so a docs-only PR still reports them. The upstream `ci-*.yml`
+Four of the five workflows (all but `agent-signature.yml`) run on every pull
+request and every push to `master` with no path filter, so a docs-only PR
+still reports them. Job `signature` is conditional by design: it runs only for pull
+requests from the Hive App or an `ai-fix/` branch and checks the description
+for the `-- hive: agent=...` line and a `Closes`/`Fixes`/`Resolves`/`Refs #N`
+link to an issue in this repository. For every other pull request the job is
+skipped, and GitHub counts a skipped job as passing a required check, so human
+PRs are not blocked. It has no `push` trigger, so it does not run on `master`
+itself. The upstream `ci-*.yml`
 platform builds are **not** required: they are path-filtered (they skip
 `docs/**`, `*.md` and more), and a required check that never reports would
 block every docs PR forever. They still run on code changes, and a red one
