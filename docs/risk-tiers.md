@@ -40,7 +40,7 @@ The required commands name these entry points: `tests/run-unit-tests.sh` and
 linter: run it when a `.github/workflows/` file changed. The `policy-check`
 workflow also runs it on every pull request, over the fork-added workflows
 that `policies/workflow-permissions.json` covers. The `master`
-ruleset requires those six check jobs for every merge; see
+ruleset requires those seven check jobs for every merge; see
 [branch-protection.md](branch-protection.md).
 
 ## Raise the tier

@@ -1,5 +1,5 @@
 // docs/branch-protection.md says what protects `master`: the rules of the
-// committed ruleset, the six checks it requires and the workflow each comes
+// committed ruleset, the seven checks it requires and the workflow each comes
 // from. docs/multi-agent.md, AGENTS.md, CONTRIBUTING.md and policies/README.md
 // repeat the check names, the count or the test entry points. Agents and the
 // owner decide what is safe to merge from these pages, and nothing read them:
@@ -21,6 +21,10 @@ const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
 const PAGE = 'docs/branch-protection.md';
 const RULESET = '.github/rulesets/master.json';
 const WORKFLOWS = '.github/workflows';
+// Required checks that are conditional by design: `signature` runs only for
+// agent PRs (a job-level `if:`, a skipped job counts as passing) and has no
+// `push` trigger. The page says so; every other required check is unfiltered.
+const CONDITIONAL = new Set(['signature']);
 const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 
 const ruleset = JSON.parse(read(RULESET));
@@ -142,7 +146,8 @@ test('the counts the pages state are the ruleset\'s', () => {
     const sources = COUNT_WORDS[new Set(checkRows().map((r) => r.source)).size];
     assert.ok(text.includes(`has ${COUNT_WORDS[ruleset.rules.length]} rules`), 'the number of rules');
     assert.ok(text.includes(`the ${checks} checks below must pass`), 'the number of required checks');
-    assert.ok(text.includes(`All ${sources} workflows run on every pull request`), 'the number of workflows they come from');
+    const unfiltered = COUNT_WORDS[new Set(checkRows().filter((r) => !CONDITIONAL.has(r.name)).map((r) => r.source)).size];
+    assert.ok(text.includes(`${unfiltered} of the ${sources} workflows (all but \`agent-signature.yml\`) run on every pull request`), 'the number of workflows they come from');
     assert.ok(flat(read('policies/README.md')).includes(`pull request plus ${checks} required status checks`), 'policies/README.md');
 });
 
@@ -173,12 +178,24 @@ test('the ruleset is the one the page describes', () => {
 
 test('required checks run on every pull request and push to master, unfiltered', () => {
     assert.ok(flat(enforced()).includes('on every pull request and every push to `master` with no path filter'));
-    for (const { name, source } of checkRows()) {
+    for (const { name, source } of checkRows().filter((r) => !CONDITIONAL.has(r.name))) {
         const { on, jobs } = workflow(source);
         assert.deepEqual(on.pull_request, {}, `${source}: pull_request is filtered, so a required check may never start`);
         assert.deepEqual(on.push, { branches: on.push?.branches }, `${source}: push is filtered by more than its branch`);
         assert.equal(on.push.branches.replace(/[[\]\s]/g, ''), 'master', `${source}: push branches`);
         assert.equal(jobs.find((j) => j.name === name).if, null, `${name} has a job-level if:, so it can be skipped`);
+    }
+});
+
+test('the conditional required check is skipped, not absent, for other pull requests', () => {
+    const text = flat(enforced());
+    assert.ok(text.includes('Job `signature` is conditional by design'));
+    assert.ok(text.includes('GitHub counts a skipped job as passing a required check'));
+    for (const name of CONDITIONAL) {
+        const row = checkRows().find((r) => r.name === name);
+        const { on, jobs } = workflow(row.source);
+        assert.deepEqual(Object.keys(on), ['pull_request'], `${name}: runs on pull_request only`);
+        assert.ok(jobs.find((j) => j.name === name).if, `${name} has no job-level if:, so the page's "skipped" claim is wrong`);
     }
 });
 

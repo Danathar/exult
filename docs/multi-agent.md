@@ -66,7 +66,8 @@ Note: upstream `.gitignore` ignores `.github`, so new files there need
 
 - **Required checks.** The `master` ruleset requires `CI`
   (`Unit tests (gcc)`, `Unit tests (clang)`, `E2E (tools)`), `Coverage gate`,
-  `policy-check` and `agent-tooling`, on a branch that is up to date with
+  `policy-check`, `agent-tooling` and `signature` (agent PRs only; other PRs
+  get a skipped job), on a branch that is up to date with
   `master` ([branch-protection.md](branch-protection.md)); if it differs from
   this paragraph, the live ruleset wins:
   `gh api repos/Danathar/exult/rulesets`.
