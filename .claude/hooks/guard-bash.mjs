@@ -1210,7 +1210,7 @@ function checkOverwrite(cmd, args) {
         targets = !inPlace ? [] : scripted ? operands : operands.slice(1); // without -e/-f the first operand is the script
     } else {
         targets = operands.slice(-1);
-        if (cmd !== 'rsync') targets.push(...valuesOf('-t', '--target-directory'));
+        targets.push(...valuesOf('-t', '--target-directory')); // rsync has neither option, so it adds nothing
     }
     const hit = targets.flatMap(substitutionReadings).find(namesGameData);
     return hit === undefined ? null : block(`Blocked: \`${cmd} ... ${hit}\` ${OVERWRITE_REASON}`);

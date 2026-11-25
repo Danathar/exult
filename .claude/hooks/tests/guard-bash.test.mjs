@@ -38,12 +38,15 @@ const allowed = [
     // an option value after the destination is not the destination (#484)
     'rsync -a gamedat/ /tmp/backup/ --exclude "*.sav"',
     'rsync -a gamedat/ /tmp/backup/ -e ssh',
-    'cp gamedat/x.sav /tmp/backup/x.sav -S .bak',
+    'cp gamedat/x.sav /tmp/backup/x.copy -S .bak',
     // sed without -i and sort without -o only read game data (#484)
     'sed -n p gamedat/x',
     'sed -i s/a/b/ build.log',
     'sort -o /tmp/sorted.txt gamedat/x',
     'sed -e s/a/b/ gamedat/x',
+    // a value that looks like an option belongs to the option before it (#484)
+    'sort --key -o gamedat/x README',
+    'sort --files0-from -o gamedat/x',
     'git log > content/demo/static.txt',
     // `static/` is game data at the repository root only, not at the filesystem root
     'git log > /static/x',
@@ -798,6 +801,24 @@ const blocked = [
     'install README gamedat/x --mode 644',
     // a path rsync writes (--backup-dir) is still read as a destination
     'rsync -a x/ y/ --backup-dir gamedat',
+    // every option that takes a value is read as one, so the destination is the word before it
+    'ln README gamedat/x --suffix .bak',
+    'ln --target-directory gamedat README',
+    'install README gamedat/x --owner root',
+    'install README gamedat/x --group root',
+    'install README gamedat/x --suffix .bak',
+    'install README gamedat/x --strip-program strip',
+    'install --target-directory gamedat README',
+    'rsync -a x/ gamedat/ --compare-dest foo',
+    'rsync -a x/ gamedat/ --block-size 4096',
+    'rsync -a x/ gamedat/ --port 873',
+    'rsync -a x/ gamedat/ --checksum-seed 1',
+    'rsync -a x/ gamedat/ --out-format %n',
+    'rsync -a x/ gamedat/ --early-input foo',
+    'sed -i --expression=s/a/b/ gamedat/x',
+    'sed -i --file=x.sed gamedat/x',
+    // a lone `-` is an operand, not an option that takes the next word
+    'cp - gamedat/x',
     // bash -n escape hatch
     'bash -n +n -c "sudo ls"',
     'bash -n {+,+}n',
