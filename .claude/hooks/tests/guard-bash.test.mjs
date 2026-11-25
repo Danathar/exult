@@ -5,20 +5,26 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkCommand, normalizeRepo, namesOtherRepo, tokenize } from '../guard-bash.mjs';
 
 const HOOK = fileURLToPath(new URL('../guard-bash.mjs', import.meta.url));
 
-function run(command, toolName = 'Bash', cwd = undefined) {
+function run(command, toolName = 'Bash', cwd = undefined, env = undefined) {
     return spawnSync(process.execPath, [HOOK], {
         input: JSON.stringify({ tool_name: toolName, tool_input: { command } }),
         encoding: 'utf8',
         cwd,
+        env,
     });
 }
+
+// The environment without CLAUDE_PROJECT_DIR, so the checkout a directory
+// change must stay inside is the directory the hook starts in.
+const NO_PROJECT_ENV = { ...process.env };
+delete NO_PROJECT_ENV.CLAUDE_PROJECT_DIR;
 
 const allowed = [
     // writes that do not land on game data, and copying game data out
@@ -94,7 +100,7 @@ const allowed = [
     'env -S -u FOO git log -1',
     'exec -a name git log -1',
     // HOME is only read, or set for a program other than git
-    'cd "$HOME" && git status',
+    'echo "$HOME" && git status',
     'export HOME; git status',
     'HOME=/tmp/h make check',
     'make check HOME=/tmp/h',
@@ -117,6 +123,16 @@ const allowed = [
     'printf',
     'let MYPATH=1',
     'let PATHS=1',
+    'let i=1; git log -1',
+    // arithmetic on a name git does not read, and a subshell that only prints a name
+    '(( i = 1 )); git log -1',
+    ': $(( n + 1 )); git log -1',
+    '( echo PATH ); git log -1',
+    // a directory change that stays inside the checkout, or comes after git
+    'cd tests && git log -1',
+    'cd ./tests/unit && git status',
+    'git status; cd /tmp',
+    'cd /tmp && ls',
     // env and wrapper options that neither remove a variable nor clear the environment
     'env --unset=FOO git log -1',
     'env --chdir=/tmp git log -1',
@@ -971,6 +987,32 @@ const blocked = [
     'git clone -u sh /tmp/r',
     'git -c protocol.ext.allow=always fetch origin',
     'eval cd /tmp; git push origin feature',
+    // git after a directory change that may leave the checkout: outside it,
+    // `git diff -- a b` compares two plain files and prints them
+    'cd /tmp && git diff -- x .env',
+    'cd /tmp; git diff -- x .env',
+    '(cd /tmp && git diff -- x .env)',
+    'pushd /tmp && git diff -- x .env',
+    'cd && git diff -- .netrc .env',
+    'cd "$HOME" && git status',
+    'cd - && git log -1',
+    'cd .. && git log -1',
+    'cd tests/.. && git log -1',
+    'popd; git log -1',
+    'builtin cd /tmp && git log -1',
+    'cd ~ && git log -1',
+    'cd $DIR && git log -1',
+    "bash -c 'cd /tmp && git log -1'",
+    'CDPATH=/tmp; cd tests && git log -1',
+    // an arithmetic command or expansion that names a variable git reads
+    '(( PATH = 1 )); git log -1',
+    '(( HOME = 1 )); git diff HEAD~1 HEAD',
+    ': $(( XDG_CONFIG_HOME = 1 )); git log -p -1',
+    'echo "$(( GIT_CONFIG_COUNT = 0 ))"; git log -p',
+    // declare, typeset and readonly assigning PATH
+    'declare PATH=planted:$PATH; git log -1',
+    'readonly PATH=planted:$PATH; git log -1',
+    'typeset -g PATH=planted:$PATH; git log -1',
     '{cd,} /tmp && git push origin feature',
     'setarch x86_64 xargs git log',
     "script -qc '* id' /dev/null",
@@ -1130,12 +1172,40 @@ test('pushing HEAD or no refspec is blocked on master and allowed on other branc
         git('remote', 'set-url', 'origin', 'https://github.com/exult/exult.git');
         assert.equal(run('git push origin feature', 'Bash', dir).status, 2, 'upstream origin');
         assert.equal(run(`git -C ${dir} push origin feature`).status, 2, '-C into an upstream-origin repo');
-        assert.equal(run(`cd ${dir} && git push origin feature`).status, 2, 'cd into an upstream-origin repo');
+        assert.equal(run(`cd ${dir} && git push origin feature`, 'Bash', dir, NO_PROJECT_ENV).status, 2, 'cd into an upstream-origin repo');
         git('remote', 'set-url', 'origin', 'https://github.com/Danathar/exult');
         assert.equal(run(`git -C ${dir} push origin feature`).status, 0, '-C into a good repo');
-        assert.equal(run(`cd ${dir} && git push origin feature`).status, 0, 'cd into a good repo');
+        assert.equal(run(`cd ${dir} && git push origin feature`, 'Bash', dir, NO_PROJECT_ENV).status, 0, 'cd into a good repo');
     } finally {
         rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('git after a directory change runs only where the change stays inside the checkout', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'guard-cd-'));
+    const outside = mkdtempSync(join(tmpdir(), 'guard-cd-out-'));
+    try {
+        mkdirSync(join(dir, 'inside'));
+        // a branch can commit a symlink with a tidy name that points out of the tree
+        symlinkSync(outside, join(dir, 'escape'));
+        for (const [command, status] of [
+            ['cd inside && git log -1', 0],
+            [`cd ${dir} && git log -1`, 0],
+            [`cd ${dir}/inside && git status`, 0],
+            ['cd escape && git diff -- x .env', 2],
+            [`cd ${dir}/escape && git log -1`, 2],
+            [`cd ${outside} && git diff -- x .env`, 2],
+        ]) {
+            assert.equal(run(command, 'Bash', dir, NO_PROJECT_ENV).status, status, command);
+        }
+        const project = { ...NO_PROJECT_ENV, CLAUDE_PROJECT_DIR: dir };
+        assert.equal(run('cd "$CLAUDE_PROJECT_DIR" && git status', 'Bash', join(dir, 'inside'), project).status, 0);
+        assert.equal(run('cd .. && git status', 'Bash', join(dir, 'inside'), project).status, 2);
+        const r = run('cd /tmp && git diff -- x .env', 'Bash', dir, NO_PROJECT_ENV);
+        assert.match(r.stderr, /`git` after `cd \/tmp`, which may leave this checkout/);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+        rmSync(outside, { recursive: true, force: true });
     }
 });
 
@@ -1152,6 +1222,8 @@ test('a refusal about git settings names the variable it protects', () => {
         ['printf -v GIT_CONFIG_COUNT %s 0', /`printf -v GIT_CONFIG_COUNT` overwrites the GIT_CONFIG_\* settings env/],
         ['for PATH in planted; do true; done', /`for PATH` changes PATH/],
         ['let PATH=1', /`let PATH=1` changes PATH/],
+        ['(( PATH = 1 ))', /`\(\( PATH = 1 \)\)` changes PATH/],
+        [': $(( HOME = 1 ))', /`\(\( HOME = 1 \)\)` changes where git reads its global config/],
         ['HOME+=/planted', /`HOME\+=\/planted` changes where git reads its global config/],
         ['PATH+=:planted', /`PATH\+=:planted` changes PATH/],
     ]) {
