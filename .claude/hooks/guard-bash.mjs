@@ -112,8 +112,9 @@
 //     `~/.*`).
 //   - Overwriting the same files: a writing redirection onto them (`>`, `>>`,
 //     `>|`, `&>`, `2>`) behind any command, including the pre-approved
-//     `git log` and `make`; truncate and tee operands, dd `of=`, and the
-//     destination of cp, install, ln and rsync (copying game data out is fine).
+//     `git log` and `make`; truncate and tee operands, dd `of=`, the files
+//     `sed -i` edits, `sort -o FILE`, and the destination of cp, install, ln
+//     and rsync, wherever their options stand (copying game data out is fine).
 //
 // Parsing notes: redirections (`>log`, `2>&1`, `&>f`, `<file`) end the word and
 // are not arguments. Quoted heredoc bodies are data. Wrappers (env, timeout,
@@ -1133,28 +1134,83 @@ function checkRedirectTargets(outs) {
     return hit === undefined ? null : block(`Blocked: a redirection to \`${hit}\` ${OVERWRITE_REASON}`);
 }
 
-const OVERWRITERS = new Set(['truncate', 'tee', 'cp', 'install', 'ln', 'rsync', 'dd']);
+const OVERWRITERS = new Set(['truncate', 'tee', 'cp', 'install', 'ln', 'rsync', 'dd', 'sed', 'sort']);
+
+// Options of the write commands that take a value, so the value is not read as
+// an operand (`rsync -a x/ gamedat/ --exclude foo`, `cp README gamedat/x -S .bak`).
+// A short letter takes the rest of its word or the next word, as getopt reads it;
+// `attached` letters take only the rest of their word (`sed -i.bak`). The rsync
+// options whose value is a path rsync writes (--backup-dir, --partial-dir,
+// -T/--temp-dir, --log-file, --write-batch) are left out, so that value is
+// still read as a destination when it comes last.
+const OPTION_VALUES = {
+    cp: { short: 'St', long: ['--suffix', '--target-directory'] },
+    ln: { short: 'St', long: ['--suffix', '--target-directory'] },
+    install: { short: 'mogSt', long: ['--mode', '--owner', '--group', '--suffix', '--strip-program', '--target-directory'] },
+    rsync: {
+        short: 'efBM@',
+        long: [
+            '--exclude', '--include', '--exclude-from', '--include-from', '--filter', '--files-from', '--rsh', '--rsync-path',
+            '--compare-dest', '--copy-dest', '--link-dest', '--suffix', '--chmod', '--chown', '--usermap', '--groupmap',
+            '--block-size', '--max-size', '--min-size', '--max-delete', '--max-alloc', '--timeout', '--contimeout', '--bwlimit',
+            '--port', '--sockopts', '--modify-window', '--compress-level', '--compress-choice', '--checksum-choice',
+            '--checksum-seed', '--skip-compress', '--info', '--debug', '--iconv', '--remote-option', '--address', '--protocol',
+            '--out-format', '--log-file-format', '--password-file', '--read-batch', '--outbuf', '--stop-after', '--stop-at',
+            '--early-input', '--copy-as',
+        ],
+    },
+    sed: { short: 'efl', attached: 'i', long: ['--expression', '--file', '--line-length'] },
+    sort: {
+        short: 'ktSTo',
+        long: [
+            '--key', '--field-separator', '--buffer-size', '--temporary-directory', '--output', '--parallel', '--batch-size',
+            '--files0-from', '--compress-program', '--random-source', '--sort',
+        ],
+    },
+};
+
+/** The operands of a write command and the [option, value] pairs of OPTION_VALUES it was given. */
+function readOptions(cmd, args) {
+    const { short = '', attached = '', long = [] } = OPTION_VALUES[cmd] ?? {};
+    const operands = [];
+    const values = [];
+    for (let i = 0; i < args.length; i++) {
+        const a = args[i];
+        if (a.startsWith('--')) {
+            const eq = a.indexOf('=');
+            const name = eq === -1 ? a : a.slice(0, eq);
+            if (long.includes(name)) values.push([name, eq === -1 ? (args[++i] ?? '') : a.slice(eq + 1)]);
+        } else if (a.startsWith('-')) {
+            const at = [...a.slice(1)].findIndex((c) => short.includes(c) || attached.includes(c));
+            if (at === -1) continue;
+            const letter = a[at + 1];
+            const rest = a.slice(at + 2);
+            values.push([`-${letter}`, rest || attached.includes(letter) ? rest : (args[++i] ?? '')]);
+        } else operands.push(a);
+    }
+    return { operands, values };
+}
 
 /**
  * The files a write command replaces: every operand of truncate and tee, `of=`
- * of dd, and the destination of cp, install, ln and rsync (the last operand,
- * or `-t DIR` / `--target-directory=DIR`). Copying game data out stays allowed.
+ * of dd, the destination of cp, install, ln and rsync (the last operand, or
+ * `-t DIR` / `--target-directory=DIR`), the files `sed -i` edits and the
+ * `-o FILE` of sort. Copying game data out stays allowed.
  */
 function checkOverwrite(cmd, args) {
-    const operands = args.filter((a) => !a.startsWith('-'));
+    const { operands, values } = readOptions(cmd, args);
+    const valuesOf = (...names) => values.filter(([o]) => names.includes(o)).map(([, v]) => v);
     let targets;
     if (cmd === 'dd') targets = args.filter((a) => a.startsWith('of=')).map((a) => a.slice(3));
     else if (cmd === 'truncate' || cmd === 'tee') targets = operands;
-    else {
+    else if (cmd === 'sort') targets = valuesOf('-o', '--output');
+    else if (cmd === 'sed') {
+        const inPlace = valuesOf('-i').length > 0 || args.some((a) => /^--in-place(?:=|$)/.test(a));
+        const scripted = valuesOf('-e', '-f', '--expression', '--file').length > 0;
+        targets = !inPlace ? [] : scripted ? operands : operands.slice(1); // without -e/-f the first operand is the script
+    } else {
         targets = operands.slice(-1);
-        if (cmd !== 'rsync') {
-            args.forEach((a, i) => {
-                const long = /^--target-directory(?:=(.*))?$/.exec(a);
-                const short = /^-[a-zA-Z]*t(.*)$/.exec(a);
-                if (long) targets.push(long[1] ?? args[i + 1] ?? '');
-                else if (short && !a.startsWith('--')) targets.push(short[1] || (args[i + 1] ?? ''));
-            });
-        }
+        targets.push(...valuesOf('-t', '--target-directory')); // rsync has neither option, so it adds nothing
     }
     const hit = targets.flatMap(substitutionReadings).find(namesGameData);
     return hit === undefined ? null : block(`Blocked: \`${cmd} ... ${hit}\` ${OVERWRITE_REASON}`);

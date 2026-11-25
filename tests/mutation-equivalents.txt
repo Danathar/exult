@@ -213,3 +213,10 @@ after: clsrefval.elems->clear();
 original: clsrefval.~ClassRef();
 mutant: ;
 reason: untestable here: dropping it leaks one reference to an already emptied vector, and no value can observe that reference
+
+file: .claude/hooks/guard-bash.mjs
+line: 1162
+after: },
+original: sed: { short: 'efl', attached: 'i', long: ['--expression', '--file', '--line-length'] },
+mutant: sed: { short: 'efl', attached: 'i', long: ['--expression', '--file'] },
+reason: equivalent: the --line-length value is a number, so read as an operand it names no game data and no test input can tell the two readings apart
