@@ -35,6 +35,15 @@ const allowed = [
     'tee build.log',
     'truncate -s0 build.log',
     'dd if=gamedat/x.sav of=/tmp/x.bak',
+    // an option value after the destination is not the destination (#484)
+    'rsync -a gamedat/ /tmp/backup/ --exclude "*.sav"',
+    'rsync -a gamedat/ /tmp/backup/ -e ssh',
+    'cp gamedat/x.sav /tmp/backup/x.sav -S .bak',
+    // sed without -i and sort without -o only read game data (#484)
+    'sed -n p gamedat/x',
+    'sed -i s/a/b/ build.log',
+    'sort -o /tmp/sorted.txt gamedat/x',
+    'sed -e s/a/b/ gamedat/x',
     'git log > content/demo/static.txt',
     // `static/` is game data at the repository root only, not at the filesystem root
     'git log > /static/x',
@@ -774,6 +783,21 @@ const blocked = [
     'cp README gamedat/x -v',
     'ln -t gamedat README',
     'cp --target-directory gamedat README',
+    // an option value after the destination, an attached -t value, sed -i and sort -o (#484)
+    'rsync -a x/ gamedat/ --exclude foo',
+    'rsync -a x/ gamedat/ -e ssh',
+    'cp README gamedat/x -S .bak',
+    'install README gamedat/x -m 644',
+    'cp -tgamedat README',
+    'sed -i s/a/b/ ~/.exult.cfg',
+    'sed --in-place -e s/a/b/ gamedat/x',
+    'sort -o gamedat/x README',
+    'sort --output=gamedat/x README',
+    'sed -i.bak s/a/b/ gamedat/x',
+    'cp README gamedat/x --suffix .bak',
+    'install README gamedat/x --mode 644',
+    // a path rsync writes (--backup-dir) is still read as a destination
+    'rsync -a x/ y/ --backup-dir gamedat',
     // bash -n escape hatch
     'bash -n +n -c "sudo ls"',
     'bash -n {+,+}n',
