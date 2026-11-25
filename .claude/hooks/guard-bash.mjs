@@ -62,7 +62,8 @@
 //   - The builtins that assign the variable an operand names, when the name is
 //     HOME, XDG_CONFIG_HOME, PATH, a GIT_CONFIG_* name or a word the shell
 //     rewrites into a name: read, mapfile/readarray, `printf -v`, the variable
-//     of a for/select loop, getopts, and let.
+//     of a for/select loop, getopts, and let; and an arithmetic command or
+//     expansion (`(( PATH = 1 ))`, `$(( HOME = 1 ))`) that names one of them.
 //   - `git --shallow-file FILE`, which reads FILE and can print its first line.
 //   - Removing or overwriting the GIT_CONFIG_* variables that .claude/
 //     settings.json uses to set safe.bareRepository=explicit: `unset`,
@@ -74,6 +75,11 @@
 //   - git push after a directory change this hook cannot follow (`cd $DIR`,
 //     `eval cd DIR`, a cd name built from braces, wildcards or `$X`): the
 //     repository being pushed cannot be verified.
+//   - Any git after a directory change that may leave the checkout (`cd /tmp`,
+//     a bare `cd`, `cd -`, `cd ..`, `pushd`, `popd`, a name the shell expands,
+//     a symlink out of the tree): outside it `git diff -- a b` compares two
+//     plain files and prints them. `cd tests` and `cd "$CLAUDE_PROJECT_DIR"`
+//     stay inside and are fine.
 //   - git, node, curl/wget or a shell run through xargs: xargs appends words
 //     read at run time, so none of the argument checks here could see them.
 //   node
@@ -151,7 +157,7 @@
 // names behind another program, what a `$(...)` holds), that reading is kept
 // here as policy on top of it.
 
-import { basename, resolve } from 'node:path';
+import { basename, isAbsolute, resolve } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -494,6 +500,60 @@ function assignedNameRefusal(cmd, name) {
     if (overwritesGitEnv(name)) return blockSettingsEnvOverwrite(name, `${cmd} ${name}`);
     if (/[$`*?[{]/.test(name)) return blockSettingsEnvOverwrite('GIT_CONFIG', `${cmd} ${name}`);
     return null;
+}
+
+// `(( PATH = 1 ))` and `: $(( HOME = 1 ))` assign the name with no NAME=value
+// word, and the reader splits `((` into subshell separators, so the words
+// `PATH = 1` read as a command. The text between `((` and `))` is read here
+// instead; a name that is only read is refused too, which only over-refuses.
+const ARITHMETIC = /\(\(([\s\S]*?)\)\)/g;
+const ARITHMETIC_NAME = /(?:^|\W)(XDG_CONFIG_HOME|HOME|PATH)(?!\w)|GIT_CONFIG/;
+function arithmeticRefusal(command) {
+    for (const [, body] of command.matchAll(ARITHMETIC)) {
+        const hit = ARITHMETIC_NAME.exec(body);
+        if (hit) return blockSettingsEnvOverwrite(hit[1] ?? 'GIT_CONFIG', `((${body}))`);
+    }
+    return null;
+}
+
+// The checkout a directory change has to stay inside: the project, else the
+// directory the command started in.
+function checkoutRoot(cwd) {
+    const root = process.env.CLAUDE_PROJECT_DIR || cwd || process.cwd();
+    try {
+        return realpathSync(root);
+    } catch {
+        return resolve(root);
+    }
+}
+
+const PROJECT_DIR_WORDS = new Set(['$CLAUDE_PROJECT_DIR', '${CLAUDE_PROJECT_DIR}']);
+
+// Whether `cd TARGET` from `from` lands inside `root`. Only a literal path
+// that resolves (symlinks followed) inside the checkout, or the project
+// directory itself, counts: no operand (HOME), `-`, `+N`, a `..` component, a
+// word the shell expands, and a bare name while CDPATH may be set all may leave.
+function staysInCheckout(cmd, target, from, root, cdpath) {
+    if (cmd === 'popd' || target === undefined || from === null) return false;
+    if (PROJECT_DIR_WORDS.has(target)) return Boolean(process.env.CLAUDE_PROJECT_DIR);
+    if (target.startsWith('+') || /[$`~{*?[\\]/.test(target)) return false;
+    if (target.split('/').includes('..')) return false;
+    if (cdpath && !isAbsolute(target) && !target.startsWith('./')) return false;
+    let real = resolve(from ?? process.cwd(), target);
+    try {
+        real = realpathSync(real);
+    } catch {
+        // cd fails on a missing directory and the shell stays where it was.
+    }
+    return real === root || real.startsWith(`${root}/`);
+}
+
+function gitAfterDirectoryChange(change) {
+    return block(
+        `Blocked: \`git\` after \`${change}\`, which may leave this checkout. Outside it git reads another ` +
+            "repository's config, or with no repository compares plain files (`git diff -- a b` prints both), " +
+            'past the Read deny rules. Change only into a folder inside the checkout, or run git from the project.'
+    );
 }
 
 function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
@@ -1633,7 +1693,13 @@ function checkSegment(words, state) {
     if (CHDIR.has(cmd)) {
         const target = args.find((a) => !a.startsWith('-'));
         const known = cmd !== 'popd' && target !== undefined && target !== '-' && state.cwd !== null && !/[$`~{*?[\\]/.test(target);
+        // The checkout is fixed by the first change, from where the command started.
+        state.root ??= checkoutRoot(state.cwd);
+        if (!state.leftCheckout && !staysInCheckout(cmd, target, state.cwd, state.root, Boolean(process.env.CDPATH) || state.cdpath)) {
+            state.leftCheckout = w.join(' ');
+        }
         state.cwd = known ? resolve(state.cwd ?? process.cwd(), target) : null;
+        if (PROJECT_DIR_WORDS.has(target) && process.env.CLAUDE_PROJECT_DIR) state.cwd = process.env.CLAUDE_PROJECT_DIR;
         followedCd.add(words);
         return null;
     }
@@ -1643,7 +1709,9 @@ function checkSegment(words, state) {
     }
     if (cmd === 'git') {
         const refusal = checkGit(args, inlineEnv, state.exportedEnv ?? {}, state.cwd);
-        if (refusal || !state.envCleared) return refusal;
+        if (refusal) return refusal;
+        if (state.leftCheckout) return gitAfterDirectoryChange(state.leftCheckout);
+        if (!state.envCleared) return null;
         return block(
             'Blocked: `env -i` (`--ignore-environment`, a lone `-`) and `exec -c` run git without the GIT_CONFIG_* ' +
                 'settings env in .claude/settings.json that stops a committed repository folder from running a ' +
@@ -1747,6 +1815,10 @@ const followedCd = new WeakSet();
 
 /** Analyse a command line. Returns null if allowed, else { blocked, reason }. */
 export function checkCommand(command, state = {}) {
+    const arithmetic = arithmeticRefusal(command);
+    if (arithmetic) return arithmetic;
+    // A CDPATH set anywhere in the string can send `cd NAME` out of the checkout.
+    if (command.includes('CDPATH')) state.cdpath = true;
     const substitutions = extractSubstitutions(command);
     for (const sub of substitutions) {
         const r = checkCommand(sub, state);
@@ -1760,7 +1832,10 @@ export function checkCommand(command, state = {}) {
             if (r) return r;
             // Any other way the shell may change directory (`eval cd DIR`, `{cd,} DIR`,
             // `c? DIR`, `$X DIR`) leaves the directory of a later `git push` unknown.
-            if (!followedCd.has(words) && changesDirectory(words)) state.cwd = null;
+            if (!followedCd.has(words) && changesDirectory(words)) {
+                state.cwd = null;
+                state.leftCheckout ??= words.join(' ');
+            }
         }
     } finally {
         lineSubstitutions = outer;
