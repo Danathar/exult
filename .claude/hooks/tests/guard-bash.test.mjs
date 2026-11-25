@@ -36,6 +36,8 @@ const allowed = [
     'truncate -s0 build.log',
     'dd if=gamedat/x.sav of=/tmp/x.bak',
     'git log > content/demo/static.txt',
+    // `static/` is game data at the repository root only, not at the filesystem root
+    'git log > /static/x',
     // build and test entry points
     'tests/run-unit-tests.sh',
     'tests/e2e/run.sh',
@@ -100,6 +102,9 @@ const allowed = [
     'select x in a b; do break; done',
     'getopts ab opt',
     'let i=i+1',
+    'printf',
+    'let MYPATH=1',
+    'let PATHS=1',
     // env and wrapper options that neither remove a variable nor clear the environment
     'env --unset=FOO git log -1',
     'env --chdir=/tmp git log -1',
@@ -420,6 +425,10 @@ const blocked = [
     'let PATH=1',
     'let GIT_CONFIG_COUNT=0',
     'let "$v=0"',
+    'let HOME=1',
+    'let XDG_CONFIG_HOME=1',
+    'let x=1 PATH=2',
+    'let x=1,PATH=2',
     "bash -c 'read -r HOME <<< planted; git diff HEAD~1 HEAD'",
     'GIT_EXTERNAL_DIFF=sh git diff',
     'GIT_TRACE=/tmp/x git status',
@@ -758,6 +767,13 @@ const blocked = [
     'rsync --delete ./x/ gamedat/',
     'dd if=/dev/zero of=gamedat/x.sav',
     'dd of=gamedat/gamewin.dat if=/dev/zero',
+    'git log > build/../static/x',
+    // every operand of truncate and tee, and options after the destination
+    'truncate -s0 gamedat/x build.log',
+    'tee gamedat/x build.log',
+    'cp README gamedat/x -v',
+    'ln -t gamedat README',
+    'cp --target-directory gamedat README',
     // bash -n escape hatch
     'bash -n +n -c "sudo ls"',
     'bash -n {+,+}n',
@@ -1091,6 +1107,8 @@ test('a refusal about git settings names the variable it protects', () => {
         ['printf -v GIT_CONFIG_COUNT %s 0', /`printf -v GIT_CONFIG_COUNT` overwrites the GIT_CONFIG_\* settings env/],
         ['for PATH in planted; do true; done', /`for PATH` changes PATH/],
         ['let PATH=1', /`let PATH=1` changes PATH/],
+        ['HOME+=/planted', /`HOME\+=\/planted` changes where git reads its global config/],
+        ['PATH+=:planted', /`PATH\+=:planted` changes PATH/],
     ]) {
         const r = run(command);
         assert.equal(r.status, 2, command);
