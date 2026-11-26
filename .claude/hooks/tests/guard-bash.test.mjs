@@ -142,6 +142,15 @@ const allowed = [
     'env --chdir=tests git log -1',
     'env -C /tmp ls',
     'env --chdir=/tmp ls',
+    // find -execdir / -okdir from folders inside the checkout, or running no git
+    "find . -name '*.cc' -execdir git log -1 -- {} \\;",
+    'find tests -execdir git status \\;',
+    'find -name x -execdir git status \\;',
+    'find tests -name x -okdir git status {} +',
+    'find . -name x -execdir git log -L 1,2:x \\;',
+    'find -L . -name x -exec git log -1 \\;',
+    'find /tmp -name x -exec git log -1 -- {} \\;',
+    'find /tmp -name x -execdir ls \\;',
     // only -C and -C/--chdir name a directory: not another option's value or a missing one
     'git --version',
     'env -a /usr/bin/git git status',
@@ -1035,6 +1044,17 @@ const blocked = [
     'env -C tests -C /tmp git log -1',
     "env -C /tmp bash -c 'git log -1'",
     'timeout 5 env -C /tmp git diff -- a b',
+    // find -execdir / -okdir run git in the folder holding each match
+    'find /tmp/x -maxdepth 0 -execdir git diff -- a b \\;',
+    'find /tmp -okdir git diff -- a b \\;',
+    'find /tmp/other/x -maxdepth 0 -execdir git push origin feature \\;',
+    'find .. -name x -execdir git log -1 \\;',
+    'find -H /tmp -name x -execdir git status \\;',
+    'find -D tree /tmp -name x -execdir git status \\;',
+    'find tests /tmp -name x -execdir git status \\;',
+    'find -L . -name x -execdir git log -1 \\;',
+    'find . -follow -name x -execdir git log -1 \\;',
+    'timeout 5 find /tmp -execdir git status \\;',
     // an arithmetic command or expansion that names a variable git reads
     '(( PATH = 1 )); git log -1',
     '(( HOME = 1 )); git diff HEAD~1 HEAD',
@@ -1246,6 +1266,36 @@ test('git after a directory change runs only where the change stays inside the c
         assert.match(c.stderr, /`git` after `git -C \/tmp`, which may leave this checkout/);
         const e = run('env --chdir=/tmp git diff -- x .env', 'Bash', dir, NO_PROJECT_ENV);
         assert.match(e.stderr, /`git` after `env -C \/tmp`, which may leave this checkout/);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+        rmSync(outside, { recursive: true, force: true });
+    }
+});
+
+test('git behind find -execdir runs only where the folder of each match stays inside the checkout', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'guard-execdir-'));
+    const outside = mkdtempSync(join(tmpdir(), 'guard-execdir-out-'));
+    try {
+        mkdirSync(join(dir, 'inside'));
+        symlinkSync(outside, join(dir, 'escape'));
+        for (const [command, status] of [
+            ['find inside -execdir git log -1 \\;', 0],
+            [`find ${dir}/inside -execdir git log -1 \\;`, 0],
+            ['find inside -okdir git status \\;', 0],
+            // the checkout itself as the starting point: its own match runs in the parent
+            [`find ${dir} -maxdepth 0 -execdir git diff -- x .env \\;`, 2],
+            [`find ${dir} -maxdepth 0 -okdir git diff -- x .env \\;`, 2],
+            // a symlink out of the tree, whose parent is inside
+            ['find escape -execdir git diff -- x .env \\;', 2],
+            [`find ${outside} -execdir git diff -- x .env \\;`, 2],
+            [`find ${outside} -execdir ls \\;`, 0],
+        ]) {
+            assert.equal(run(command, 'Bash', dir, NO_PROJECT_ENV).status, status, command);
+        }
+        const r = run(`find ${outside} -execdir git diff -- x .env \\;`, 'Bash', dir, NO_PROJECT_ENV);
+        assert.match(r.stderr, /`git` after `find \/\S+ -execdir`, which may leave this checkout/);
+        const l = run('find -L inside -execdir git log -1 \\;', 'Bash', dir, NO_PROJECT_ENV);
+        assert.match(l.stderr, /`git` after `find -L -execdir`, which may leave this checkout/);
     } finally {
         rmSync(dir, { recursive: true, force: true });
         rmSync(outside, { recursive: true, force: true });
