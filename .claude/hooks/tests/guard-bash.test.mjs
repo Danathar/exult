@@ -133,10 +133,17 @@ const allowed = [
     'cd ./tests/unit && git status',
     'git status; cd /tmp',
     'cd /tmp && ls',
+    // git -C and env -C into a folder inside the checkout, or env -C running no git
+    'git -C tests log -1',
+    'git -C tests -C unit status',
+    'git -C ./tests diff -- a b',
+    'timeout 5 git -C tests diff -- a b',
+    'env -C tests git log -1',
+    'env --chdir=tests git log -1',
+    'env -C /tmp ls',
+    'env --chdir=/tmp ls',
     // env and wrapper options that neither remove a variable nor clear the environment
     'env --unset=FOO git log -1',
-    'env --chdir=/tmp git log -1',
-    'env -C /tmp git log -1',
     'ionice -c 3 git log -1',
     'declare +x FOO; git log -1',
     // a --bare after the subcommand is not git's global option
@@ -1004,6 +1011,24 @@ const blocked = [
     'cd $DIR && git log -1',
     "bash -c 'cd /tmp && git log -1'",
     'CDPATH=/tmp; cd tests && git log -1',
+    // git's own -C and env -C / --chdir are the same directory change (#489)
+    'git -C /tmp diff -- x .env',
+    'git -C tests -C /tmp diff -- x .env',
+    'git -C tests -C ../.. log -1',
+    'git --no-pager -C /tmp log -1',
+    'git -C .. log -1',
+    'git -C ~ log -1',
+    'git -C "$HOME" log -1',
+    'timeout 5 git -C /tmp diff -- a b',
+    '/usr/bin/git -C /tmp diff -- a b',
+    'env -C /tmp git diff -- x .env',
+    'env -C/tmp git log -1',
+    'env --chdir=/tmp git log -1',
+    'env --chdir /tmp git log -1',
+    'env -C /tmp git log -1',
+    'env -C tests -C /tmp git log -1',
+    "env -C /tmp bash -c 'git log -1'",
+    'timeout 5 env -C /tmp git diff -- a b',
     // an arithmetic command or expansion that names a variable git reads
     '(( PATH = 1 )); git log -1',
     '(( HOME = 1 )); git diff HEAD~1 HEAD',
@@ -1171,10 +1196,10 @@ test('pushing HEAD or no refspec is blocked on master and allowed on other branc
         // origin must be this repository, however the repository is reached
         git('remote', 'set-url', 'origin', 'https://github.com/exult/exult.git');
         assert.equal(run('git push origin feature', 'Bash', dir).status, 2, 'upstream origin');
-        assert.equal(run(`git -C ${dir} push origin feature`).status, 2, '-C into an upstream-origin repo');
+        assert.equal(run(`git -C ${dir} push origin feature`, 'Bash', dir, NO_PROJECT_ENV).status, 2, '-C into an upstream-origin repo');
         assert.equal(run(`cd ${dir} && git push origin feature`, 'Bash', dir, NO_PROJECT_ENV).status, 2, 'cd into an upstream-origin repo');
         git('remote', 'set-url', 'origin', 'https://github.com/Danathar/exult');
-        assert.equal(run(`git -C ${dir} push origin feature`).status, 0, '-C into a good repo');
+        assert.equal(run(`git -C ${dir} push origin feature`, 'Bash', dir, NO_PROJECT_ENV).status, 0, '-C into a good repo');
         assert.equal(run(`cd ${dir} && git push origin feature`, 'Bash', dir, NO_PROJECT_ENV).status, 0, 'cd into a good repo');
     } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -1195,6 +1220,14 @@ test('git after a directory change runs only where the change stays inside the c
             ['cd escape && git diff -- x .env', 2],
             [`cd ${dir}/escape && git log -1`, 2],
             [`cd ${outside} && git diff -- x .env`, 2],
+            ['git -C inside log -1', 0],
+            [`git -C ${dir}/inside status`, 0],
+            ['env -C inside git log -1', 0],
+            ['git -C escape diff -- x .env', 2],
+            [`git -C ${outside} diff -- x .env`, 2],
+            [`env -C ${outside} git diff -- x .env`, 2],
+            [`env --chdir=${dir}/escape git log -1`, 2],
+            [`env -C ${outside} ls`, 0],
         ]) {
             assert.equal(run(command, 'Bash', dir, NO_PROJECT_ENV).status, status, command);
         }
@@ -1203,6 +1236,10 @@ test('git after a directory change runs only where the change stays inside the c
         assert.equal(run('cd .. && git status', 'Bash', join(dir, 'inside'), project).status, 2);
         const r = run('cd /tmp && git diff -- x .env', 'Bash', dir, NO_PROJECT_ENV);
         assert.match(r.stderr, /`git` after `cd \/tmp`, which may leave this checkout/);
+        const c = run('git -C /tmp diff -- x .env', 'Bash', dir, NO_PROJECT_ENV);
+        assert.match(c.stderr, /`git` after `git -C \/tmp`, which may leave this checkout/);
+        const e = run('env --chdir=/tmp git diff -- x .env', 'Bash', dir, NO_PROJECT_ENV);
+        assert.match(e.stderr, /`git` after `env -C \/tmp`, which may leave this checkout/);
     } finally {
         rmSync(dir, { recursive: true, force: true });
         rmSync(outside, { recursive: true, force: true });
