@@ -79,7 +79,9 @@
 //     a bare `cd`, `cd -`, `cd ..`, `pushd`, `popd`, a name the shell expands,
 //     a symlink out of the tree): outside it `git diff -- a b` compares two
 //     plain files and prints them. `cd tests` and `cd "$CLAUDE_PROJECT_DIR"`
-//     stay inside and are fine.
+//     stay inside and are fine. git's own `git -C DIR` (each one, chained)
+//     and `env -C DIR` / `env --chdir=DIR` are read the same way: git is
+//     refused unless DIR stays inside (`git -C tests`); `env -C /tmp ls` runs.
 //   - git, node, curl/wget or a shell run through xargs: xargs appends words
 //     read at run time, so none of the argument checks here could see them.
 //   node
@@ -554,6 +556,29 @@ function gitAfterDirectoryChange(change) {
             "repository's config, or with no repository compares plain files (`git diff -- a b` prints both), " +
             'past the Read deny rules. Change only into a folder inside the checkout, or run git from the project.'
     );
+}
+
+// The `-C DIR` values among git's global options, in order (each is relative
+// to the one before it).
+function gitDirectoryOptions(args) {
+    const dirs = [];
+    for (let i = 0; i < args.length && args[i].startsWith('-'); i += GIT_GLOBAL_OPTIONS_WITH_VALUE.includes(args[i]) ? 2 : 1) {
+        if (args[i] === '-C') dirs.push(args[i + 1]);
+    }
+    return dirs;
+}
+
+// The first of `dirs` that may leave the checkout when a command starts in
+// each in turn (`git -C a -C b`), read as `cd DIR` is; null when all stay
+// inside. Neither git nor env looks a name up in CDPATH.
+function leavingDirectory(dirs, state) {
+    state.root ??= checkoutRoot(state.cwd);
+    let from = state.cwd;
+    for (const dir of dirs) {
+        if (!staysInCheckout('cd', dir, from, state.root, false)) return dir ?? '';
+        from = resolve(from ?? process.cwd(), dir);
+    }
+    return null;
 }
 
 function checkGit(args, inlineEnv = {}, exported = {}, cwd = undefined) {
@@ -1340,7 +1365,8 @@ function envOptions(w) {
     // string is parsed again by the caller.
     let cleared = false;
     const unset = [];
-    const done = (r) => ({ ...r, cleared, unset });
+    const chdir = []; // the directories -C / --chdir start the command in
+    const done = (r) => ({ ...r, cleared, unset, chdir });
     for (let k = 1; k < w.length; k++) {
         const a = w[k];
         if (isAssignment(a)) continue;
@@ -1363,6 +1389,7 @@ function envOptions(w) {
             }
             if (opt === 'ignore-environment') cleared = true;
             if (opt === 'unset') unset.push(eq === -1 ? (w[k + 1] ?? '') : a.slice(eq + 1));
+            if (opt === 'chdir') chdir.push(eq === -1 ? w[k + 1] : a.slice(eq + 1));
             if ((opt === 'unset' || opt === 'chdir' || opt === 'argv0') && eq === -1) k++;
             continue;
         }
@@ -1375,6 +1402,7 @@ function envOptions(w) {
             }
             if (a[j] === 'u' || a[j] === 'C' || a[j] === 'a') {
                 if (a[j] === 'u') unset.push(j + 1 < a.length ? a.slice(j + 1) : (w[k + 1] ?? ''));
+                if (a[j] === 'C') chdir.push(j + 1 < a.length ? a.slice(j + 1) : w[k + 1]);
                 if (j + 1 === a.length) k++; // the value is the next word
                 break;
             }
@@ -1557,7 +1585,7 @@ function checkSegment(words, state) {
         if (!WRAPPERS.has(cmd)) break;
         // `env -S 'gh pr create'` / `-iS ...` / `--split-string=...` runs a command string.
         if (cmd === 'env') {
-            const { script, rest, cleared, unset } = envOptions(w);
+            const { script, rest, cleared, unset, chdir } = envOptions(w);
             // `env -u GIT_CONFIG_COUNT git ...` removes the GIT_CONFIG_*
             // settings env (.claude/settings.json) for the command it runs.
             const removed = unset.find(removesSettingsEnv);
@@ -1565,6 +1593,18 @@ function checkSegment(words, state) {
             // `env -i` / `--ignore-environment` / a lone `-` drop the whole
             // environment, the settings env with it; git is refused below.
             if (cleared) state = Object.assign(Object.create(state), { envCleared: true });
+            // `env -C DIR` / `--chdir=DIR` starts the command in DIR, which is read
+            // as `cd DIR` is: a git it runs is refused below unless DIR stays inside.
+            if (chdir.length) {
+                const left = chdir.map((dir) => leavingDirectory([dir], state)).find((dir) => dir !== null);
+                const last = chdir[chdir.length - 1];
+                state = Object.assign(
+                    Object.create(state),
+                    left === undefined
+                        ? { cwd: state.cwd === null ? null : resolve(state.cwd ?? process.cwd(), last) }
+                        : { cwd: null, leftCheckout: state.leftCheckout ?? `env -C ${left}` }
+                );
+            }
             if (script !== null) {
                 // Check the string on its own, then as the head of the command
                 // that still has the remaining words appended.
@@ -1711,6 +1751,8 @@ function checkSegment(words, state) {
         const refusal = checkGit(args, inlineEnv, state.exportedEnv ?? {}, state.cwd);
         if (refusal) return refusal;
         if (state.leftCheckout) return gitAfterDirectoryChange(state.leftCheckout);
+        const left = leavingDirectory(gitDirectoryOptions(args), state);
+        if (left !== null) return gitAfterDirectoryChange(`git -C ${left}`);
         if (!state.envCleared) return null;
         return block(
             'Blocked: `env -i` (`--ignore-environment`, a lone `-`) and `exec -c` run git without the GIT_CONFIG_* ' +
