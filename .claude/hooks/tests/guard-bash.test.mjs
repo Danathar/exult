@@ -142,6 +142,12 @@ const allowed = [
     'env --chdir=tests git log -1',
     'env -C /tmp ls',
     'env --chdir=/tmp ls',
+    // only -C and -C/--chdir name a directory: not another option's value or a missing one
+    'git --version',
+    'env -a /usr/bin/git git status',
+    'env --argv0=/usr/bin/git git status',
+    // a second env -C is relative to the folder the first one moved to
+    'env -C tests env -C unit git status',
     // env and wrapper options that neither remove a variable nor clear the environment
     'env --unset=FOO git log -1',
     'ionice -c 3 git log -1',
