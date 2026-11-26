@@ -1219,6 +1219,8 @@ test('git after a directory change runs only where the change stays inside the c
         mkdirSync(join(dir, 'inside'));
         // a branch can commit a symlink with a tidy name that points out of the tree
         symlinkSync(outside, join(dir, 'escape'));
+        // and one in a subfolder, reached only from that subfolder
+        symlinkSync(outside, join(dir, 'inside', 'out'));
         for (const [command, status] of [
             ['cd inside && git log -1', 0],
             [`cd ${dir} && git log -1`, 0],
@@ -1240,6 +1242,11 @@ test('git after a directory change runs only where the change stays inside the c
         const project = { ...NO_PROJECT_ENV, CLAUDE_PROJECT_DIR: dir };
         assert.equal(run('cd "$CLAUDE_PROJECT_DIR" && git status', 'Bash', join(dir, 'inside'), project).status, 0);
         assert.equal(run('cd .. && git status', 'Bash', join(dir, 'inside'), project).status, 2);
+        // `cd "$CLAUDE_PROJECT_DIR"` (either spelling) moves to the project
+        // folder, and a later -C is read from there; any other cd is not.
+        assert.equal(run('cd "$CLAUDE_PROJECT_DIR" && git -C inside log -1', 'Bash', join(dir, 'inside'), project).status, 0);
+        assert.equal(run('cd "${CLAUDE_PROJECT_DIR}" && git -C inside log -1', 'Bash', join(dir, 'inside'), project).status, 0);
+        assert.equal(run('cd inside && git -C out diff -- x .env', 'Bash', dir, project).status, 2);
         const r = run('cd /tmp && git diff -- x .env', 'Bash', dir, NO_PROJECT_ENV);
         assert.match(r.stderr, /`git` after `cd \/tmp`, which may leave this checkout/);
         const c = run('git -C /tmp diff -- x .env', 'Bash', dir, NO_PROJECT_ENV);
