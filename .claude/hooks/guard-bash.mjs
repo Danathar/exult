@@ -82,6 +82,9 @@
 //     stay inside and are fine. git's own `git -C DIR` (each one, chained)
 //     and `env -C DIR` / `env --chdir=DIR` are read the same way: git is
 //     refused unless DIR stays inside (`git -C tests`); `env -C /tmp ls` runs.
+//     So is `find START -execdir|-okdir git ...`, which runs git in the folder
+//     holding each match: START and its parent must stay inside, and -L /
+//     -follow (a symlink can lead out) count as leaving.
 //   - git, node, curl/wget or a shell run through xargs: xargs appends words
 //     read at run time, so none of the argument checks here could see them.
 //   node
@@ -159,7 +162,7 @@
 // names behind another program, what a `$(...)` holds), that reading is kept
 // here as policy on top of it.
 
-import { basename, isAbsolute, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1326,6 +1329,33 @@ function checkDelete(cmd, args) {
     return null;
 }
 
+// find's starting points: the words after its leading options (-H, -L, -P,
+// -D LIST, -O LEVEL) up to the first expression word. A -D LIST value is read
+// as a starting point too, which can only refuse more.
+function findStartingPoints(args) {
+    let i = 0;
+    while (i < args.length && /^-(?:[HLP]|D|O\d*)$/.test(args[i])) i++;
+    const starts = [];
+    for (; i < args.length && !/^[-(!,)]/.test(args[i]); i++) starts.push(args[i]);
+    return starts;
+}
+
+// The folder `find -execdir` / `-okdir` runs its command in: the one that holds
+// each match. A match is a starting point or a file below it, so the command
+// runs in the starting point or in its parent (`find "$PWD" -maxdepth 0
+// -execdir git ...` runs git in the checkout's parent). -L / -follow can also
+// follow a symlink out of the tree. Read like `env -C DIR`: the command is
+// checked as having left the checkout unless every such folder stays inside.
+// `args` are find's words before the -execdir, so the command's own options
+// (`git log -L 1,2:f`) are not read as find's.
+function execdirState(args, state) {
+    const follow = args.find((a) => a === '-L' || a === '-follow');
+    const leaves = (start) => leavingDirectory([start], state) !== null || leavingDirectory([dirname(start)], state) !== null;
+    const start = follow ?? findStartingPoints(args).find(leaves);
+    if (start === undefined) return Object.create(state);
+    return Object.assign(Object.create(state), { cwd: null, leftCheckout: state.leftCheckout ?? `find ${start} -execdir` });
+}
+
 /**
  * `find ... -exec|-execdir|-ok|-okdir CMD ARGS ;` (or `{} +`) runs CMD for each
  * file: analyse each such command like a segment of its own.
@@ -1335,7 +1365,8 @@ function checkFindExec(args, state) {
         if (!FIND_EXEC.includes(args[i])) continue;
         let end = i + 1;
         while (end < args.length && args[end] !== ';' && !(args[end] === '+' && args[end - 1] === '{}')) end++;
-        const r = checkSegment(args.slice(i + 1, end), Object.create(state));
+        const inner = args[i] === '-execdir' || args[i] === '-okdir' ? execdirState(args.slice(0, i), state) : Object.create(state);
+        const r = checkSegment(args.slice(i + 1, end), inner);
         if (r) return r;
         i = end;
     }
